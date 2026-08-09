@@ -1,11 +1,11 @@
 import { access, realpath } from 'node:fs/promises'
 import { delimiter, isAbsolute, join } from 'node:path'
 import { constants } from 'node:fs'
-import { execFile, spawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
+import { cliEventSchema } from '../../shared/contracts/cli'
 import type { GuiError, Result, RuntimeInfo } from '../../shared/contracts/ipc'
 
 const PROBE_TIMEOUT_MS = 10_000
-const VERSION_PATTERN = /^bingo\s+(.+)$/m
 
 type LocateOptions = {
   env?: NodeJS.ProcessEnv
@@ -23,16 +23,13 @@ export class RuntimeLocator {
     const workspace = await this.resolveWorkspace(workspacePath)
     if (!workspace.ok) return workspace
 
-    const version = await this.readVersion(binary.value, env)
-    if (!version.ok) return version
-
     const protocol = await this.probeProtocol(binary.value, workspace.value, env)
     if (!protocol.ok) {
       return {
         ok: false,
         error: {
           ...protocol.error,
-          msg: `${protocol.error.msg} Binary: ${binary.value}. Version: ${version.value}.`
+          msg: `${protocol.error.msg} Binary: ${binary.value}.`
         }
       }
     }
@@ -41,7 +38,7 @@ export class RuntimeLocator {
       ok: true,
       value: {
         binaryPath: binary.value,
-        bingoVersion: version.value,
+        bingoVersion: protocol.value,
         protocolVersion: 1,
         workspacePath: workspace.value
       }
@@ -88,56 +85,48 @@ export class RuntimeLocator {
     }
   }
 
-  private readVersion(binary: string, env: NodeJS.ProcessEnv): Promise<Result<string>> {
+  private probeProtocol(binary: string, cwd: string, env: NodeJS.ProcessEnv): Promise<Result<string>> {
     return new Promise((resolve) => {
-      execFile(binary, ['--version'], { env, timeout: this.options.timeoutMs ?? PROBE_TIMEOUT_MS }, (error, stdout) => {
-        if (error) {
-          resolve(this.error('BINGO_PROBE_FAILED', `Could not read the bingo version. Check the binary and retry.`))
-          return
-        }
-        const match = VERSION_PATTERN.exec(stdout.trim())
-        resolve(match ? { ok: true, value: match[1] } : this.error('BINGO_PROBE_FAILED', 'bingo returned an invalid version. Check the binary and retry.'))
-      })
-    })
-  }
-
-  private probeProtocol(binary: string, cwd: string, env: NodeJS.ProcessEnv): Promise<Result<1>> {
-    return new Promise((resolve) => {
-      const child = spawn(binary, ['--json-events'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
+      const child = spawn(binary, ['--json-events', '--probe'], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })
       let stdout = ''
       let settled = false
       let timer: NodeJS.Timeout
+      let protocolVersion: string | null = null
 
-      const finish = (result: Result<1>): void => {
+      const finish = (result: Result<string>): void => {
         if (settled) return
         settled = true
         clearTimeout(timer)
-        if (!child.killed) child.kill()
+        if (!child.killed && child.exitCode === null) child.kill()
         resolve(result)
-      }
-
-      const inspect = (): void => {
-        const line = stdout.split('\n')[0]
-        if (!line) return
-        try {
-          const event = JSON.parse(line) as { protocolVersion?: unknown; seq?: unknown; type?: unknown }
-          if (event.protocolVersion === 1 && event.seq === 1 && event.type === 'session.ready') {
-            finish({ ok: true, value: 1 })
-            return
-          }
-        } catch {
-          // handled as unsupported below
-        }
-        finish(this.error('BINGO_PROTOCOL_UNSUPPORTED', 'This bingo version does not support GUI protocol v1. Install a compatible bingo build, then retry.'))
       }
 
       child.stdout.setEncoding('utf8')
       child.stdout.on('data', (chunk: string) => {
         stdout += chunk
-        inspect()
+        const lines = stdout.split('\n').filter(Boolean)
+        if (lines.length > 1) {
+          finish(this.error('BINGO_PROTOCOL_UNSUPPORTED', 'bingo probe emitted more than one event. Install a compatible bingo build, then retry.'))
+        }
       })
       child.on('error', () => finish(this.error('BINGO_PROBE_FAILED', 'Could not start bingo. Check the binary and retry.')))
-      child.on('exit', () => finish(this.error('BINGO_PROTOCOL_UNSUPPORTED', 'This bingo version does not support GUI protocol v1. Install a compatible bingo build, then retry.')))
+      child.on('exit', (code) => {
+        if (settled) return
+        const lines = stdout.split('\n').filter(Boolean)
+        if (code !== 0 || lines.length !== 1) {
+          finish(this.error('BINGO_PROTOCOL_UNSUPPORTED', 'This bingo version does not support GUI protocol v1. Install a compatible bingo build, then retry.'))
+          return
+        }
+        try {
+          const event = cliEventSchema.parse(JSON.parse(lines[0]))
+          if (event.type === 'protocol.ready') protocolVersion = event.bingoVersion
+        } catch {
+          protocolVersion = null
+        }
+        finish(protocolVersion
+          ? { ok: true, value: protocolVersion }
+          : this.error('BINGO_PROTOCOL_UNSUPPORTED', 'This bingo version does not support GUI protocol v1. Install a compatible bingo build, then retry.'))
+      })
 
       timer = setTimeout(
         () => finish(this.error('BINGO_PROBE_TIMEOUT', 'bingo did not respond within 10 seconds. Check the binary and retry.')),

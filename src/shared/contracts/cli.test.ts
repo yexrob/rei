@@ -27,6 +27,27 @@ describe('protocol v1 contracts', () => {
     })).toThrow()
   })
 
+  it('accepts side-effect-free inspection metadata', () => {
+    const event = cliEventSchema.parse({
+      protocolVersion: 1,
+      seq: 1,
+      sessionId: null,
+      type: 'inspection.ready',
+      metadata: {
+        bingoVersion: '0.4.0',
+        protocolVersion: 1,
+        cwd: '/tmp',
+        provider: 'default',
+        model: 'model',
+        thinkingLevel: 'off',
+        permissionMode: 'default',
+        theme: 'auto',
+        supportsImages: false
+      }
+    })
+    expect(event.type).toBe('inspection.ready')
+  })
+
   it('rejects unknown event types', () => {
     expect(() => cliEventSchema.parse({ protocolVersion: 1, seq: 2, sessionId: null, type: 'future.event' })).toThrow()
   })

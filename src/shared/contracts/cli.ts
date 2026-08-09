@@ -30,7 +30,7 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
 export const cliSessionMetadataSchema = z.object({
   bingoVersion: z.string(),
   protocolVersion: z.literal(1),
-  sessionId: z.string().nullable(),
+  sessionId: z.string(),
   displayName: z.string(),
   transcriptPath: z.string(),
   resumed: z.boolean(),
@@ -43,10 +43,18 @@ export const cliSessionMetadataSchema = z.object({
   supportsImages: z.boolean()
 })
 
+export const cliInspectionMetadataSchema = cliSessionMetadataSchema.omit({
+  sessionId: true,
+  displayName: true,
+  transcriptPath: true,
+  resumed: true
+})
+
 const optionSchema = z.object({ id: z.string(), label: z.string(), description: z.string().optional() })
 
 export const cliEventSchema = z.discriminatedUnion('type', [
   z.object({ protocolVersion: z.literal(1), seq: z.literal(1), sessionId: z.null(), type: z.literal('protocol.ready'), bingoVersion: z.string() }),
+  z.object({ protocolVersion: z.literal(1), seq: z.literal(1), sessionId: z.null(), type: z.literal('inspection.ready'), metadata: cliInspectionMetadataSchema }),
   eventBase.extend({ type: z.literal('session.ready'), metadata: cliSessionMetadataSchema }),
   eventBase.extend({ type: z.literal('turn.started'), commandId: uuid, turnId: uuid }),
   eventBase.extend({ type: z.literal('text.delta'), turnId: uuid, delta: z.string() }),
@@ -117,4 +125,5 @@ export const cliEventSchema = z.discriminatedUnion('type', [
 export type ClientCommand = z.infer<typeof clientCommandSchema>
 export type CliEvent = z.infer<typeof cliEventSchema>
 export type CliSessionMetadata = z.infer<typeof cliSessionMetadataSchema>
+export type CliInspectionMetadata = z.infer<typeof cliInspectionMetadataSchema>
 export type PromptResponse = z.infer<typeof promptResponseSchema>
