@@ -1,5 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
+import { registerIpc } from './ipc/registerIpc'
+import { RuntimeLocator } from './runtime/runtimeLocator'
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -29,6 +31,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.whenReady().then(() => {
+    registerIpc(new RuntimeLocator())
     createWindow()
 
     app.on('activate', () => {

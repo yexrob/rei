@@ -49,6 +49,13 @@ textarea {
   font-size: 14px;
 }
 
+.status-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+}
+
 .content {
   display: grid;
   min-width: 0;
@@ -57,8 +64,29 @@ textarea {
   overflow: auto;
 }
 
-.empty-state {
+.empty-state,
+.flow-error {
   width: min(520px, 100%);
+}
+
+.flow-error .error-code {
+  display: inline-block;
+  margin: 24px 0 0;
+  padding: 5px 8px;
+  border-radius: 5px;
+  color: #7c241e;
+  background: #f0d9d5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.flow-error > p:not(.eyebrow, .error-code) {
+  max-width: 520px;
+  margin: 18px 0 28px;
+  color: #66635d;
+  font-size: 16px;
+  line-height: 1.6;
 }
 
 .eyebrow {
