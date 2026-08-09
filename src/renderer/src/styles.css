@@ -5,20 +5,20 @@
   font-synthesis: none;
 }
 * { box-sizing: border-box; }
-html, body, #root { min-width: 800px; min-height: 600px; height: 100%; margin: 0; }
+html, body, #root { min-width: 800px; min-height: 600px; height: 100%; margin: 0; overflow: hidden; }
 button, input, textarea { font: inherit; }
 button { padding: 10px 14px; border: 0; border-radius: 8px; color: #f9f8f4; background: #262521; }
-.app-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100%; }
+.app-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); height: 100%; min-height: 0; overflow: hidden; }
 .sidebar { display: flex; flex-direction: column; gap: 24px; padding: 28px 24px; border-right: 1px solid #d9d5cc; background: #ebe8e1; }
 .sidebar strong { font-size: 20px; letter-spacing: -0.03em; }
 .sidebar span { color: #716e67; font-size: 14px; }
 .nav-action { color: #20201e; border: 1px solid #cec9bf; background: transparent; text-align: left; }
-.chat { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; height: 100vh; }
-.chat header { padding: 28px 40px 20px; border-bottom: 1px solid #dedad2; }
+.chat { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
+.chat header { flex: 0 0 auto; padding: 28px 40px 20px; border-bottom: 1px solid #dedad2; }
 .eyebrow { margin: 0 0 8px; color: #736f66; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 h1, h2 { margin: 0; letter-spacing: -.04em; }
 h1 { font-size: 28px; }
-.timeline { overflow-y: auto; padding: 28px 40px; }
+.timeline { min-height: 0; flex: 1 1 auto; overflow: auto; padding: 28px 40px; }
 .chat-hint { color: #77736b; }
 .message { max-width: 720px; margin: 0 0 28px; }
 .message > span { color: #77736b; font-size: 12px; font-weight: 700; text-transform: uppercase; }
@@ -27,7 +27,7 @@ h1 { font-size: 28px; }
 .tool-row { display: grid; grid-template-columns: 100px minmax(0,1fr) auto; gap: 14px; align-items: center; max-width: 720px; margin: 10px 0; padding: 12px 14px; border: 1px solid #d8d3ca; border-radius: 8px; }
 .tool-row small { color: #77736b; }
 .inline-error { display: flex; gap: 12px; max-width: 720px; padding: 14px; border-left: 3px solid #a83c32; color: #762a23; background: #f0d9d5; }
-.composer { display: flex; gap: 12px; padding: 18px 40px 28px; border-top: 1px solid #dedad2; background: #f4f2ed; }
+.composer { display: flex; flex: 0 0 auto; gap: 12px; padding: 18px 40px 28px; border-top: 1px solid #dedad2; background: #f4f2ed; }
 .composer textarea { min-height: 54px; max-height: 180px; flex: 1; resize: vertical; padding: 14px; border: 1px solid #c9c4ba; border-radius: 10px; background: #fffefa; }
 .modal-backdrop { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(24,23,20,.42); }
 .prompt-modal { width: min(480px, 100%); padding: 28px; border-radius: 12px; background: #fffefa; box-shadow: 0 24px 80px rgba(0,0,0,.22); }
