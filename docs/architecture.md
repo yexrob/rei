@@ -92,18 +92,34 @@ bingo --json-events [--session <EXACT_TRANSCRIPT_STEM>]
 
 Existing compatible options such as `--model`, `--permission-mode`, and `--no-team` may accompany JSON mode. In protocol v1:
 
-- `--json-events` conflicts with `--print`, `--inline`, `--fullscreen`, subcommands, and positional prompts.
-- Omitting `--session` atomically reserves a fresh transcript ID for the process working directory before `session.ready`. The upstream allocator must use an exclusive create (`create_new`/`O_EXCL`) and a random UUID suffix, e.g. `<project-slug>-<unix-seconds>-<uuid>`, retrying only on collision. The existing seconds-only allocator is not used in JSON mode.
+- `--json-events` conflicts with `--print`, `--inline`, `--fullscreen`, subcommands, and positional prompts. `--probe` and `--inspect` are valid only with `--json-events`, conflict with each other and `--session`, and reject turn/configuration options.
+- Omitting `--session` atomically reserves a fresh transcript ID for the process working directory before `session.ready`. The upstream allocator must use an exclusive create (`create_new`/`O_EXCL`) and a cryptographically random UUID suffix, e.g. `<project-slug>-<unix-seconds>-<uuid>`, retrying only on collision. The existing seconds-only allocator is not used in JSON mode.
 - `--session` accepts a transcript **stem**, never a path, and matches it exactly. `/`, `\`, `..`, empty IDs, substring matches, and multiple matches are rejected.
 - stdin is exclusively UTF-8 NDJSON commands.
 - stdout is exclusively UTF-8 NDJSON events. Every event is one JSON object followed by `\n`, flushed immediately.
 - stderr is diagnostics for humans/support logs only. It is not part of the machine protocol and is never parsed for prompts or normal errors.
-- The first stdout record is `session.ready`, or a fatal `error` followed by process exit 1.
+- In a normal conversation the first stdout record is `session.ready`, or a fatal `error` followed by process exit 1. Probe mode emits only `protocol.ready`; inspect mode starts with `inspection.ready`.
 - Malformed JSON, an unsupported command, a line over 1 MiB, or a protocol-version mismatch emits a fatal `error` with `code="BAD_ARGUMENT"` and exits 2.
 - Event lines are capped at 8 MiB. Tool output is clipped before serialization, using bingo's existing output budget.
 - One process handles one transcript for its lifetime. A rename changes that process's session ID; no command can switch it to a different transcript.
 
-The GUI starts the process with ordinary pipes, not a PTY. It passes an explicit absolute `cwd`, inherits the user's environment with only documented overrides, and never invokes a shell.
+The GUI starts a conversation process with ordinary pipes, not a PTY. It passes an explicit absolute `cwd`, inherits the user's environment with only documented overrides, and never invokes a shell.
+
+A side-effect-free capability probe uses:
+
+```bash
+bingo --json-events --probe
+```
+
+`--probe` conflicts with `--session` and `--inspect`, emits exactly one `protocol.ready` record containing `bingoVersion` and `protocolVersion`, then exits 0. It does not load providers, run hooks/teams, reserve a transcript, read commands, or modify any file. `runtime:probe` uses only this mode; it never starts a normal session and leaves no child or phantom conversation.
+
+A side-effect-free settings inspection transport uses:
+
+```bash
+bingo --json-events --inspect
+```
+
+`--inspect` conflicts with `--session` and `--probe`; its first record is `inspection.ready` with `sessionId=null`. It loads resolved settings/client metadata but creates no transcript and accepts only `providers.list`, `models.list`, and `session.close`.
 
 ### 4.2 Common wire rules
 
@@ -176,12 +192,26 @@ Prompt and session names are bounded before work begins:
 
 - `prompt`: 1 to 1,000,000 Unicode scalar values after preserving user whitespace; an all-whitespace prompt is rejected.
 - prompt free-text answer: at most 100,000 Unicode scalar values.
-- rename: trimmed, 1 to 80 Unicode scalar values; bingo remains responsible for filesystem-safe slugging.
+- rename: trim surrounding whitespace, then slugify with bingo's existing rules; the result must be 1 to 80 ASCII characters from `[A-Za-z0-9_-]`. The persisted and displayed name is that slug, not the pre-slug free-form input.
 
 ### 4.3 Event schema
 
 ```ts
 type CliEvent =
+  | {
+      protocolVersion: 1
+      seq: 1
+      sessionId: null
+      type: 'protocol.ready'
+      bingoVersion: string
+    }
+  | {
+      protocolVersion: 1
+      seq: 1
+      sessionId: null
+      type: 'inspection.ready'
+      metadata: CliInspectionMetadata
+    }
   | (EventBase & {
       type: 'session.ready'
       metadata: CliSessionMetadata
@@ -295,10 +325,16 @@ type CliEvent =
       recoverable: boolean
     })
 
+type CliInspectionMetadata = Omit<
+  CliSessionMetadata,
+  'sessionId' | 'displayName' | 'transcriptPath' | 'resumed'
+>
+
 type CliSessionMetadata = {
   bingoVersion: string
   protocolVersion: 1
   sessionId: string
+  displayName: string
   transcriptPath: string // trusted main-process field; removed from every renderer projection
   resumed: boolean
   cwd: string
@@ -311,7 +347,7 @@ type CliSessionMetadata = {
 }
 ```
 
-The machine `error.msg` uses the same single-line, 200-character sanitization as current non-TTY errors. Existing stable `ErrorCode` values are reused. JSON mode does not print an additional `[error] ...` line to stdout or stderr for a represented error.
+The machine `error.msg` uses the same single-line, 200-character sanitization as current non-TTY errors. Existing stable `ErrorCode` values are reused. JSON mode does not print an additional `[error] ...` line to stdout or stderr for a represented error. `error.scope` is set by the adapter context; `level` is copied from bingo's `ErrorLevel` (`Full` maps to wire `flow`), never inferred from the error code in Electron.
 
 Error termination is scoped:
 
@@ -324,7 +360,7 @@ Error termination is scoped:
 
 The upstream adapter and GUI both test these invariants:
 
-1. `session.ready` has `seq=1` and precedes all non-fatal events.
+1. A normal session's `session.ready` has `seq=1` and precedes all non-fatal session events. Probe mode instead emits only `protocol.ready(seq=1)` and exits; inspect mode starts with `inspection.ready(seq=1)` and never emits conversation events.
 2. At most one `turn.start` is active. A second start returns a recoverable command error and does not enter history.
 3. A successful start yields exactly one `turn.started`, then exactly one terminal event: `turn.completed`, `turn.cancelled`, or `error(scope='turn')`.
 4. `text.delta` values concatenate byte-for-byte to the assistant text that ordinary `--print` would emit for the same initial state.
@@ -428,7 +464,7 @@ export const IPC = {
   sessionRespondPrompt: 'session:respond-prompt',
   sessionRename: 'session:rename',
   sessionDelete: 'session:delete',
-  sessionListModels: 'session:list-models',
+  settingsListModels: 'settings:list-models',
   sessionEvent: 'session:event',
   settingsRead: 'settings:read',
   settingsSave: 'settings:save',
@@ -483,7 +519,7 @@ type RuntimeInfo = {
 
 type SessionSummary = {
   id: string                 // exact transcript stem; opaque outside main
-  name: string               // rename suffix, otherwise project slug
+  name: string               // metadata displayName; fresh JSON sessions = "New conversation"
   preview: string            // last visible user/assistant text, max 120 chars
   updatedAt: string          // ISO-8601 from file mtime
   messageCount: number
@@ -523,18 +559,18 @@ type SessionListOutput = {
 | Channel | Input | Success value | Semantics |
 |---|---|---|---|
 | `app:get-info` | `undefined` | `AppInfo` | No I/O beyond Electron metadata. |
-| `runtime:probe` | `RuntimeProbeInput` | `RuntimeInfo` | Resolve binary, run `--version`, start/probe protocol with a 10s startup deadline. No shell. |
+| `runtime:probe` | `RuntimeProbeInput` | `RuntimeInfo` | Resolve binary, run `--version`, then `--json-events --probe` with a 10s deadline. Probe emits one `protocol.ready`, exits 0, creates no transcript, runs no hooks/team/provider setup, and leaves no child. No shell. |
 | `session:list` | `undefined` | `SessionListOutput` | Read transcript JSONL only; never mutate. |
 | `session:open` | `{ sessionId: string | null; workspacePath: string }` | `SessionOpened` | `null` creates new; a string resumes exact ID. Closes the prior active child first. Resolves after `session.ready`. |
 | `session:close` | `{ connectionId: string }` | `{ closed: true }` | Graceful child close; idempotent for an already-closed matching connection. |
 | `session:send` | `{ connectionId: string; turnId: string; prompt: string }` | `{ accepted: true }` | Valid only in idle; returns after `turn.start` is written, not after completion. |
 | `session:cancel` | `{ connectionId: string; turnId: string }` | `{ requested: true }` | Idempotent for the same active turn. |
 | `session:respond-prompt` | `{ connectionId: string; turnId: string; promptId: string; response: PromptResponse }` | `{ accepted: true }` | Valid only for a live queued prompt on the current turn. Main atomically consumes the ID before writing; duplicate, stale, or cross-turn IDs return `STALE_PROMPT` and never reach bingo. |
-| `session:rename` | `{ sessionId: string; name: string }` | `{ previousId: string; session: SessionSummary }` | Mutation is performed by bingo, never by Electron filesystem code. |
-| `session:delete` | `{ sessionId: string }` | `{ deletedId: string }` | Renderer must confirm first. Mutation is performed by bingo. Active child is settled/closed. |
-| `session:list-models` | `{ connectionId: string; provider: string }` | `{ provider: string; models: string[] }` | Provider must be present in the latest `providers.result`. bingo calls `client.with_provider(provider)?.list_models()`, so preset/settings/auth resolution is identical to turns and the active endpoint is not mutated. Resolves the matching `models.result`; 10s read timeout and sequence guard. |
-| `settings:read` | `{ workspacePath: string }` | `SettingsSnapshot` | Reads layers and returns a redacted view plus revision. |
-| `settings:save` | `SettingsSaveInput` | `SettingsSnapshot` | Revision check, validation, backup, atomic user-layer patch, then active-child restart on same session. 15s write timeout. |
+| `session:rename` | `{ sessionId: string; name: string }` | `{ previousId: string; session: SessionSummary }` | Main uses the active bound child or an isolated maintenance child. bingo performs an atomic no-replace rename; collision returns `SESSION_NAME_CONFLICT`. |
+| `session:delete` | `{ sessionId: string }` | `{ deletedId: string }` | Renderer confirms first; main uses the active bound child or an isolated maintenance child. bingo alone removes the exact transcript. |
+| `settings:list-models` | `{ workspacePath: string; provider: string }` | `{ provider: string; models: string[] }` | Provider must be present in the latest effective provider result. Main uses `client.with_provider(provider)?.list_models()` through the idle active child or a settings inspection child, so preset/settings/auth resolution matches turns without mutating the active endpoint. 10s read timeout and request-generation guard. |
+| `settings:read` | `{ workspacePath: string }` | `SettingsSnapshot` | Uses the idle active child or a 10s settings inspection child for authoritative metadata/providers, reads raw layers only for redacted revision/source/write-shadow data, and always reaps inspection children. |
+| `settings:save` | `SettingsSaveInput` | `SettingsSaveOutput` | Revision check, validation, backup, atomic user-layer patch, then active-child reconnect on the same session. Resolves after the renderer-visible handshake and returns its new ID. 15s write timeout. |
 | `visual:capture` | `VisualCaptureInput` | `{ absolutePath: string }` | Registered only under the visual-QA gate. Main chooses the destination path. |
 
 `workspacePath` must be absolute, exist, and be a directory. Main canonicalizes it once and uses the canonical path as child `cwd`. Renderer cannot change it during a running turn.
@@ -611,9 +647,9 @@ type BingoGuiBridge = {
   respondToPrompt(input: { connectionId: string; turnId: string; promptId: string; response: PromptResponse }): Promise<Result<{ accepted: true }>>
   renameSession(input: { sessionId: string; name: string }): Promise<Result<{ previousId: string; session: SessionSummary }>>
   deleteSession(input: { sessionId: string }): Promise<Result<{ deletedId: string }>>
-  listModels(input: { connectionId: string; provider: string }): Promise<Result<{ provider: string; models: string[] }>>
+  listModels(input: { workspacePath: string; provider: string }): Promise<Result<{ provider: string; models: string[] }>>
   readSettings(input: { workspacePath: string }): Promise<Result<SettingsSnapshot>>
-  saveSettings(input: SettingsSaveInput): Promise<Result<SettingsSnapshot>>
+  saveSettings(input: SettingsSaveInput): Promise<Result<SettingsSaveOutput>>
   captureVisual(input: VisualCaptureInput): Promise<Result<{ absolutePath: string }>>
   onSessionEvent(listener: (event: RendererSessionEvent) => void): () => void
 }
@@ -691,7 +727,17 @@ Read behavior mirrors bingo:
 - never expose thinking signatures or base64 image data to renderer;
 - normalize preview whitespace and cap previews at 120 characters.
 
-A display name is the suffix after the transcript's Unix timestamp when one exists; otherwise it is the project slug. The exact full stem remains the opaque identity.
+The upstream transcript stem grammar for JSON mode is:
+
+```text
+<project-slug>-<unix-seconds>-<uuid>[--<display-slug>]
+```
+
+The UUID is canonical lowercase hyphenated form; `--` is the reserved rename delimiter and cannot appear in generated project/display slugs. A fresh conversation's display name is `New conversation`; after rename it is the validated display slug returned in `session.renamed.metadata.displayName`. UUID and optional display suffix are parsed from the right, so hyphens in project slugs are unambiguous. Existing legacy stems without a UUID retain bingo's current best-effort naming.
+
+A rename is an atomic bingo-owned filesystem operation. bingo checks that the exact destination does not exist and uses a no-replace rename primitive; collision returns recoverable `SESSION_NAME_CONFLICT` and leaves both files byte-identical. Overwrite is forbidden.
+
+Rename/delete IPC may target an inactive list row. `SessionManager` handles this with a **maintenance child**: it leaves any active child running, spawns a second JSON child bound to the exact target stem, waits for `session.ready`, sends one idle rename/delete command, waits for its terminal session event, sends close if needed, and reaps it. Maintenance-child events are consumed in main and never enter the active `session:event` stream. If the target is the idle active session, main uses the active child directly. Rename updates the active session ID and renderer metadata without reconnecting. Delete emits `session.deleted`, exits that child, clears active connection/session/history, and opens the welcome empty state; no replacement conversation is created implicitly. A maintenance failure does not close, switch, or restart the active conversation.
 
 Electron does not rename, delete, append, truncate, or repair transcript files. Rename/delete IPC delegates to the bingo JSON process. “GUI is not a transcript writer” means no renderer, preload, or Electron-main filesystem code mutates JSONL; expected turn appends and requested rename/delete remain bingo-owned. Acceptance therefore compares browsing/rendering as byte-identical, attributes turn writes to the bingo child, and verifies no GUI-authored JSONL. This is the reconciled interpretation of AC-F3-5/AC-F3-6 recorded in `docs/acceptance.md`; a literal whole-directory no-change assertion during a real turn would contradict bingo persistence.
 
@@ -708,6 +754,8 @@ Main resolves the same three layers as bingo:
 The GUI writes only layer 1. Layers 2 and 3 are read for source labels and write-shadow detection; the authoritative effective runtime snapshot and provider inventory come from bingo itself, not a TypeScript reimplementation of Rust merging.
 
 Protocol v1 therefore requires `session.ready.metadata` for active scalar runtime values plus `providers.list`/`providers.result` for `Client::provider_names()` and each provider's resolved non-secret metadata. This result includes `default`, settings-defined providers after all three layers, and built-in `codex`/`opencode-go`, exactly matching bingo's own `/provider` set. `SettingsRepository` parses layer 1 only to perform a lossless patch and reads key presence in layers 2/3 only to identify fields a user-layer write cannot affect. Environment and preset fallback remain bingo-owned. Golden contract tests compare `providers.result` and active metadata against the same Rust client fixtures, including an active built-in absent from JSON.
+
+`settings:read` works with or without an active conversation. With an idle active child in the same canonical workspace, main sends `providers.list` and combines its result with that child's metadata. Otherwise main starts a **settings inspection child** using a reserved `--json-events --inspect` mode. Inspect mode loads settings/client/runtime metadata but creates no transcript, runs no hooks/team/session memory, accepts only `providers.list` and `models.list`, and is closed/reaped after the snapshot (10s deadline). Its events never enter `session:event`. A busy active child is never interrupted for settings inspection. This same inspection child services provider-model listing when no active conversation exists.
 
 If a higher layer shadows an editable key, that field is read-only and shows its source; writing an ineffective user value is rejected with `CONFIG_SHADOWED` before disk mutation.
 
@@ -773,6 +821,11 @@ type SettingsPatch = {
   sendImages?: boolean
 }
 
+type SettingsSaveOutput = {
+  snapshot: SettingsSnapshot
+  connectionId?: string // new ID after settings-triggered reconnect
+}
+
 type SettingsSaveInput = {
   workspacePath: string
   baseRevision: string
@@ -789,12 +842,12 @@ Raw stored keys are never returned by `settings:read`. A replacement key exists 
 1. Validate paths and patch; reject unknown provider names and control characters.
 2. Re-read user settings and compare SHA-256 to `baseRevision`; mismatch returns page-level `SETTINGS_CONFLICT` with Reload and writes nothing.
 3. Parse all layers. Any parse failure identifies the exact file, returns `CONFIG_INVALID`, and writes nothing.
-4. Validate URLs and enums. Provider names must exist in the latest `providers.result`. Before accepting a model change, call `models.list` for the selected provider; a model not in a successful non-empty result is a field-level error and writes nothing. If the provider returns `Unsupported` or an empty model list, manual model entry is allowed with a visible “not verified by provider” note and the real next-turn provider error remains authoritative; transport/auth/list failures are page errors and do not authorize the write.
+4. Validate URLs and enums. Provider names must exist in the latest effective provider result. An explicitly changed model is accepted only after `models.list` for that provider succeeds with a non-empty list containing the exact model ID; otherwise the field reports why validation was unavailable/failed and writes nothing. An unchanged pre-existing model value remains loadable/savable when other fields change. Protocol v1 has no unverifiable manual-model change path. This deliberately satisfies AC-F4-3; supporting providers without model discovery requires a future explicit product contract.
 5. Apply only patch keys to the existing user-layer JSON object. Preserve every unknown top-level key and unknown nested provider key.
 6. Create `settings.json.bak-<UTC timestamp>` from the exact pre-edit bytes when the file exists.
 7. Write a same-directory temporary file with restrictive permissions, flush it, and atomically replace the destination. Use the mature `write-file-atomic` package rather than an ad hoc cross-platform replacement sequence.
 8. Re-read, parse, and hash the result; return the new redacted snapshot.
-9. If provider/model/thinking/runtime-affecting values changed, gracefully restart the idle active child on the same exact session. This is not an app restart; the next turn uses the new settings.
+9. If provider/model/thinking/runtime-affecting values changed and an idle active child exists, gracefully reconnect it on the same exact session (§4.5); `settings:save` resolves only after `session.reconnected` has been emitted, and returns the new `connectionId` alongside the snapshot. With no active child, no child is created after save. This is not an app restart; the next turn uses the new settings.
 
 No save is allowed while a turn is running or awaiting input. UI offers Cancel turn first. Short reads use 10 seconds, writes 15 seconds; agent turns and user prompts have no short-operation timeout.
 
