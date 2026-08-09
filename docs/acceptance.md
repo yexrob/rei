@@ -217,11 +217,15 @@ Evidence/defects: _not run_
 
 ### Provider/model configuration
 
-- [ ] **AC-F4-1 — Exact switcher contents.** Seed settings with two distinct providers, active
-  provider/model/thinking level, and unrelated keys; open the switcher. **Observe:** provider set,
-  active marker, model, and thinking level. **Pass:** provider names equal `{default} ∪ settings
-  provider keys` exactly, no duplicates/phantoms exist, and all active values match effective bingo
-  settings.
+- [ ] **AC-F4-1 — Effective provider parity.** In an isolated QA workspace, seed distinct custom
+  providers across the user, project, and local settings layers, including one overridden name;
+  obtain the canonical effective provider list from the same bingo binary and working directory via
+  `/provider`, then open the GUI switcher. **Observe:** the canonical and GUI provider sets, active
+  marker, current model, and thinking level. **Pass:** the normalized GUI set exactly equals bingo's
+  reported set (including `default`, built-in `codex` and `opencode-go`, and every effective custom
+  provider), with no duplicate or shadow-only entry; the active provider, model, and thinking level
+  match bingo. Evidence must come from bingo's output—the test must not reconstruct the expected set
+  by independently merging settings.
 - [ ] **AC-F4-2 — Persistence and plain-CLI round trip.** Change provider, model, and thinking level,
   close the app, parse settings JSON, then run plain `bingo --print "hi"` against a request-capture
   provider. **Observe:** valid file and captured provider/model/thinking request. **Pass:** all three
