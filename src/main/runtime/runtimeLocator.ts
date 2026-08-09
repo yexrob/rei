@@ -15,11 +15,6 @@ type LocateOptions = {
 export class RuntimeLocator {
   constructor(private readonly options: LocateOptions = {}) {}
 
-  setBinaryOverride(path: string): void {
-    const env = this.options.env ?? process.env
-    env.BINGO_GUI_BINARY = path
-  }
-
   async probe(workspacePath: string): Promise<Result<RuntimeInfo>> {
     const env = this.options.env ?? process.env
     const binary = await this.resolveBinary(env)
