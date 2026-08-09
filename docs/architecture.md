@@ -294,7 +294,7 @@ type CliSessionMetadata = {
   bingoVersion: string
   protocolVersion: 1
   sessionId: string
-  transcriptPath: string
+  transcriptPath: string // trusted main-process field; removed from every renderer projection
   resumed: boolean
   cwd: string
   provider: string
@@ -350,7 +350,7 @@ Ordinary invocations remain byte-compatible:
 - TUI mode remains the default.
 - JSON records appear only with explicit `--json-events`.
 
-The GUI requires protocol v1 for the chat screen. It does **not** silently fall back to `--print`, because that would violate tool visibility and prompt safety. If the binary rejects `--json-events`, exits before `session.ready`, emits mixed stdout, or reports another protocol version, the GUI shows a flow-level `BINGO_PROTOCOL_UNSUPPORTED` error with the exact binary path and detected version.
+The GUI requires protocol v1 for the chat screen. It does **not** silently fall back to `--print`, because that would violate tool visibility and prompt safety. If the binary rejects `--json-events`, exits before `session.ready`, emits mixed stdout, or reports another protocol version, the GUI shows a flow-level `BINGO_PROTOCOL_UNSUPPORTED` error with the exact binary path and detected version. Within protocol v1, object schemas allow unknown fields for additive compatibility, but an unknown `type` is a protocol error that closes the child; lifecycle events are not safe to skip because doing so can leave a turn or prompt permanently unresolved.
 
 A local HTTP server was rejected: stdio already provides process ownership, OS-level access control, natural shutdown, no port selection, and no local authentication problem. A PTY/TUI scraper and transcript tailing were rejected because neither exposes a complete, stable, correlated event stream.
 
@@ -398,7 +398,7 @@ Rules:
 - Renderer never imports from `main/` or `preload/`.
 - Main never imports React or renderer modules.
 - Only `preload/index.ts` imports `contextBridge`/`ipcRenderer`; it exposes the exact facade below, not raw Electron primitives.
-- Child stdout parsing, transcript reading, settings writes, secrets, and absolute storage paths stay in main.
+- Child stdout parsing, transcript reading, settings writes, secrets, and transcript storage paths stay in main. The renderer receives only the explicit operational paths required by the PRD/tooling: resolved bingo binary, user settings file, workspace, and debug screenshot artifact.
 
 ## 6. Typed IPC contract
 
@@ -520,7 +520,7 @@ type SessionListOutput = {
 | `session:respond-prompt` | `{ connectionId: string; turnId: string; promptId: string; response: PromptResponse }` | `{ accepted: true }` | Valid only for a live queued prompt on the current turn. Main atomically consumes the ID before writing; duplicate, stale, or cross-turn IDs return `STALE_PROMPT` and never reach bingo. |
 | `session:rename` | `{ sessionId: string; name: string }` | `{ previousId: string; session: SessionSummary }` | Mutation is performed by bingo, never by Electron filesystem code. |
 | `session:delete` | `{ sessionId: string }` | `{ deletedId: string }` | Renderer must confirm first. Mutation is performed by bingo. Active child is settled/closed. |
-| `session:list-models` | `{ connectionId: string; provider: string }` | `{ provider: string; models: string[] }` | Resolves the matching `models.result`; 10s read timeout and sequence guard. |
+| `session:list-models` | `{ connectionId: string; provider: string }` | `{ provider: string; models: string[] }` | Provider must be present in the latest `providers.result`. bingo calls `client.with_provider(provider)?.list_models()`, so preset/settings/auth resolution is identical to turns and the active endpoint is not mutated. Resolves the matching `models.result`; 10s read timeout and sequence guard. |
 | `settings:read` | `{ workspacePath: string }` | `SettingsSnapshot` | Reads layers and returns a redacted view plus revision. |
 | `settings:save` | `SettingsSaveInput` | `SettingsSnapshot` | Revision check, validation, backup, atomic user-layer patch, then active-child restart on same session. 15s write timeout. |
 | `visual:capture` | `VisualCaptureInput` | `{ absolutePath: string }` | Registered only under the visual-QA gate. Main chooses the destination path. |
@@ -693,7 +693,11 @@ Main resolves the same three layers as bingo:
 2. `<workspace>/.bingo/settings.json`
 3. `<workspace>/.bingo/local.json`
 
-The GUI writes only layer 1. Layers 2 and 3 are read for effective values and source labels. If a higher layer shadows an editable key, that field is read-only and shows its source; writing an ineffective user value is rejected with `CONFIG_SHADOWED` before disk mutation.
+The GUI writes only layer 1. Layers 2 and 3 are read for source labels and write-shadow detection; the authoritative effective runtime snapshot and provider inventory come from bingo itself, not a TypeScript reimplementation of Rust merging.
+
+Protocol v1 therefore requires `session.ready.metadata` for active scalar runtime values plus `providers.list`/`providers.result` for `Client::provider_names()` and each provider's resolved non-secret metadata. This result includes `default`, settings-defined providers after all three layers, and built-in `codex`/`opencode-go`, exactly matching bingo's own `/provider` set. `SettingsRepository` parses layer 1 only to perform a lossless patch and reads key presence in layers 2/3 only to identify fields a user-layer write cannot affect. Environment and preset fallback remain bingo-owned. Golden contract tests compare `providers.result` and active metadata against the same Rust client fixtures, including an active built-in absent from JSON.
+
+If a higher layer shadows an editable key, that field is read-only and shows its source; writing an ineffective user value is rejected with `CONFIG_SHADOWED` before disk mutation.
 
 ### 9.2 Renderer-safe snapshot
 
@@ -708,6 +712,7 @@ type ProviderView = {
   apiBaseUrl: string
   protocol: 'anthropic' | 'openai'
   supportsImages: boolean
+  builtin: boolean
   apiKey: SecretState
 }
 
@@ -772,7 +777,7 @@ Raw stored keys are never returned by `settings:read`. A replacement key exists 
 1. Validate paths and patch; reject unknown provider names and control characters.
 2. Re-read user settings and compare SHA-256 to `baseRevision`; mismatch returns page-level `SETTINGS_CONFLICT` with Reload and writes nothing.
 3. Parse all layers. Any parse failure identifies the exact file, returns `CONFIG_INVALID`, and writes nothing.
-4. Validate URLs, enums, provider/model pairing, and the selected model against the latest successful model list. A model not in that list is a field-level error and writes nothing.
+4. Validate URLs and enums. Provider names must exist in the latest `providers.result`. Before accepting a model change, call `models.list` for the selected provider; a model not in a successful non-empty result is a field-level error and writes nothing. If the provider returns `Unsupported` or an empty model list, manual model entry is allowed with a visible “not verified by provider” note and the real next-turn provider error remains authoritative; transport/auth/list failures are page errors and do not authorize the write.
 5. Apply only patch keys to the existing user-layer JSON object. Preserve every unknown top-level key and unknown nested provider key.
 6. Create `settings.json.bak-<UTC timestamp>` from the exact pre-edit bytes when the file exists.
 7. Write a same-directory temporary file with restrictive permissions, flush it, and atomically replace the destination. Use the mature `write-file-atomic` package rather than an ad hoc cross-platform replacement sequence.
@@ -873,7 +878,7 @@ Required controls:
 - Bound stdout/stderr buffers and stop parsing on malformed framing.
 - Do not log prompts, model output, tool output, API keys, full settings JSON, or raw child environment by default.
 - DevTools are enabled in development only. Packaged builds require an explicit development flag.
-- Renderer never receives `transcriptPath`, raw secret values, arbitrary filesystem handles, or the ability to choose a screenshot destination.
+- Renderer never receives `transcriptPath`, raw secret values, arbitrary filesystem handles, or the ability to choose a screenshot destination. It may receive only four user-visible/QA operational paths through typed contracts: the resolved bingo binary, canonical workspace, user settings file, and generated screenshot artifact.
 
 ## 13. Technology and dependency choices
 
