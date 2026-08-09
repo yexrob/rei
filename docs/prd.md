@@ -31,6 +31,7 @@ The GUI builds on these; the architect designs against them.
 | C7 | Ask/permission prompts | Headless mode prints the question to stderr and reads the answer from stdin (`src/query.rs:322-355`). |
 | C8 | UI feedback conventions | bingo's feedback-states spec (`notes/design/feedback-states.md`, v1.18) defines: state machine `idle→loading→success/error→idle`, loading threshold **>200ms**, tiered timeouts (**10s reads / 15s writes** for short ops; **no short timeout on long agent turns**), toasts **3s, hover-pause, max 2**, errors in **3 levels** (field/page/flow), error copy = *what happened + what to do*, and stale-response race protection (abort/sequence-number). **The GUI must follow the same conventions** — QA cross-checks both surfaces against the spec. |
 | C9 | Process model | One `bingo` invocation = one query run. Multi-turn chat means either one long-lived process or repeated invocations with session continuity — an architect decision (see §6). |
+| C10 | Effective providers | bingo's runtime provider table always includes built-ins `codex` and `opencode-go` in addition to settings-configured providers; `/provider` lists the effective set (dev black-box audit, #13/#14). |
 
 ### Constraints the GUI inherits
 
@@ -97,11 +98,12 @@ Multi-turn continuity within a conversation; multiple named conversations.
 
 ### F4 — Model & provider configuration
 
-Choose what model the agent runs on, from bingo's own settings.
+Choose what model the agent runs on, from bingo's own configuration.
 
-- **AC-F4-1** A provider/model switcher lists exactly the providers present in bingo's settings
-  plus the `default` provider, marking the active one. The current model and thinking level are
-  shown.
+- **AC-F4-1** A provider/model switcher lists bingo's **effective runtime providers** — the exact
+  set bingo itself reports (settings-configured providers across all layers, built-in providers,
+  `default`), marking the active one; the listed set must match `bingo /provider`'s output (C10)
+  so the GUI never re-implements bingo's merge logic. Current model and thinking level are shown.
 - **AC-F4-2** Changing provider/model/thinking level persists to the user-layer settings file
   such that a subsequent plain `bingo --print "hi"` run uses the new value (round-trip test).
 - **AC-F4-3** An invalid model name produces a field-level error with a specific message (why
