@@ -12,7 +12,12 @@ export default function App(): React.JSX.Element {
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
   const [flowError, setFlowError] = useState<GuiError | null>(null)
   const connection = useRef<Connection | null>(null)
+  const activeTurnId = useRef<string | null>(null)
   const prompt = state.prompts[0]
+
+  useEffect(() => {
+    activeTurnId.current = state.turnId
+  }, [state.turnId])
 
   const connect = useCallback(async () => {
     setFlowError(null)
@@ -28,20 +33,21 @@ export default function App(): React.JSX.Element {
     const unsubscribe = window.bingoGui.onSessionEvent((event: RendererSessionEvent) => {
       const current = connection.current
       if (!current || event.connectionId !== current.id || event.sequence !== current.sequence + 1) return
-      if ('turnId' in event.payload && event.payload.turnId && state.turnId && event.payload.turnId !== state.turnId) return
+      if ('turnId' in event.payload && event.payload.turnId && activeTurnId.current && event.payload.turnId !== activeTurnId.current) return
       current.sequence = event.sequence
       if (event.payload.type === 'transport.error') dispatch({ type: 'transport-error', code: event.payload.error.code, msg: event.payload.error.msg })
       else dispatch({ type: 'event', event: event.payload as CliEvent })
     })
     void connect()
     return unsubscribe
-  }, [connect, state.turnId])
+  }, [connect])
 
   const submit = async (): Promise<void> => {
     const active = connection.current
     if (!draft.trim() || state.turnId || !active) return
     const turnId = crypto.randomUUID()
     const promptText = draft
+    activeTurnId.current = turnId
     dispatch({ type: 'submit', turnId, prompt: promptText })
     setDraft('')
     const result = await window.bingoGui.sendTurn({ connectionId: active.id, turnId, prompt: promptText })
