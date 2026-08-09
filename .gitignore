@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+release/
+
+# Electron
+*.log
+npm-debug.log*
+
+# Screenshots / local artifacts
+screenshots/
+*.png
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
