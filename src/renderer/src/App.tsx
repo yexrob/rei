@@ -1,60 +1,69 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { AppInfo, GuiError, RuntimeInfo } from '../../shared/contracts/ipc'
-
-type RuntimeState =
-  | { status: 'loading' }
-  | { status: 'ready'; runtime: RuntimeInfo }
-  | { status: 'error'; error: GuiError }
+import { useReducer, useState } from 'react'
+import Markdown from 'react-markdown'
+import { chatReducer, initialChatState } from './state/chatReducer'
 
 export default function App(): React.JSX.Element {
-  const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
-  const [runtime, setRuntime] = useState<RuntimeState>({ status: 'loading' })
+  const [state, dispatch] = useReducer(chatReducer, initialChatState)
+  const [draft, setDraft] = useState('')
+  const prompt = state.prompts[0]
 
-  const probe = useCallback(async () => {
-    setRuntime({ status: 'loading' })
-    const result = await window.bingoGui.probeRuntime()
-    setRuntime(result.ok ? { status: 'ready', runtime: result.value } : { status: 'error', error: result.error })
-  }, [])
-
-  useEffect(() => {
-    void window.bingoGui.getAppInfo().then((result) => {
-      if (result.ok) setAppInfo(result.value)
-    })
-    void probe()
-  }, [probe])
+  const submit = (): void => {
+    if (!draft.trim() || state.turnId) return
+    const turnId = crypto.randomUUID()
+    dispatch({ type: 'submit', turnId, prompt: draft })
+    setDraft('')
+  }
 
   return (
-    <div className="app-shell" data-qa-state={runtime.status === 'error' ? 'error' : 'empty'}>
+    <div className="app-shell" data-qa-state="chat">
       <nav className="sidebar" aria-label="Primary navigation">
         <strong>bingo</strong>
+        <button type="button" className="nav-action">New conversation</button>
         <span>Conversations</span>
-        <div className="status-area" aria-label="Runtime status">
-          <span>App {appInfo?.appVersion ?? '…'}</span>
-          <span>bingo {runtime.status === 'ready' ? runtime.runtime.bingoVersion : 'unavailable'}</span>
-        </div>
       </nav>
-      <main className="content">
-        {runtime.status === 'error' ? (
-          <section className="flow-error" role="alert" aria-labelledby="error-title" tabIndex={-1}>
-            <p className="eyebrow">Connection required</p>
-            <h1 id="error-title">Unable to connect bingo</h1>
-            <p className="error-code">{runtime.error.code}</p>
-            <p>{runtime.error.msg}</p>
-            <button type="button" onClick={() => void probe()}>
-              Retry
-            </button>
-          </section>
-        ) : (
-          <section className="empty-state" aria-labelledby="empty-title">
-            <p className="eyebrow">Desktop agent</p>
-            <h1 id="empty-title">Start a conversation</h1>
-            <p>{runtime.status === 'loading' ? 'Checking the local bingo runtime…' : 'bingo is connected and ready.'}</p>
-            <button type="button" disabled>
-              Connect bingo
-            </button>
-          </section>
-        )}
+      <main className="chat">
+        <header><p className="eyebrow">Local conversation</p><h1>New conversation</h1></header>
+        <section className="timeline" aria-live="polite">
+          {state.messages.length === 0 && <p className="chat-hint">Send a prompt to start working with bingo.</p>}
+          {state.messages.map((message) => (
+            <article className={`message ${message.role}`} key={message.id}>
+              <span>{message.role === 'user' ? 'You' : 'bingo'}</span>
+              <Markdown skipHtml>{message.markdown}</Markdown>
+              {message.status === 'interrupted' && <small>Interrupted</small>}
+            </article>
+          ))}
+          {state.tools.map((tool) => (
+            <article className="tool-row" key={tool.id}>
+              <strong>{tool.name}</strong><span>{tool.summary}</span><small>{tool.status}</small>
+            </article>
+          ))}
+          {state.error && <div className="inline-error" role="alert"><strong>{state.error.code}</strong><span>{state.error.msg}</span></div>}
+        </section>
+        <footer className="composer">
+          <textarea
+            aria-label="Message"
+            value={draft}
+            disabled={Boolean(state.turnId)}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault()
+                submit()
+              }
+            }}
+            placeholder="Ask bingo…"
+          />
+          {state.turnId ? <button type="button">Cancel</button> : <button type="button" onClick={submit}>Send</button>}
+        </footer>
       </main>
+      {prompt && (
+        <div className="modal-backdrop" role="presentation">
+          <section className="prompt-modal" role="dialog" aria-modal="true" aria-labelledby="prompt-title">
+            <p className="eyebrow">{prompt.kind}</p><h2 id="prompt-title">{prompt.title}</h2><p>{prompt.question}</p>
+            <div className="prompt-actions">{prompt.options.map((option) => <button type="button" key={option.id}>{option.label}</button>)}<button type="button">Cancel</button></div>
+          </section>
+        </div>
+      )}
     </div>
   )
 }
