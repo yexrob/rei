@@ -14,6 +14,10 @@ export class StdioBingoSession implements BingoSession {
   private resolveReady: ((metadata: CliSessionMetadata) => void) | null = null
   private rejectReady: ((error: Error) => void) | null = null
   private closed = false
+  private cancelTimer: NodeJS.Timeout | null = null
+  private forceTimer: NodeJS.Timeout | null = null
+  private exitPromise: Promise<void> | null = null
+  private resolveExit: (() => void) | null = null
 
   constructor(
     private readonly binaryPath: string,
@@ -39,11 +43,15 @@ export class StdioBingoSession implements BingoSession {
       stdio: ['pipe', 'pipe', 'pipe']
     })
     this.child = child
+    this.exitPromise = new Promise((resolve) => { this.resolveExit = resolve })
     child.stdout.setEncoding('utf8')
     child.stdout.on('data', (chunk: string) => this.consume(chunk))
     child.on('error', (error) => this.fail(error))
     child.on('exit', (code, signal) => {
       this.child = null
+      this.clearTerminationTimers()
+      this.resolveExit?.()
+      this.resolveExit = null
       if (this.closed) return
       const error = code === 0 ? null : new Error(`bingo exited before session close (code=${code ?? 'null'}, signal=${signal ?? 'null'})`)
       this.rejectReady?.(error ?? new Error('bingo exited before session.ready'))
@@ -59,8 +67,14 @@ export class StdioBingoSession implements BingoSession {
     return this.write({ protocolVersion: 1, type: 'turn.start', commandId: randomUUID(), turnId, prompt })
   }
 
-  cancelTurn(turnId: string): Promise<void> {
-    return this.write({ protocolVersion: 1, type: 'turn.cancel', commandId: randomUUID(), turnId })
+  async cancelTurn(turnId: string): Promise<void> {
+    await this.write({ protocolVersion: 1, type: 'turn.cancel', commandId: randomUUID(), turnId })
+    this.cancelTimer = setTimeout(() => {
+      const child = this.child
+      if (!child) return
+      child.kill('SIGTERM')
+      this.forceTimer = setTimeout(() => { if (this.child) this.child.kill('SIGKILL') }, 2_000)
+    }, 750)
   }
 
   respondToPrompt(turnId: string, promptId: string, response: PromptResponse): Promise<void> {
@@ -70,8 +84,14 @@ export class StdioBingoSession implements BingoSession {
   async close(): Promise<void> {
     if (!this.child) return
     this.closed = true
-    await this.write({ protocolVersion: 1, type: 'session.close', commandId: randomUUID() })
-    this.child.stdin.end()
+    const exited = this.exitPromise ?? Promise.resolve()
+    try { await this.write({ protocolVersion: 1, type: 'session.close', commandId: randomUUID() }) } catch { /* terminate below */ }
+    this.child?.stdin.end()
+    const graceful = await Promise.race([exited.then(() => true), new Promise<false>((resolve) => setTimeout(() => resolve(false), 2_000))])
+    if (graceful || !this.child) return
+    this.child.kill('SIGTERM')
+    const terminated = await Promise.race([exited.then(() => true), new Promise<false>((resolve) => setTimeout(() => resolve(false), 1_000))])
+    if (!terminated && this.child) this.child.kill('SIGKILL')
   }
 
   private consume(chunk: string): void {
@@ -112,6 +132,9 @@ export class StdioBingoSession implements BingoSession {
     }
     this.expectedSeq += 1
 
+    if (event.type === 'turn.completed' || event.type === 'turn.cancelled' || (event.type === 'error' && event.scope === 'turn')) {
+      this.clearTerminationTimers()
+    }
     if (event.type === 'session.ready') {
       this.resolveReady?.(event.metadata)
       this.resolveReady = null
@@ -129,12 +152,22 @@ export class StdioBingoSession implements BingoSession {
     })
   }
 
+  private clearTerminationTimers(): void {
+    if (this.cancelTimer) clearTimeout(this.cancelTimer)
+    if (this.forceTimer) clearTimeout(this.forceTimer)
+    this.cancelTimer = null
+    this.forceTimer = null
+  }
+
   private fail(error: Error): void {
     this.rejectReady?.(error)
     this.rejectReady = null
     this.resolveReady = null
     const child = this.child
     this.child = null
+    this.clearTerminationTimers()
+    this.resolveExit?.()
+    this.resolveExit = null
     if (child && !child.killed) child.kill()
     this.handlers.onExit(error)
   }
