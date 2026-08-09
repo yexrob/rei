@@ -13,8 +13,9 @@
    - `/Users/yexrob/Episodes/Projects/bingo/target/release/bingo`
    No build was required.
 2. `bingo --print` is the only general-purpose headless mode. It performs one complete agent
-   query, streams assistant **text deltas** to stdout, flushes each delta, and exits after a final
-   newline. It has no JSON/NDJSON or other structured success-output option.
+   query and streams assistant **text deltas** to stdout, flushing each delta. Ordinary completion
+   appends a newline, but some post-tool early-return paths do not. It has no JSON/NDJSON or other
+   structured success-output option.
 3. Existing headless hooks discard tool-start, tool-ready, tool-done, thinking, token-count, and
    round-boundary events. Tool activity is therefore not observable from the process output.
 4. Headless status, warnings, permission questions, and final errors use stderr. stdout is only
@@ -29,9 +30,11 @@
 7. `--model` exists; there is **no `--provider` flag**. The provider is restored from layered JSON
    settings. An invalid configured provider warns and silently falls back to `default`.
 8. `--continue` resumes only the most recently modified transcript globally. There is no CLI flag
-   that selects an exact session. Every invocation creates or reuses a transcript JSONL file.
+   that selects an exact session. A transcript path is allocated before a query, but the file is
+   created only on append; same-project processes started in the same second can collide on a path.
 9. Missing settings files are valid and mean defaults; malformed settings fail before querying
-   with `CONFIG_INVALID`. Credentials come from settings first, then environment variables.
+   with `CONFIG_INVALID`. The default provider's credentials come from top-level settings first,
+   then environment variables; named providers use their own config/stored-auth mechanisms.
 10. `bingo-gui` needs a minimal opt-in structured event transport upstream; §10 records the gap
     and a schema proposal. Existing `--print` behavior must remain unchanged.
 
@@ -212,8 +215,14 @@ For a normal `--print` query:
 
 | Stream | Current content |
 |---|---|
-| stdout | Raw assistant text deltas; one final newline on normal end/interruption |
+| stdout | Raw assistant text deltas; ordinary completion and primary interruption paths append a newline, but the post-tool early-return path at `src/query.rs:986-990` does not |
 | stderr | `[bingo] ...` progress/warnings; `[team] ...` startup state when a team auto-starts; interactive permission/question prompts; final error line |
+
+A provider stream can deliver text deltas and then fail. In that case stdout contains a partial
+assistant reply, stderr ends with `[error] ...`, and exit is `1`. Because `record` runs only after
+`one_turn` returns successfully (`src/query.rs:772-785`), that partial assistant message is not
+persisted as a completed transcript message. The GUI must retain it only as visibly incomplete
+turn output and must use the terminal event/exit status—not non-empty stdout—to decide success.
 
 Notable progress lines can repeat once per tool/model round, e.g. `[bingo] context: N tokens`.
 They are not structured events and must not be rendered as assistant content.
@@ -402,8 +411,8 @@ exit:   1
 
 ### `--continue` with no prior transcript
 
-It creates a fresh transcript and behaves as a new session; it does not error because no session
-exists (`src/main.rs:226-246`).
+It allocates a fresh transcript path and behaves as a new session; it does not error because no
+session exists (`src/main.rs:226-246`). The file appears only when a message is appended.
 
 ## 6. Settings location, layering, and schema
 
@@ -531,7 +540,18 @@ For the default provider (`src/api/client.rs:89-114`):
   request then fails `AUTH_REQUIRED`.
 
 A named provider defaults to Anthropic protocol unless `protocol: "openai"` is set. Missing/empty
-base URLs fall back by protocol. Preset providers are merged with built-ins (`src/api/client.rs`).
+base URLs fall back by protocol. The runtime provider table always also contains two compile-time
+presets even when `settings.providers` does not mention them:
+
+- `codex` — OpenAI protocol, ChatGPT-subscription OAuth, images enabled;
+- `opencode-go` — OpenAI protocol, stored API key, images disabled, model `gpt-5.6-luna`.
+
+User `providers.codex` / `providers.opencode-go` entries override the matching preset
+field-by-field; absent fields retain preset values. The settings JSON itself remains user-only—the
+presets are added while building `Client` (`src/api/providers/presets.rs:1-50`,
+`src/api/client.rs:118-173`). Therefore “providers present in settings plus default” is not the
+same list as bingo's effective provider table; PRD `AC-F4-1` needs reconciliation with this source
+fact.
 
 Do not log actual settings values: the audited user file contains credential fields. This report
 records only field names and selection behavior.
@@ -572,19 +592,27 @@ blocks (`src/api/types.rs`).
 
 Behavior:
 
-- every normal invocation creates a new transcript before the query;
+- a normal invocation allocates a transcript **path** before the query, but `Transcript::create`
+  does not create the file; the first recorded message opens/appends it (`src/transcript.rs:57-71`,
+  `101-133`, `src/query.rs:1025-1037`);
+- path names have only one-second timestamp resolution. Two processes with the same `cwd` basename
+  started in one second allocate the same path and can interleave appends. This is a concrete
+  concurrency hazard for one-process-per-turn/multi-conversation designs;
+- a failure before the first `record` can leave no file; after the user message is recorded, a
+  request failure can leave a transcript containing only that user turn;
 - `--continue` loads the most recently modified transcript returned by the global transcript list,
   not the latest transcript scoped to the current project (`src/transcript.rs:74-100`);
-- when no transcript exists, `--continue` creates a new one;
-- successful and failed prompts can still create/append transcript content;
+- when no transcript exists, `--continue` allocates a fresh path and otherwise behaves as a new
+  session;
 - corrupt JSONL lines are skipped with a stderr warning rather than failing the whole load
   (`src/transcript.rs:135-169`);
 - query recording persists a message before adding it to in-memory history
   (`src/query.rs:715-724`).
 
 `bingo share [SESSION]` can resolve a named fragment for export, but the main query command cannot
-resume that selected session. Therefore repeated `--print --continue` processes are unsafe for
-multiple GUI conversations: “most recent” can change due to another conversation/process.
+resume that selected session. There is also no headless rename or delete command. Therefore
+repeated `--print --continue` processes are unsafe for multiple GUI conversations: “most recent”
+can change due to another conversation/process, and same-second path collisions can mix histories.
 
 ## 9. Implications for the Electron boundary
 
@@ -597,10 +625,15 @@ The audited CLI can support only a limited proof-of-concept chat safely:
 - no visible tools;
 - no robust permission dialog;
 - no exact multi-conversation resume;
+- no headless rename/delete;
 - provider selection only through shared settings.
 
 These are contract facts, not implementation recommendations. They do not satisfy PRD
-`AC-F2-3` (every tool visible), `AC-F3-4` (resume a selected session), or the intended approval UX.
+`AC-F2-3` (every tool visible) or `AC-F3-4` (resume a selected session), and they cannot satisfy
+`AC-F3-5` rename/delete without another owner for transcript mutations. PRD `AC-F3-5` requires
+removing a transcript while `AC-F3-6` says the GUI only reads transcript storage; that ownership
+contradiction must be resolved in the upstream API/architecture. The current transport also cannot
+provide the intended approval UX.
 
 ## 10. Gap and proposed minimal bingo-side contract
 
@@ -618,7 +651,8 @@ mode should emit UTF-8 **NDJSON on stdout**, one complete JSON object per line, 
 object, and reserve stderr for diagnostics that are not protocol events. Do not mix raw assistant
 text with JSON on stdout.
 
-Schema should be versioned from the first event and use stable discriminators. Proposed minimum:
+Schema should be versioned from the first event and use stable discriminators. Outbound events
+(the bingo child writes these to stdout):
 
 ```json
 {"v":1,"type":"session","sessionId":"bingo-gui-1786295815","transcriptPath":"/absolute/path.jsonl","provider":"default","model":"claude-sonnet-5","permissionMode":"default"}
@@ -626,39 +660,72 @@ Schema should be versioned from the first event and use stable discriminators. P
 {"v":1,"type":"text_delta","turnId":"<opaque>","text":"Hel"}
 {"v":1,"type":"thinking_delta","turnId":"<opaque>","text":"…"}
 {"v":1,"type":"tool_start","turnId":"<opaque>","toolCallId":"call_…","name":"Bash"}
-{"v":1,"type":"tool_ready","turnId":"<opaque>","toolCallId":"call_…","name":"Bash","input":{"command":"pwd"},"standalone":false}
-{"v":1,"type":"tool_done","turnId":"<opaque>","toolCallId":"call_…","name":"Bash","summary":"pwd","output":"…","isError":false,"durationMs":12,"diff":null}
+{"v":1,"type":"tool_ready","turnId":"<opaque>","toolCallId":"call_…","name":"Bash","summary":"printf …","standalone":false}
+{"v":1,"type":"tool_done","turnId":"<opaque>","toolCallId":"call_…","name":"Bash","summary":"printf …","status":"done","durationMs":12}
 {"v":1,"type":"round_end","turnId":"<opaque>"}
-{"v":1,"type":"warning","turnId":"<opaque>","message":"…"}
+{"v":1,"type":"warning","turnId":"<opaque>","msg":"…"}
 {"v":1,"type":"permission_request","requestId":"<opaque>","turnId":"<opaque>","tool":"Bash","reason":"Bash needs permission","options":["allow","deny"]}
 {"v":1,"type":"question_request","requestId":"<opaque>","turnId":"<opaque>","title":"…","question":"…","options":[{"label":"A","description":null}],"freeText":true}
-{"v":1,"type":"error","turnId":"<opaque>","code":"OFFLINE","message":"…","level":"full","context":"long_turn","fatal":true}
-{"v":1,"type":"turn_end","turnId":"<opaque>","status":"completed | interrupted | error"}
+{"v":1,"type":"error","turnId":"<opaque>","code":"OFFLINE","msg":"…","level":"full","context":"long_turn","fatal":true}
+{"v":1,"type":"turn_end","turnId":"<opaque>","status":"completed"}
 ```
 
-Required clarifications before implementation:
+Inbound commands (the Electron main process writes these as NDJSON to child stdin):
 
-1. `toolCallId` is available in `ContentBlock::ToolUse`, but current `ToolCallDone` omits it
-   (`src/query.rs:225-236`). Add it to the structured adapter path so parallel/repeated tools can
-   be correlated; name alone is insufficient.
-2. Preserve arbitrary JSON tool input. Treat output/diff as untrusted strings/data and apply a
-   documented size policy rather than silently losing calls.
-3. Emit the structured error **before** exit and preserve process exit `1`; malformed invocation
-   may retain clap exit `2` outside the protocol because no session starts.
-4. `turn_end` must be terminal and exactly once per accepted turn. A fatal error should be
-   followed by `turn_end(status="error")`, or the contract must explicitly state that `error`
-   itself is terminal—do not leave this ambiguous.
-5. Session metadata needs an exact, opaque `sessionId` and transcript path. Add an exact resume
-   input (`--session <id>` or structured `start` request), not “latest”. Validate path/id ownership
-   in bingo rather than accepting arbitrary renderer paths.
-6. Permissions/questions require **bidirectional** transport. A long-lived NDJSON stdin command
-   channel is preferable: prompt/start and later `permission_response` / `question_response`
-   messages coexist without EOF ambiguity. If v1 remains one-shot, use a separate IPC descriptor;
-   do not overload prompt-to-EOF stdin.
-7. Include explicit cancel keyed by `turnId`; the current headless call passes no cancel receiver
-   (`src/main.rs:409-410`). Killing the child is a fallback, not a semantic interrupted event.
-8. Parse forward-compatibly in the GUI: ignore unknown event types/fields for a known major
-   version, but fail clearly on unsupported `v`.
+```json
+{"v":1,"type":"start","requestId":"<opaque>","cwd":"/absolute/project","sessionId":null,"provider":"default","model":"claude-sonnet-5","permissionMode":"default"}
+{"v":1,"type":"prompt","requestId":"<opaque>","turnId":"<opaque>","text":"Hello"}
+{"v":1,"type":"permission_response","requestId":"<request from permission_request>","decision":"allow | deny"}
+{"v":1,"type":"question_response","requestId":"<request from question_request>","answer":{"kind":"option","index":0}}
+{"v":1,"type":"question_response","requestId":"<request from question_request>","answer":{"kind":"text","text":"Other answer"}}
+{"v":1,"type":"cancel","requestId":"<opaque>","turnId":"<active turn>"}
+{"v":1,"type":"rename_session","requestId":"<opaque>","sessionId":"<opaque>","name":"new name"}
+{"v":1,"type":"delete_session","requestId":"<opaque>","sessionId":"<opaque>"}
+```
+
+Protocol invariants required before implementation:
+
+1. Exactly one `session` acknowledges an accepted `start`; every accepted `prompt` has exactly one
+   `turn_start` and one terminal `turn_end`. `turn_end.status` is one of
+   `completed | interrupted | error`.
+2. `toolCallId` is available in `ContentBlock::ToolUse`, but current `ToolCallDone` omits it
+   (`src/query.rs:225-236`). Carry the ID through completion so parallel/repeated tools correlate.
+   `tool_done.status` must be `done | error | denied | interrupted`; current `is_error` cannot
+   distinguish every source outcome, and interrupted placeholders are currently reported with
+   `is_error: false` (`src/query.rs:942-959`).
+3. The UI requirement needs a short input summary, not raw tool payloads. The default events above
+   deliberately omit full input/output/diff because those may contain credentials, authorization
+   headers, file contents, or other secrets. If a later detail event is added, bingo must redact it
+   before IPC, cap it, mark truncation, and the GUI must never log/persist it or expose it to the
+   renderer except through a sanitized allowlisted projection.
+4. Canonical human-readable error/warning field name is `msg`, matching the existing
+   `[error] code=... msg=...` and `UiEvent::Error`. Emit the structured `error` before
+   `turn_end(status="error")`, then preserve process exit `1` for fatal process errors. clap may
+   retain exit `2` outside the protocol when parsing fails before `start`.
+5. Each `permission_request`/`question_request` has one unique outstanding `requestId`. Accept only
+   the first matching response while that request is live; reject duplicate, unknown, late, or
+   wrong-kind responses with a nonfatal protocol error. Cancellation, stdin EOF, or parent
+   disconnect resolves outstanding requests as deny/cancel and terminates the active turn; no
+   request may wait forever. Architecture owns the concrete timeout policy.
+6. `cancel` is idempotent for the active `turnId`; a stale/unknown turn ID receives a nonfatal
+   rejection and cannot affect a newer turn. The current headless call passes no cancel receiver
+   (`src/main.rs:409-410`), so the adapter must connect this command to the existing watch-based
+   cancellation path rather than relying only on process kill.
+7. Session metadata uses an exact opaque `sessionId`. `start.sessionId` resumes exactly that
+   session; null creates a collision-safe ID (not second-resolution-only). Validate ownership and
+   traversal inside bingo. Rename/delete commands let bingo remain the single transcript writer
+   and resolve the PRD `AC-F3-5`/`AC-F3-6` conflict.
+8. Only one turn is active per session in v1. A second `prompt` while busy receives a nonfatal
+   protocol rejection. Read stdin line-by-line for the process lifetime; EOF means parent
+   disconnect, not end-of-prompt.
+9. Every line must be a JSON object with supported `v`, bounded size, known command `type`, and
+   required fields. Invalid JSON/shape/unsupported version receives a structured nonfatal protocol
+   error when recoverable; unsupported major `v` prevents session start. The GUI ignores unknown
+   outbound event fields and, for a supported major version, may log/ignore unknown event types
+   only in the Electron main process without crashing the renderer.
+10. stdout contains protocol lines only and flushes each line. stderr never carries required state.
+    On child exit or broken pipe, the GUI marks any nonterminal turn as crashed/interrupted and
+    rejects all pending request promises exactly once.
 
 ### Mapping to existing core events
 
@@ -666,12 +733,12 @@ The proposal deliberately follows existing renderer-agnostic `UiEvent` / `UiHook
 
 | Proposed event | Existing source |
 |---|---|
-| `text_delta`, `thinking_delta`, `tool_start` | `StreamEvent` handled by `src/ui.rs:161-178` |
-| `tool_ready` | `UiHooks.on_tool_ready`, `src/ui.rs:180-187` |
-| `tool_done` | `UiHooks.on_tool_done`, `src/ui.rs:188-199` |
-| `round_end`, `warning` | `src/ui.rs:201-208` |
-| permission/question request | `PermissionRequest` and `DialogAction`, `src/ui.rs:21-61` |
-| structured error dimensions | `UiEvent::Error`, `src/ui.rs:126-140` |
+| `text_delta`, `thinking_delta`, `tool_start` | `StreamEvent` handled by `src/ui.rs:178-195` |
+| `tool_ready` | `UiHooks.on_tool_ready`, `src/ui.rs:196-202` |
+| `tool_done` | `UiHooks.on_tool_done`, `src/ui.rs:203-211` |
+| `round_end`, `warning` | `src/ui.rs:213-217` |
+| permission/question request | `PermissionRequest` and `DialogAction`, `src/ui.rs:24-65`, `150-165`, `219-244` |
+| structured error dimensions | `UiEvent::Error`, `src/ui.rs:136-147` |
 | session metadata | runtime model/provider/transcript in `src/query.rs:144-190` |
 
 This should be an adapter over the existing core contract, not a second agent loop.
