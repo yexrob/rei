@@ -31,7 +31,7 @@ export const cliSessionMetadataSchema = z.object({
   bingoVersion: z.string(),
   protocolVersion: z.literal(1),
   sessionId: z.string(),
-  displayName: z.string(),
+  displayName: z.string().default('New conversation'),
   transcriptPath: z.string(),
   resumed: z.boolean(),
   cwd: z.string(),
