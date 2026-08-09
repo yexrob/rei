@@ -66,7 +66,7 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className="app-shell" data-qa-state="chat">
-      <nav className="sidebar" aria-label="Primary navigation"><strong>bingo</strong><button type="button" className="nav-action">New conversation</button><span>Conversations</span><span>{runtime ? `bingo ${runtime.bingoVersion}` : 'Connecting…'}</span></nav>
+      <nav className="sidebar" aria-label="Primary navigation"><strong>bingo</strong><button type="button" className="nav-action">New conversation</button><span>Conversations</span><span>{runtime ? `bingo ${runtime.bingoVersion} · protocol ${runtime.protocolVersion}` : 'Connecting…'}</span></nav>
       <main className="chat">
         <header><p className="eyebrow">Local conversation</p><h1>New conversation</h1></header>
         <section className="timeline" aria-live="polite">
