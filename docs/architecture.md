@@ -3,7 +3,7 @@
 > Status: accepted design for implementation  
 > Owner: architecture (`gui-arch`)  
 > Product contract: [`docs/prd.md`](./prd.md)  
-> CLI facts: [`docs/cli-facts.md`](./cli-facts.md), when present  
+> CLI facts: [`docs/cli-facts.md`](./cli-facts.md)
 > Upstream reference: `/Users/yexrob/Episodes/Projects/bingo` (read-only main checkout)
 
 ## 1. Decision summary
@@ -91,7 +91,7 @@ bingo --json-events [--session <EXACT_TRANSCRIPT_STEM>]
 Existing compatible options such as `--model`, `--permission-mode`, and `--no-team` may accompany JSON mode. In protocol v1:
 
 - `--json-events` conflicts with `--print`, `--inline`, `--fullscreen`, subcommands, and positional prompts.
-- Omitting `--session` creates a fresh transcript for the process working directory.
+- Omitting `--session` atomically reserves a fresh transcript ID for the process working directory before `session.ready`. The upstream allocator must use an exclusive create (`create_new`/`O_EXCL`) and a random UUID suffix, e.g. `<project-slug>-<unix-seconds>-<uuid>`, retrying only on collision. The existing seconds-only allocator is not used in JSON mode.
 - `--session` accepts a transcript **stem**, never a path, and matches it exactly. `/`, `\`, `..`, empty IDs, substring matches, and multiple matches are rejected.
 - stdin is exclusively UTF-8 NDJSON commands.
 - stdout is exclusively UTF-8 NDJSON events. Every event is one JSON object followed by `\n`, flushed immediately.
@@ -133,6 +133,11 @@ type ClientCommand =
         | { kind: 'option'; optionId: string }
         | { kind: 'text'; text: string }
         | { kind: 'cancel' }
+    }
+  | {
+      protocolVersion: 1
+      type: 'providers.list'
+      commandId: string
     }
   | {
       protocolVersion: 1
@@ -226,6 +231,18 @@ type CliEvent =
       commandId: string
     })
   | (EventBase & {
+      type: 'providers.result'
+      commandId: string
+      providers: Array<{
+        name: string
+        protocol: 'anthropic' | 'openai'
+        apiBaseUrl: string
+        supportsImages: boolean
+        credentialConfigured: boolean
+        builtin: boolean
+      }>
+    })
+  | (EventBase & {
       type: 'models.result'
       commandId: string
       provider: string
@@ -306,11 +323,12 @@ The upstream adapter and GUI both test these invariants:
 9. Prompts have no elapsed-time timeout. A turn cancellation resolves all outstanding prompts as cancelled before `turn.cancelled`.
 10. `turn.completed` is emitted only after all messages for the turn are appended to the bingo transcript. It does not wait for optional memory extraction.
 11. `session.rename` and `session.delete` are accepted only while idle. `session.delete` emits its event, removes the transcript through bingo, and exits 0.
-12. EOF on stdin is a graceful close request while idle and a turn cancellation followed by close while busy.
+12. Fresh session allocation uses an exclusively created, UUID-suffixed transcript; 100 concurrent new-session launches in one workspace produce 100 distinct IDs and files.
+13. EOF on stdin is a graceful close request while idle and a turn cancellation followed by close while busy.
 
 The current `UiHooks` callback payloads do not carry a tool-use ID through `on_tool_ready`/`on_tool_done`. The bingo-side implementation must extend that internal interface (or add an equivalent correlated adapter seam) so the external `toolCallId` guarantee is real. Correlation by tool name, array position, or output text is forbidden.
 
-### 4.5 Cancel and child termination
+### 4.5 Cancel, restart, and child termination
 
 Normal cancel is cooperative:
 
@@ -319,6 +337,8 @@ Normal cancel is cooperative:
 3. bingo closes all ready tool rows as interrupted, repairs tool-use/tool-result pairing, persists the settled transcript, emits `turn.cancelled`, and remains ready.
 
 Main starts a 750 ms cancel watchdog. If no terminal turn event arrives, it sends the platform's graceful termination signal and marks the turn interrupted locally. A process still alive 2 seconds later is force-killed. The replacement child always resumes the same exact transcript before accepting another prompt. A forced termination produces a page-level recovery error because transcript settlement could not be proven; it is never reported as a clean cancellation.
+
+Every automatic replacement—forced-cancel recovery, crash Retry, or settings activation—is an explicit `SessionManager.reconnect` operation. It waits for the replacement child's `session.ready`, creates a new `connectionId`, resets the forwarded sequence to zero, and emits the sanitized renderer `session.reconnected` event defined in §6.3 before the composer is enabled. Failure leaves the old connection closed and the renderer in a recoverable page/flow error; it never keeps using a stale connection ID.
 
 On app quit, main sends `session.close` to every managed child, waits up to 2 seconds, terminates remaining children, and force-kills at 3 seconds. This is the AC-F1-4 deadline.
 
@@ -393,6 +413,7 @@ export const IPC = {
   sessionClose: 'session:close',
   sessionSend: 'session:send',
   sessionCancel: 'session:cancel',
+  sessionRespondPrompt: 'session:respond-prompt',
   sessionRename: 'session:rename',
   sessionDelete: 'session:delete',
   sessionListModels: 'session:list-models',
@@ -431,6 +452,11 @@ type AppInfo = {
   arch: string
   packaged: boolean
 }
+
+type PromptResponse =
+  | { kind: 'option'; optionId: string }
+  | { kind: 'text'; text: string }
+  | { kind: 'cancel' }
 
 type RuntimeProbeInput = {
   workspacePath: string
@@ -491,6 +517,7 @@ type SessionListOutput = {
 | `session:close` | `{ connectionId: string }` | `{ closed: true }` | Graceful child close; idempotent for an already-closed matching connection. |
 | `session:send` | `{ connectionId: string; turnId: string; prompt: string }` | `{ accepted: true }` | Valid only in idle; returns after `turn.start` is written, not after completion. |
 | `session:cancel` | `{ connectionId: string; turnId: string }` | `{ requested: true }` | Idempotent for the same active turn. |
+| `session:respond-prompt` | `{ connectionId: string; turnId: string; promptId: string; response: PromptResponse }` | `{ accepted: true }` | Valid only for a live queued prompt on the current turn. Main atomically consumes the ID before writing; duplicate, stale, or cross-turn IDs return `STALE_PROMPT` and never reach bingo. |
 | `session:rename` | `{ sessionId: string; name: string }` | `{ previousId: string; session: SessionSummary }` | Mutation is performed by bingo, never by Electron filesystem code. |
 | `session:delete` | `{ sessionId: string }` | `{ deletedId: string }` | Renderer must confirm first. Mutation is performed by bingo. Active child is settled/closed. |
 | `session:list-models` | `{ connectionId: string; provider: string }` | `{ provider: string; models: string[] }` | Resolves the matching `models.result`; 10s read timeout and sequence guard. |
@@ -502,14 +529,51 @@ type SessionListOutput = {
 
 ### 6.3 Async event channel
 
-Main validates every child event and sequence before forwarding it. It removes `transcriptPath`, adds the connection identity, and uses one send-only channel:
+Main validates every child event and sequence before forwarding it. It projects child events into a separate renderer-safe union; `CliEvent` is never forwarded wholesale. In particular, no renderer event contains `transcriptPath`, raw settings, credentials, or child diagnostics.
 
 ```ts
+type RendererSessionMetadata = Omit<CliSessionMetadata, 'transcriptPath'>
+
+type RendererCliPayload =
+  | Extract<
+      CliEvent,
+      {
+        type:
+          | 'turn.started'
+          | 'text.delta'
+          | 'tool.ready'
+          | 'tool.done'
+          | 'prompt.request'
+          | 'prompt.resolved'
+          | 'providers.result'
+          | 'models.result'
+          | 'warning'
+          | 'turn.completed'
+          | 'turn.cancelled'
+          | 'session.deleted'
+          | 'session.closed'
+          | 'error'
+      }
+    >
+  | {
+      type: 'session.renamed'
+      commandId: string
+      previousSessionId: string
+      metadata: RendererSessionMetadata
+    }
+
 type RendererSessionEvent = {
   connectionId: string
   sequence: number
   payload:
-    | Exclude<CliEvent, { type: 'session.ready' }>
+    | RendererCliPayload
+    | {
+        type: 'session.reconnected'
+        reason: 'cancel-recovery' | 'crash-retry' | 'settings-changed'
+        previousConnectionId: string
+        connectionId: string
+        metadata: RendererSessionMetadata
+      }
     | {
         type: 'transport.error'
         error: GuiError
@@ -518,6 +582,8 @@ type RendererSessionEvent = {
       }
 }
 ```
+
+For `session.reconnected`, the envelope and payload carry the new `connectionId`, `sequence` is 1 for the new connection, and renderer atomically replaces its connection ID and resets its sequence/turn guards before processing later events.
 
 Preload exposes subscription as a function returning an unsubscribe function. It does not expose `ipcRenderer.on`.
 
@@ -530,6 +596,7 @@ type BingoGuiBridge = {
   closeSession(input: { connectionId: string }): Promise<Result<{ closed: true }>>
   sendTurn(input: { connectionId: string; turnId: string; prompt: string }): Promise<Result<{ accepted: true }>>
   cancelTurn(input: { connectionId: string; turnId: string }): Promise<Result<{ requested: true }>>
+  respondToPrompt(input: { connectionId: string; turnId: string; promptId: string; response: PromptResponse }): Promise<Result<{ accepted: true }>>
   renameSession(input: { sessionId: string; name: string }): Promise<Result<{ previousId: string; session: SessionSummary }>>
   deleteSession(input: { sessionId: string }): Promise<Result<{ deletedId: string }>>
   listModels(input: { connectionId: string; provider: string }): Promise<Result<{ provider: string; models: string[] }>>
@@ -600,7 +667,7 @@ An unexpected child exit produces `transport.error` immediately. If a turn was a
 ~/.local/share/bingo/transcripts/*.jsonl
 ```
 
-It resolves `HOME` consistently with the bingo child. Session IDs are basenames without `.jsonl`; caller-provided paths are never joined directly.
+It resolves `HOME` consistently with the bingo child. Session IDs are basenames without `.jsonl`; caller-provided paths are never joined directly. JSON mode reserves a UUID-suffixed transcript atomically before announcing a new session, so concurrent new conversations cannot share a file.
 
 Read behavior mirrors bingo:
 
@@ -614,7 +681,7 @@ Read behavior mirrors bingo:
 
 A display name is the suffix after the transcript's Unix timestamp when one exists; otherwise it is the project slug. The exact full stem remains the opaque identity.
 
-Electron does not rename, delete, append, truncate, or repair transcript files. Rename/delete IPC delegates to the bingo JSON process. This preserves bingo as the sole transcript writer and satisfies AC-F3-6 even though the user can request mutations through the GUI.
+Electron does not rename, delete, append, truncate, or repair transcript files. Rename/delete IPC delegates to the bingo JSON process. “GUI is not a transcript writer” means no renderer, preload, or Electron-main filesystem code mutates JSONL; expected turn appends and requested rename/delete remain bingo-owned. Acceptance therefore compares browsing/rendering as byte-identical, attributes turn writes to the bingo child, and verifies no GUI-authored JSONL. This is the reconciled interpretation of AC-F3-5/AC-F3-6 recorded in `docs/acceptance.md`; a literal whole-directory no-change assertion during a real turn would contradict bingo persistence.
 
 ## 9. Settings contract and secret handling
 
