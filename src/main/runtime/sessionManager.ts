@@ -50,8 +50,9 @@ export class SessionManager {
     return active.session.respondToPrompt(turnId, promptId, response)
   }
 
-  async close(): Promise<void> {
+  async close(connectionId?: string): Promise<void> {
     const active = this.active
+    if (connectionId && active?.connectionId !== connectionId) throw new Error('Connection is stale')
     this.active = null
     if (active) await active.session.close()
   }
