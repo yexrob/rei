@@ -52,8 +52,15 @@ export const cliInspectionMetadataSchema = cliSessionMetadataSchema.omit({
 
 const optionSchema = z.object({ id: z.string(), label: z.string(), description: z.string().optional() })
 
-export const cliEventSchema = z.discriminatedUnion('type', [
-  z.object({ protocolVersion: z.literal(1), seq: z.literal(1), sessionId: z.null(), type: z.literal('protocol.ready'), bingoVersion: z.string() }),
+export const cliEventSchema = z.union([
+  z.object({
+    protocolVersion: z.literal(1),
+    seq: z.literal(1),
+    sessionId: z.null(),
+    type: z.literal('protocol.ready'),
+    bingoVersion: z.string().optional(),
+    metadata: z.object({ bingoVersion: z.string(), protocolVersion: z.literal(1) }).optional()
+  }).refine((event) => Boolean(event.bingoVersion || event.metadata), 'protocol.ready requires bingoVersion metadata'),
   z.object({ protocolVersion: z.literal(1), seq: z.literal(1), sessionId: z.null(), type: z.literal('inspection.ready'), metadata: cliInspectionMetadataSchema }),
   eventBase.extend({ type: z.literal('session.ready'), metadata: cliSessionMetadataSchema }),
   eventBase.extend({ type: z.literal('turn.started'), commandId: uuid, turnId: uuid }),

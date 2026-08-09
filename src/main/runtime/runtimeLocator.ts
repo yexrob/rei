@@ -119,7 +119,7 @@ export class RuntimeLocator {
         }
         try {
           const event = cliEventSchema.parse(JSON.parse(lines[0]))
-          if (event.type === 'protocol.ready') protocolVersion = event.bingoVersion
+          if (event.type === 'protocol.ready') protocolVersion = event.metadata?.bingoVersion ?? event.bingoVersion ?? null
         } catch {
           protocolVersion = null
         }
