@@ -210,12 +210,13 @@ Entry/exit criteria per milestone. A milestone is done only when **its** exit cr
 
 ## 6. Open integration decisions (architect's call; product requirement anchors in bold)
 
-- **Q1 — Tool-event transport (P0, blocks M1).** The current headless contract exposes text
-  streaming but **no tool events** (C2). Product requirement: tool activity must be visible
-  (AC-F2-3). Options: (a) propose a small upstream CLI extension (e.g. a `--json` events mode) —
-  requires user approval since bingo is read-only; (b) drive the TUI-mode protocol — far more
-  complex; (c) accept reduced tool visibility in v0.1 — **not acceptable to the product** unless
-  the user explicitly downgrades the requirement.
+- **Q1 — Tool-event transport (P0, blocks M1) — ✅ DECIDED (user-approved).** The current headless
+  contract exposes text streaming but **no tool events** (C2). Product requirement: tool activity
+  must be visible (AC-F2-3). **Decision: option (a)** — add a minimal upstream interface (a
+  `--json-events` structured event mode) to bingo, implemented in a separate worktree under
+  `.bingo/worktrees/` (main checkout stays read-only); the GUI points at the worktree-built
+  binary. The mode is opt-in (default off) and must not disturb the existing text-stream
+  contract. Event schema lives in `docs/architecture.md` (arch) and `docs/cli-facts.md` (dev).
 - **Q2 — Session addressing.** CLI `--continue` resumes only the most recent session (C5); the
   GUI needs per-session resume. Decide how a conversation maps to a bingo session (e.g. resume by
   transcript stem/keyword, or one long-lived process per conversation).
