@@ -6,7 +6,9 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()]
   },
   preload: {
-    plugins: [externalizeDepsPlugin()]
+    // zod must be inlined: the sandboxed preload cannot require() node_modules
+    // at runtime ("module not found: zod" otherwise).
+    plugins: [externalizeDepsPlugin({ exclude: ['zod'] })]
   },
   renderer: {
     plugins: [react()]
