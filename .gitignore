@@ -13,7 +13,10 @@ npm-debug.log*
 
 # Screenshots / local artifacts
 screenshots/
+!docs/screenshots/
+!docs/screenshots/*.png
 *.png
+!docs/screenshots/*.png
 
 # OS
 .DS_Store
