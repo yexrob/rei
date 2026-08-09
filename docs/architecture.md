@@ -82,6 +82,8 @@ Tests use in-memory/fake adapters at these same seams; production uses the files
 
 ## 4. bingo NDJSON stdio contract (protocol version 1)
 
+This section is the **single normative source** for protocol v1 names, fields, ordering, and error behavior. The proposal recorded in `docs/cli-facts.md` §10 predates this decision and is non-normative historical analysis; where it differs, this section wins. Shared Rust/TypeScript fixtures must be generated or copied from this schema, never from the earlier proposal.
+
 ### 4.1 Invocation
 
 ```bash
@@ -128,6 +130,7 @@ type ClientCommand =
       protocolVersion: 1
       type: 'prompt.respond'
       commandId: string
+      turnId: string
       promptId: string
       response:
         | { kind: 'option'; optionId: string }
@@ -228,7 +231,8 @@ type CliEvent =
       type: 'prompt.resolved'
       turnId: string
       promptId: string
-      commandId: string
+      commandId?: string
+      reason: 'responded' | 'turn-cancelled' | 'session-closing'
     })
   | (EventBase & {
       type: 'providers.result'
@@ -262,7 +266,8 @@ type CliEvent =
   | (EventBase & {
       type: 'turn.cancelled'
       turnId: string
-      commandId: string
+      commandId?: string
+      reason: 'requested' | 'stdin-eof' | 'session-closing'
     })
   | (EventBase & {
       type: 'session.renamed'
@@ -308,6 +313,13 @@ type CliSessionMetadata = {
 
 The machine `error.msg` uses the same single-line, 200-character sanitization as current non-TTY errors. Existing stable `ErrorCode` values are reused. JSON mode does not print an additional `[error] ...` line to stdout or stderr for a represented error.
 
+Error termination is scoped:
+
+- `error(scope='command', recoverable=true)` rejects only that command; the process/state before the command remains valid.
+- `error(scope='turn', recoverable=true)` is the exactly-once terminal event for that turn; the child returns to idle and remains alive. No second `turn.completed`/`turn.cancelled` follows.
+- `error(scope='session')` is emitted when framing, startup, persistence, or another invariant makes the session unsafe; bingo flushes it and exits 1. Invocation/clap misuse before JSON framing may exit 2 with ordinary clap stderr.
+- The legacy stderr `[error] code=... msg=...` plus exit 1 contract remains unchanged for non-JSON `--print`; it is not the JSON-turn oracle.
+
 ### 4.4 Ordering and completion invariants
 
 The upstream adapter and GUI both test these invariants:
@@ -319,8 +331,8 @@ The upstream adapter and GUI both test these invariants:
 5. Every `tool.ready` has a stable `toolCallId`, even when names repeat or tools execute concurrently.
 6. Every ready tool receives exactly one `tool.done` before the terminal turn event. A denied or failed tool uses `status='error'`; cancellation uses `status='interrupted'`.
 7. `tool.ready.summary` and `tool.done.summary` use bingo's existing input summarizer. The GUI does not reimplement per-tool summarization.
-8. Multiple prompt requests may exist, but the renderer presents them FIFO, one modal at a time. Each `prompt.respond` targets one live ID exactly once.
-9. Prompts have no elapsed-time timeout. A turn cancellation resolves all outstanding prompts as cancelled before `turn.cancelled`.
+8. Multiple prompt requests may exist, but the renderer presents them FIFO, one modal at a time. Each `prompt.respond` carries the current `turnId`, targets one live ID exactly once, and produces `prompt.resolved(reason='responded', commandId=<response command>)`.
+9. Prompts have no elapsed-time timeout. A turn cancellation resolves all outstanding prompts as `prompt.resolved(reason='turn-cancelled', commandId=<cancel command when one exists>)` before `turn.cancelled`; stdin EOF/session close use an absent command ID plus their explicit reason.
 10. `turn.completed` is emitted only after all messages for the turn are appended to the bingo transcript. It does not wait for optional memory extraction.
 11. `session.rename` and `session.delete` are accepted only while idle. `session.delete` emits its event, removes the transcript through bingo, and exits 0.
 12. Fresh session allocation uses an exclusively created, UUID-suffixed transcript; 100 concurrent new-session launches in one workspace produce 100 distinct IDs and files.
@@ -649,7 +661,7 @@ failed ─retry─────────────> starting
 
 There are three guards, all required:
 
-1. **Connection guard:** renderer accepts events only for the currently opened `connectionId`.
+1. **Connection guard:** renderer accepts an event when its envelope `connectionId` equals the current connection. The sole exception is `session.reconnected`: accept it only when `payload.previousConnectionId` equals the current connection, envelope/payload new IDs are equal and different from the old ID, `sequence===1`, no newer connection has already been adopted, and metadata names the currently selected session. The reducer adopts the new ID and sequence atomically; every other event from either old or unknown IDs is discarded.
 2. **Sequence guard:** main requires child `seq` to increase exactly; renderer requires forwarded `sequence` to increase.
 3. **Turn guard:** turn events must match the current `turnId`.
 
