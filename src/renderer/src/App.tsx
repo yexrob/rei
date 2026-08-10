@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import type { PromptResponse, CliEvent } from '../../shared/contracts/cli'
-import type { GuiError, RendererSessionEvent, RuntimeInfo, RuntimeSettings, SessionSummary } from '../../shared/contracts/ipc'
+import type { EditableSettings, GuiError, RendererSessionEvent, RuntimeInfo, RuntimeSettings, SessionSummary, SettingsSnapshot } from '../../shared/contracts/ipc'
 import { chatReducer, initialChatState } from './state/chatReducer'
 
 type Connection = { id: string; sequence: number }
@@ -25,6 +25,11 @@ export default function App(): React.JSX.Element {
   const [thinkingLevel, setThinkingLevel] = useState<RuntimeSettings['thinkingLevel']>('off')
   const [settingsError, setSettingsError] = useState<GuiError | null>(null)
   const [savingRuntime, setSavingRuntime] = useState(false)
+  const [view, setView] = useState<'chat' | 'settings'>('chat')
+  const [settingsSnapshot, setSettingsSnapshot] = useState<SettingsSnapshot | null>(null)
+  const [settingsDraft, setSettingsDraft] = useState<EditableSettings | null>(null)
+  const [settingsPageError, setSettingsPageError] = useState<GuiError | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
   const [flowError, setFlowError] = useState<GuiError | null>(null)
   const [connected, setConnected] = useState(false)
   const connection = useRef<Connection | null>(null)
@@ -85,6 +90,34 @@ export default function App(): React.JSX.Element {
     void connect()
     return unsubscribe
   }, [connect])
+
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => setToast(null), 3_000)
+    return () => clearTimeout(timer)
+  }, [toast])
+
+  const openSettings = async (): Promise<void> => {
+    if (!runtime) return
+    setView('settings')
+    setSettingsPageError(null)
+    const result = await window.bingoGui.readSettings({ workspacePath: runtime.workspacePath })
+    if (!result.ok) { setSettingsPageError(result.error); return }
+    setSettingsSnapshot(result.value)
+    setSettingsDraft(result.value.values)
+  }
+
+  const saveSettings = async (): Promise<void> => {
+    if (!runtime || !settingsSnapshot || !settingsDraft) return
+    setSettingsPageError(null)
+    const result = await window.bingoGui.saveSettings({ workspacePath: runtime.workspacePath, baseRevision: settingsSnapshot.revision, values: settingsDraft })
+    if (!result.ok) { setSettingsPageError(result.error); return }
+    setSettingsSnapshot(result.value.snapshot)
+    setSettingsDraft(result.value.snapshot.values)
+    setRuntimeSettings({ providers: result.value.snapshot.providers, provider: result.value.snapshot.values.provider, model: result.value.snapshot.values.model, thinkingLevel: result.value.snapshot.values.thinkingLevel })
+    if (result.value.connectionId) connection.current = { id: result.value.connectionId, sequence: 0 }
+    setToast('Saved')
+  }
 
   const newConversation = async (): Promise<void> => {
     connection.current = null
@@ -195,7 +228,8 @@ export default function App(): React.JSX.Element {
     <div className="app-shell" data-qa-state="chat">
       <nav className="sidebar" aria-label="Primary navigation">
         <strong>bingo</strong>
-        <button type="button" className="nav-action" onClick={() => void newConversation()}>New conversation</button>
+        <button type="button" className="nav-action" onClick={() => { setView('chat'); void newConversation() }}>New conversation</button>
+        <button type="button" className={`nav-action${view === 'settings' ? ' active' : ''}`} onClick={() => void openSettings()}>Settings</button>
         <div className="session-heading"><span>Conversations</span><small>{sessions.length}</small></div>
         <div className="session-list">
           {sessionListError && <p className="sidebar-error" role="alert">{sessionListError.msg}</p>}
@@ -217,7 +251,7 @@ export default function App(): React.JSX.Element {
         </div>
         <span className="runtime-version">{runtime ? `bingo ${runtime.bingoVersion} · protocol ${runtime.protocolVersion}` : 'Connecting…'}</span>
       </nav>
-      <main className="chat">
+      {view === 'chat' ? <main className="chat">
         <header className="chat-header"><div><p className="eyebrow">Local conversation</p><h1>{activeSession?.name ?? 'New conversation'}</h1></div>{runtimeSettings && <div className="runtime-picker" aria-label="Runtime settings">
           <label>Provider<select aria-label="Provider" value={selectedProvider} onChange={(event) => void changeProvider(event.target.value)}>{runtimeSettings.providers.map((provider) => <option value={provider.name} key={provider.name}>{provider.name}{provider.builtin ? ' · built-in' : ''}{provider.credentialConfigured ? '' : ' · not configured'}</option>)}</select></label>
           <label>Model<select aria-label="Model" value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)}><option value="" disabled>Select model</option>{models.map((model) => <option value={model} key={model}>{model}</option>)}</select></label>
@@ -232,12 +266,38 @@ export default function App(): React.JSX.Element {
           {state.error && <div className="inline-error" role="alert"><strong>{state.error.code}</strong><span>{state.error.msg}</span></div>}
         </section>
         <footer className="composer"><textarea aria-label="Message" value={draft} disabled={Boolean(state.turnId) || !connected} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit() } }} placeholder="Ask bingo…" />{state.turnId ? <button type="button" onClick={() => void cancel()}>Cancel</button> : <button type="button" onClick={() => void submit()}>Send</button>}</footer>
-      </main>
+      </main> : <SettingsScreen snapshot={settingsSnapshot} draft={settingsDraft} error={settingsPageError} onChange={setSettingsDraft} onSave={saveSettings} />}
+      {toast && <div className="toast" role="status" aria-live="polite" onMouseEnter={(event) => { event.currentTarget.dataset.paused = 'true' }}>{toast}</div>}
       {prompt && <div className="modal-backdrop" role="presentation"><section className="prompt-modal" role="dialog" aria-modal="true" aria-labelledby="prompt-title"><p className="eyebrow">{prompt.kind}</p><h2 id="prompt-title">{prompt.title}</h2><p>{prompt.question}</p><div className="prompt-actions">{prompt.options.map((option) => <button type="button" key={option.id} onClick={() => void respond({ kind: 'option', optionId: option.id })}>{option.label}</button>)}<button type="button" onClick={() => void respond({ kind: 'cancel' })}>Cancel</button></div></section></div>}
       {renameSession && <div className="modal-backdrop" role="presentation"><section className="prompt-modal" role="dialog" aria-modal="true" aria-labelledby="rename-title"><p className="eyebrow">Conversation</p><h2 id="rename-title">Rename conversation</h2><label className="field-label">Name<input autoFocus value={renameDraft} onChange={(event) => setRenameDraft(event.target.value)} /></label>{sessionMutationError && <p className="dialog-error" role="alert">{sessionMutationError.msg}</p>}<div className="prompt-actions"><button type="button" onClick={() => void submitRename()}>Save</button><button type="button" className="secondary-action" onClick={() => setRenameSession(null)}>Cancel</button></div></section></div>}
       {deleteSession && <div className="modal-backdrop" role="presentation"><section className="prompt-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-title"><p className="eyebrow">Permanent action</p><h2 id="delete-title">Delete “{deleteSession.name}”?</h2><p>This removes the conversation transcript. This action cannot be undone.</p>{sessionMutationError && <p className="dialog-error" role="alert">{sessionMutationError.msg}</p>}<div className="prompt-actions"><button type="button" className="danger-action" onClick={() => void confirmDelete()}>Delete conversation</button><button type="button" className="secondary-action" onClick={() => setDeleteSession(null)}>Cancel</button></div></section></div>}
     </div>
   )
+}
+
+function SettingsScreen({ snapshot, draft, error, onChange, onSave }: { snapshot: SettingsSnapshot | null; draft: EditableSettings | null; error: GuiError | null; onChange: (value: EditableSettings) => void; onSave: () => Promise<void> }): React.JSX.Element {
+  if (error && !snapshot) return <main className="settings-page"><section className="settings-panel" role="alert"><p className="eyebrow">Settings unavailable</p><h1>{error.code}</h1><p>{error.msg}</p></section></main>
+  if (!snapshot || !draft) return <main className="settings-page"><p>Loading settings…</p></main>
+  const update = <K extends keyof EditableSettings>(key: K, value: EditableSettings[K]): void => onChange({ ...draft, [key]: value })
+  const shadowed = (key: keyof EditableSettings): boolean => snapshot.shadowed.includes(key)
+  return <main className="settings-page">
+    <header><div><p className="eyebrow">User configuration</p><h1>Settings</h1><p className="settings-path">{snapshot.path}</p></div><button type="button" onClick={() => void onSave()}>Save changes</button></header>
+    {error && <div className="settings-page-error" role="alert"><strong>{error.code}</strong><span>{error.msg}</span></div>}
+    <section className="settings-panel">
+      <h2>Runtime</h2><p>Changes write only to the user layer. Workspace overrides remain read-only.</p>
+      <div className="settings-grid">
+        <label>Provider<select value={draft.provider} disabled={shadowed('provider')} onChange={(event) => update('provider', event.target.value)}>{snapshot.providers.map((provider) => <option key={provider.name} value={provider.name}>{provider.name}{provider.credentialConfigured ? '' : ' · not configured'}</option>)}</select>{shadowed('provider') && <small>Managed by {snapshot.sources.provider}</small>}</label>
+        <label>Model<input value={draft.model} disabled={shadowed('model')} onChange={(event) => update('model', event.target.value)} /></label>
+        <label>Thinking level<select value={draft.thinkingLevel} disabled={shadowed('thinkingLevel')} onChange={(event) => update('thinkingLevel', event.target.value as EditableSettings['thinkingLevel'])}>{['off', 'low', 'medium', 'high', 'xhigh', 'max'].map((level) => <option key={level}>{level}</option>)}</select></label>
+        <label>Permission mode<input value={draft.permissionMode} disabled={shadowed('permissionMode')} onChange={(event) => update('permissionMode', event.target.value)} /></label>
+        <label>Theme<select value={draft.theme} disabled={shadowed('theme')} onChange={(event) => update('theme', event.target.value as EditableSettings['theme'])}><option>auto</option><option>dark</option><option>light</option></select></label>
+        <label>API endpoint<input value={draft.apiBaseUrl} disabled={shadowed('apiBaseUrl')} onChange={(event) => update('apiBaseUrl', event.target.value)} /></label>
+        <label className="checkbox-field"><input type="checkbox" checked={draft.sendImages} disabled={shadowed('sendImages')} onChange={(event) => update('sendImages', event.target.checked)} />Send images</label>
+      </div>
+      <div className="provider-summary">{snapshot.providers.map((provider) => <article key={provider.name}><strong>{provider.name}</strong><span>{provider.apiBaseUrl}</span><small>{provider.protocol} · {provider.supportsImages ? 'images' : 'text only'} · {provider.credentialConfigured ? 'credential configured' : 'credential not configured'}</small></article>)}</div>
+      <div className="layer-summary"><h2>Configuration layers</h2>{Object.entries(snapshot.layers).map(([name, layer]) => <p key={name}><strong>{name}</strong><span>{layer.path}</span><small>{layer.exists ? `${layer.keys.length} keys` : 'not present'}</small></p>)}</div>
+    </section>
+  </main>
 }
 
 function formatSessionTime(value: string): string {

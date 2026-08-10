@@ -6,6 +6,7 @@ export const IPC = {
   sessionSend: 'session:send', sessionCancel: 'session:cancel', sessionRespondPrompt: 'session:respond-prompt',
   sessionRename: 'session:rename', sessionDelete: 'session:delete',
   settingsReadRuntime: 'settings:read-runtime', settingsListModels: 'settings:list-models', settingsSaveRuntime: 'settings:save-runtime',
+  settingsRead: 'settings:read', settingsSave: 'settings:save',
   sessionEvent: 'session:event', sessionList: 'session:list', visualCapture: 'visual:capture'
 } as const
 
@@ -24,6 +25,9 @@ export type SessionListOutput = { sessions: SessionSummary[]; warnings: string[]
 export type SessionOpened = { connectionId: string; metadata: RendererSessionMetadata; history: SessionHistoryItem[] }
 export type ProviderView = { name: string; protocol: 'anthropic' | 'openai'; apiBaseUrl: string; supportsImages: boolean; credentialConfigured: boolean; builtin: boolean }
 export type RuntimeSettings = { providers: ProviderView[]; provider: string; model: string; thinkingLevel: 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' }
+export type EditableSettings = { apiBaseUrl: string; provider: string; model: string; thinkingLevel: RuntimeSettings['thinkingLevel']; permissionMode: string; theme: 'auto' | 'dark' | 'light'; sendImages: boolean }
+export type SettingsLayerView = { path: string; exists: boolean; keys: string[]; values: Partial<Record<keyof EditableSettings, unknown>> }
+export type SettingsSnapshot = { path: string; revision: string; values: EditableSettings; layers: { user: SettingsLayerView; project: SettingsLayerView; local: SettingsLayerView }; sources: Partial<Record<keyof EditableSettings, string>>; shadowed: Array<keyof EditableSettings>; providers: ProviderView[] }
 export type VisualCaptureInput = { runId: string; theme: 'dark' | 'light'; state: 'chat' | 'empty' | 'loading' | 'error'; viewport: '1440x900' | '800x600' }
 
 const uuid = z.string().uuid()
@@ -36,6 +40,14 @@ export const runtimeSettingsSaveInputSchema = runtimeSettingsInputSchema.extend(
   provider: z.string().min(1),
   model: z.string().min(1),
   thinkingLevel: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max'])
+})
+export const settingsSaveInputSchema = runtimeSettingsInputSchema.extend({
+  baseRevision: z.string().length(64),
+  values: z.object({
+    apiBaseUrl: z.string(), provider: z.string().min(1), model: z.string().min(1),
+    thinkingLevel: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']),
+    permissionMode: z.string().min(1), theme: z.enum(['auto', 'dark', 'light']), sendImages: z.boolean()
+  })
 })
 export const connectionInputSchema = z.object({ connectionId: uuid })
 export const sessionSendInputSchema = z.object({ connectionId: uuid, turnId: uuid, prompt: z.string().min(1).max(1_000_000) })
@@ -56,6 +68,8 @@ export type BingoGuiApi = {
   readRuntimeSettings(input: { workspacePath: string }): Promise<Result<RuntimeSettings>>
   listModels(input: { workspacePath: string; provider: string }): Promise<Result<{ provider: string; models: string[] }>>
   saveRuntimeSettings(input: { workspacePath: string; provider: string; model: string; thinkingLevel: RuntimeSettings['thinkingLevel'] }): Promise<Result<{ connectionId?: string; settings: RuntimeSettings }>>
+  readSettings(input: { workspacePath: string }): Promise<Result<SettingsSnapshot>>
+  saveSettings(input: { workspacePath: string; baseRevision: string; values: EditableSettings }): Promise<Result<{ connectionId?: string; snapshot: SettingsSnapshot }>>
   closeSession(input: { connectionId: string }): Promise<Result<{ closed: true }>>
   sendTurn(input: { connectionId: string; turnId: string; prompt: string }): Promise<Result<{ accepted: true }>>
   cancelTurn(input: { connectionId: string; turnId: string }): Promise<Result<{ requested: true }>>

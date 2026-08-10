@@ -40,6 +40,16 @@ function api(list: SessionListOutput): BingoGuiApi {
     ],
     provider: 'opencode-go', model: 'gpt-5.6-luna', thinkingLevel: 'off' as const
   }
+  const snapshot = {
+    path: '/home/.config/bingo/settings.json', revision: 'a'.repeat(64),
+    values: { apiBaseUrl: 'https://example.test', provider: 'opencode-go', model: 'gpt-5.6-luna', thinkingLevel: 'off' as const, permissionMode: 'default', theme: 'auto' as const, sendImages: true },
+    layers: {
+      user: { path: '/home/.config/bingo/settings.json', exists: true, keys: ['provider'], values: { provider: 'opencode-go' } },
+      project: { path: '/workspace/.bingo/settings.json', exists: false, keys: [], values: {} },
+      local: { path: '/workspace/.bingo/local.json', exists: false, keys: [], values: {} }
+    },
+    sources: { provider: '/home/.config/bingo/settings.json' }, shadowed: [], providers: runtimeSettings.providers
+  }
   return {
     getAppInfo: vi.fn(),
     probeRuntime: vi.fn().mockResolvedValue({ ok: true, value: { binaryPath: '/bingo', bingoVersion: '0.4.0', protocolVersion: 1, workspacePath: '/workspace' } }),
@@ -53,6 +63,8 @@ function api(list: SessionListOutput): BingoGuiApi {
     readRuntimeSettings: vi.fn().mockResolvedValue({ ok: true, value: runtimeSettings }),
     listModels: vi.fn().mockImplementation(async ({ provider }: { provider: string }) => ({ ok: true, value: { provider, models: provider === 'default' ? ['model-default'] : ['gpt-5.6-luna'] } })),
     saveRuntimeSettings: vi.fn().mockImplementation(async (input) => ({ ok: true, value: { connectionId: crypto.randomUUID(), settings: { ...runtimeSettings, ...input } } })),
+    readSettings: vi.fn().mockResolvedValue({ ok: true, value: snapshot }),
+    saveSettings: vi.fn().mockResolvedValue({ ok: true, value: { connectionId: crypto.randomUUID(), snapshot } }),
     closeSession: vi.fn().mockResolvedValue({ ok: true, value: { closed: true } }),
     sendTurn: vi.fn().mockResolvedValue({ ok: true, value: { accepted: true } }),
     cancelTurn: vi.fn(),
@@ -125,5 +137,20 @@ describe('session sidebar', () => {
     fireEvent.change(screen.getByLabelText('Thinking level'), { target: { value: 'high' } })
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
     await waitFor(() => expect(bridge.saveRuntimeSettings).toHaveBeenCalledWith({ workspacePath: '/workspace', provider: 'default', model: 'model-default', thinkingLevel: 'high' }))
+  })
+
+  it('loads the settings snapshot and shows a Saved toast after persistence', async () => {
+    const bridge = api({ sessions: [], warnings: [] })
+    window.bingoGui = bridge
+    render(<App />)
+    await screen.findByLabelText('Provider')
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeTruthy()
+    expect(screen.getAllByText('/home/.config/bingo/settings.json')).toHaveLength(2)
+    expect(screen.getByText(/credential not configured/)).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Theme'), { target: { value: 'dark' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(bridge.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: '/workspace', baseRevision: 'a'.repeat(64), values: expect.objectContaining({ theme: 'dark' }) })))
+    expect((await screen.findByRole('status')).textContent).toBe('Saved')
   })
 })

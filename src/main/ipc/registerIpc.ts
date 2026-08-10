@@ -1,8 +1,8 @@
 import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import {
-  IPC, connectionInputSchema, modelListInputSchema, runtimeSettingsInputSchema, runtimeSettingsSaveInputSchema, sessionDeleteInputSchema, sessionOpenInputSchema, sessionPromptInputSchema, sessionRenameInputSchema, sessionSendInputSchema,
+  IPC, connectionInputSchema, modelListInputSchema, runtimeSettingsInputSchema, runtimeSettingsSaveInputSchema, settingsSaveInputSchema, sessionDeleteInputSchema, sessionOpenInputSchema, sessionPromptInputSchema, sessionRenameInputSchema, sessionSendInputSchema,
   sessionTurnInputSchema, visualCaptureInputSchema, type AppInfo, type RendererSessionEvent, type Result,
-  type RuntimeInfo, type RuntimeSettings, type SessionOpened
+  type RuntimeInfo, type RuntimeSettings, type SessionOpened, type SettingsSnapshot
 } from '../../shared/contracts/ipc'
 import { RuntimeLocator } from '../runtime/runtimeLocator'
 import { BingoInspector } from '../runtime/bingoInspector'
@@ -25,7 +25,9 @@ export function registerIpc(
   }
   const operationalError = <T>(error: unknown): Result<T> => {
     if (error instanceof BingoCommandError) return { ok: false, error: { code: error.code, msg: error.message, level: error.level, recoverable: error.recoverable } }
-    return { ok: false, error: { code: 'OPERATION_FAILED', msg: error instanceof Error ? error.message : 'The operation failed. Retry.', level: 'page', recoverable: true, action: 'retry' } }
+    const message = error instanceof Error ? error.message : 'The operation failed. Retry.'
+    const knownCode = message.startsWith('SETTINGS_CONFLICT:') ? 'SETTINGS_CONFLICT' : message.startsWith('CONFIG_SHADOWED:') ? 'CONFIG_SHADOWED' : message.startsWith('Cannot read ') ? 'CONFIG_INVALID' : null
+    return { ok: false, error: { code: knownCode ?? 'OPERATION_FAILED', msg: message.replace(/^[A-Z_]+:\s*/, ''), level: knownCode === 'CONFIG_INVALID' ? 'flow' : 'page', recoverable: true, action: 'retry' } }
   }
   const handle = <TInput, TOutput>(channel: string, schema: { parse(value: unknown): TInput }, operation: (input: TInput) => Promise<TOutput>): void => {
     ipcMain.handle(channel, async (event, raw): Promise<Result<TOutput>> => {
@@ -62,6 +64,22 @@ export function registerIpc(
     }
   }
 
+  const readSettingsSnapshot = async (workspacePath: string): Promise<SettingsSnapshot> => {
+    const [snapshot, providers] = await Promise.all([settings.read(workspacePath), readInventory(workspacePath)])
+    return { ...snapshot, providers }
+  }
+  const reconnect = async (): Promise<string | undefined> => {
+    const active = sessions.snapshot()
+    return active ? (await sessions.open(active.sessionId)).connectionId : undefined
+  }
+  const validateProviderModel = async (workspacePath: string, provider: string, model: string): Promise<Awaited<ReturnType<BingoInspector['listProviders']>>> => {
+    const providers = await readInventory(workspacePath)
+    if (!providers.some((item) => item.name === provider)) throw new BingoCommandError('CONFIG_INVALID', `Provider "${provider}" is not available. Choose a listed provider.`, 'field', true)
+    const models = await readModels(workspacePath, provider)
+    if (!models.includes(model)) throw new BingoCommandError('CONFIG_INVALID', `Model "${model}" is not available for ${provider}. Choose a listed model.`, 'field', true)
+    return providers
+  }
+
   ipcMain.handle(IPC.appGetInfo, (event): Result<AppInfo> => {
     trusted(event)
     return { ok: true, value: { appVersion: app.getVersion(), platform: process.platform, arch: process.arch, packaged: app.isPackaged } }
@@ -96,15 +114,22 @@ export function registerIpc(
   handle(IPC.settingsSaveRuntime, runtimeSettingsSaveInputSchema, async ({ workspacePath, provider, model, thinkingLevel }) => {
     const active = sessions.snapshot()
     if (active && !active.idle) throw new Error('Finish or cancel the active turn before changing provider settings')
-    const providers = await readInventory(workspacePath)
-    if (!providers.some((item) => item.name === provider)) throw new BingoCommandError('CONFIG_INVALID', `Provider "${provider}" is not available. Choose a listed provider.`, 'field', true)
-    const models = await readModels(workspacePath, provider)
-    if (!models.includes(model)) throw new BingoCommandError('CONFIG_INVALID', `Model "${model}" is not available for ${provider}. Choose a listed model.`, 'field', true)
+    const providers = await validateProviderModel(workspacePath, provider, model)
     await settings.saveRuntime({ provider, model, thinkingLevel })
-    let connectionId: string | undefined
-    if (active) connectionId = (await sessions.open(active.sessionId)).connectionId
+    const connectionId = await reconnect()
     const runtimeSettings: RuntimeSettings = { providers, provider, model, thinkingLevel }
     return connectionId ? { connectionId, settings: runtimeSettings } : { settings: runtimeSettings }
+  })
+  handle(IPC.settingsRead, runtimeSettingsInputSchema, async ({ workspacePath }) => readSettingsSnapshot(workspacePath))
+  handle(IPC.settingsSave, settingsSaveInputSchema, async ({ workspacePath, baseRevision, values }) => {
+    const active = sessions.snapshot()
+    if (active && !active.idle) throw new Error('Finish or cancel the active turn before saving settings')
+    await validateProviderModel(workspacePath, values.provider, values.model)
+    const saved = await settings.save(workspacePath, baseRevision, values)
+    const providers = await readInventory(workspacePath)
+    const snapshot: SettingsSnapshot = { ...saved, providers }
+    const connectionId = await reconnect()
+    return connectionId ? { connectionId, snapshot } : { snapshot }
   })
   handle(IPC.sessionClose, connectionInputSchema, async ({ connectionId }) => { await sessions.close(connectionId); return { closed: true as const } })
   handle(IPC.sessionSend, sessionSendInputSchema, async ({ connectionId, turnId, prompt }) => { await sessions.send(connectionId, turnId, prompt); return { accepted: true as const } })
