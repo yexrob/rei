@@ -54,3 +54,31 @@ Screenshots: `docs/screenshots/m1/ac-f2-3-running.png`, `ac-f2-3-tools.png`,
 - Inline code block horizontal scrollbar affordance.
 - Error "fix-command" typography.
 - Long-path wrapping >100 chars; error-state vertical anchor consistency.
+
+## Round 3 — M2 sessions & settings (2026-08-10)
+
+Screenshots: `docs/screenshots/m2/session-list.png`, `settings-page.png`.
+
+**Gate: BLOCKED (3 Major) → M3 scope.**
+
+### Major (M3 fix list)
+1. No persistent selected state for the active nav item / current session
+   (nav buttons and session entries look identical; add accent/indicator +
+   `aria-current`, not hover-only).
+2. Provider selector label truncated even at ~2000 px width
+   (`opencode-go · built-in · r…`); show the provider name fully, move
+   metadata (builtin/credential) to secondary text/tooltip.
+3. No narrow-window evidence; the top control group (~650 px) and the
+   two-column settings form cannot fit 800×600 (≈467 px content). Reflow to a
+   second row / single column and provide 800×600 screenshots.
+
+### Minor (M3 backlog)
+- Session hierarchy: use the first user message as the title, highlight the
+  current session, group by day; the 681 counter should not carry hierarchy.
+- Preview normalization: plain text, single-line ellipsis, no raw Markdown in
+  the nav.
+- Settings save states: disabled when clean, in-progress on save, feedback
+  near the button (dirty/saving/saved/error).
+- Distinguish "global default" fields from "current provider" details.
+- Save action stickiness for scrollable settings content (sticky header/footer).
+- Native blue checkbox (`Send images`) vs the black/cream palette — unify in M3.
