@@ -90,6 +90,18 @@ export class StdioBingoSession implements BingoSession {
     return this.write({ protocolVersion: 1, type: 'prompt.respond', commandId: randomUUID(), turnId, promptId, response })
   }
 
+  async listProviders(): Promise<Extract<CliEvent, { type: 'providers.result' }>['providers']> {
+    const event = await this.request({ protocolVersion: 1, type: 'providers.list', commandId: randomUUID() }, 'providers.result')
+    if (event.type !== 'providers.result') throw new Error('Unexpected providers.list response')
+    return event.providers
+  }
+
+  async listModels(provider: string): Promise<string[]> {
+    const event = await this.request({ protocolVersion: 1, type: 'models.list', commandId: randomUUID(), provider }, 'models.result')
+    if (event.type !== 'models.result') throw new Error('Unexpected models.list response')
+    return event.models
+  }
+
   async rename(name: string): Promise<CliSessionMetadata> {
     const event = await this.request({ protocolVersion: 1, type: 'session.rename', commandId: randomUUID(), name }, 'session.renamed')
     if (event.type !== 'session.renamed') throw new Error('Unexpected session.rename response')

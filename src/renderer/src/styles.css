@@ -32,7 +32,13 @@ button { padding: 10px 14px; border: 0; border-radius: 8px; color: #f9f8f4; back
 .sidebar-error { color: #762a23; }
 .runtime-version { margin-top: auto; }
 .chat { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
-.chat header { flex: 0 0 auto; padding: 28px 40px 20px; border-bottom: 1px solid #dedad2; }
+.chat header { flex: 0 0 auto; padding: 20px 32px; border-bottom: 1px solid #dedad2; }
+.chat-header { display: flex; gap: 24px; align-items: center; justify-content: space-between; }
+.runtime-picker { display: flex; gap: 8px; align-items: end; }
+.runtime-picker label { display: grid; gap: 4px; color: #736f66; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.runtime-picker select { max-width: 170px; min-width: 110px; padding: 7px 9px; color: #282722; border: 1px solid #c9c4ba; border-radius: 7px; background: #fffefa; font-size: 12px; text-transform: none; }
+.runtime-picker button { padding: 8px 12px; font-size: 12px; }
+.settings-error { display: flex; gap: 10px; padding: 10px 32px; color: #762a23; border-bottom: 1px solid #dfc4bf; background: #f0d9d5; font-size: 12px; }
 .eyebrow { margin: 0 0 8px; color: #736f66; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 h1, h2 { margin: 0; letter-spacing: -.04em; }
 h1 { font-size: 28px; }
@@ -57,4 +63,5 @@ h1 { font-size: 28px; }
 .secondary-action { color: #282722; border: 1px solid #cec9bf; background: transparent; }
 .danger-action { background: #8b2f27; }
 .dialog-error { padding: 10px 12px; color: #762a23; background: #f0d9d5; }
+@media (max-width: 1050px) { .chat-header { align-items: flex-start; } .runtime-picker { flex-wrap: wrap; justify-content: flex-end; } .runtime-picker select { max-width: 125px; } }
 @media (max-width: 900px) { .app-shell { grid-template-columns: 190px minmax(0,1fr); } .chat header, .timeline { padding-left: 28px; padding-right: 28px; } .composer { padding-left: 28px; padding-right: 28px; } }

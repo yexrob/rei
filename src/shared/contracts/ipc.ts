@@ -5,6 +5,7 @@ export const IPC = {
   appGetInfo: 'app:get-info', runtimeProbe: 'runtime:probe', sessionOpen: 'session:open', sessionClose: 'session:close',
   sessionSend: 'session:send', sessionCancel: 'session:cancel', sessionRespondPrompt: 'session:respond-prompt',
   sessionRename: 'session:rename', sessionDelete: 'session:delete',
+  settingsReadRuntime: 'settings:read-runtime', settingsListModels: 'settings:list-models', settingsSaveRuntime: 'settings:save-runtime',
   sessionEvent: 'session:event', sessionList: 'session:list', visualCapture: 'visual:capture'
 } as const
 
@@ -21,12 +22,21 @@ export type SessionSummary = { id: string; name: string; preview: string; update
 export type SessionHistoryItem = { type: 'message'; value: { id: string; role: 'user' | 'assistant'; markdown: string } }
 export type SessionListOutput = { sessions: SessionSummary[]; warnings: string[] }
 export type SessionOpened = { connectionId: string; metadata: RendererSessionMetadata; history: SessionHistoryItem[] }
+export type ProviderView = { name: string; protocol: 'anthropic' | 'openai'; apiBaseUrl: string; supportsImages: boolean; credentialConfigured: boolean; builtin: boolean }
+export type RuntimeSettings = { providers: ProviderView[]; provider: string; model: string; thinkingLevel: 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' }
 export type VisualCaptureInput = { runId: string; theme: 'dark' | 'light'; state: 'chat' | 'empty' | 'loading' | 'error'; viewport: '1440x900' | '800x600' }
 
 const uuid = z.string().uuid()
 export const sessionOpenInputSchema = z.object({ sessionId: z.string().nullable() })
 export const sessionRenameInputSchema = z.object({ sessionId: z.string().min(1).max(255), name: z.string().trim().min(1).max(80) })
 export const sessionDeleteInputSchema = z.object({ sessionId: z.string().min(1).max(255) })
+export const runtimeSettingsInputSchema = z.object({ workspacePath: z.string().min(1) })
+export const modelListInputSchema = runtimeSettingsInputSchema.extend({ provider: z.string().min(1) })
+export const runtimeSettingsSaveInputSchema = runtimeSettingsInputSchema.extend({
+  provider: z.string().min(1),
+  model: z.string().min(1),
+  thinkingLevel: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max'])
+})
 export const connectionInputSchema = z.object({ connectionId: uuid })
 export const sessionSendInputSchema = z.object({ connectionId: uuid, turnId: uuid, prompt: z.string().min(1).max(1_000_000) })
 export const sessionTurnInputSchema = z.object({ connectionId: uuid, turnId: uuid })
@@ -43,6 +53,9 @@ export type BingoGuiApi = {
   openSession(input: { sessionId: string | null }): Promise<Result<SessionOpened>>
   renameSession(input: { sessionId: string; name: string }): Promise<Result<{ previousId: string; session: SessionSummary }>>
   deleteSession(input: { sessionId: string }): Promise<Result<{ deletedId: string }>>
+  readRuntimeSettings(input: { workspacePath: string }): Promise<Result<RuntimeSettings>>
+  listModels(input: { workspacePath: string; provider: string }): Promise<Result<{ provider: string; models: string[] }>>
+  saveRuntimeSettings(input: { workspacePath: string; provider: string; model: string; thinkingLevel: RuntimeSettings['thinkingLevel'] }): Promise<Result<{ connectionId?: string; settings: RuntimeSettings }>>
   closeSession(input: { connectionId: string }): Promise<Result<{ closed: true }>>
   sendTurn(input: { connectionId: string; turnId: string; prompt: string }): Promise<Result<{ accepted: true }>>
   cancelTurn(input: { connectionId: string; turnId: string }): Promise<Result<{ requested: true }>>

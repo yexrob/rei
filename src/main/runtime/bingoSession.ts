@@ -22,6 +22,8 @@ export interface BingoSession {
   sendTurn(turnId: string, prompt: string): Promise<void>
   cancelTurn(turnId: string): Promise<void>
   respondToPrompt(turnId: string, promptId: string, response: PromptResponse): Promise<void>
+  listProviders(): Promise<Extract<CliEvent, { type: 'providers.result' }>['providers']>
+  listModels(provider: string): Promise<string[]>
   rename(name: string): Promise<CliSessionMetadata>
   delete(): Promise<string>
   close(): Promise<void>

@@ -5,7 +5,7 @@ import type { BingoSession, BingoSessionHandlers } from './bingoSession'
 export type ManagedSessionEvent = { connectionId: string; sequence: number; payload: CliEvent }
 export type SessionFactory = (handlers: BingoSessionHandlers) => BingoSession
 
-type Active = { connectionId: string; sessionId: string; session: BingoSession; sequence: number; turnId: string | null; prompts: Set<string> }
+type Active = { connectionId: string; sessionId: string; metadata: CliSessionMetadata; session: BingoSession; sequence: number; turnId: string | null; prompts: Set<string> }
 
 export class SessionManager {
   private active: Active | null = null
@@ -33,7 +33,7 @@ export class SessionManager {
       })
       const metadata = await session.open(sessionId)
       if (!metadata.sessionId) throw new Error('Conversation session.ready did not contain a session ID')
-      this.active = { connectionId, sessionId: metadata.sessionId, session, sequence: 0, turnId: null, prompts: new Set() }
+      this.active = { connectionId, sessionId: metadata.sessionId, metadata, session, sequence: 0, turnId: null, prompts: new Set() }
       return { connectionId, metadata }
     })
   }
@@ -68,6 +68,7 @@ export class SessionManager {
         if (active.turnId) throw new Error('Session mutation is only available while idle')
         const metadata = await active.session.rename(name)
         active.sessionId = metadata.sessionId
+        active.metadata = metadata
         return metadata
       }
       const session = this.factory({ onEvent: () => undefined, onExit: () => undefined })
@@ -97,6 +98,27 @@ export class SessionManager {
         await session.close()
       }
     })
+  }
+
+  snapshot(): { connectionId: string; sessionId: string; idle: boolean } | null {
+    const active = this.active
+    return active ? { connectionId: active.connectionId, sessionId: active.sessionId, idle: active.turnId === null } : null
+  }
+
+  currentMetadata(): CliSessionMetadata | null {
+    return this.active?.metadata ?? null
+  }
+
+  listProviders(): Promise<Extract<CliEvent, { type: 'providers.result' }>['providers']> {
+    const active = this.active
+    if (!active || active.turnId) throw new Error('An idle active session is required')
+    return active.session.listProviders()
+  }
+
+  listModels(provider: string): Promise<string[]> {
+    const active = this.active
+    if (!active || active.turnId) throw new Error('An idle active session is required')
+    return active.session.listModels(provider)
   }
 
   async close(connectionId?: string): Promise<void> {

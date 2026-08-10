@@ -3,7 +3,8 @@ import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
 import type { RuntimeLocator } from '../runtime/runtimeLocator'
 import type { SessionManager } from '../runtime/sessionManager'
 import type { TranscriptRepository } from '../storage/transcriptRepository'
-import { IPC, type Result, type SessionListOutput, type SessionOpened } from '../../shared/contracts/ipc'
+import type { SettingsRepository } from '../storage/settingsRepository'
+import { IPC, type Result, type RuntimeSettings, type SessionListOutput, type SessionOpened } from '../../shared/contracts/ipc'
 
 const electron = vi.hoisted(() => ({
   handlers: new Map<string, (event: IpcMainInvokeEvent, input?: unknown) => unknown>()
@@ -30,7 +31,9 @@ describe('registerIpc session:list', () => {
       { webContents } as unknown as BrowserWindow,
       {} as RuntimeLocator,
       {} as SessionManager,
-      transcripts as unknown as TranscriptRepository
+      transcripts as unknown as TranscriptRepository,
+      {} as SettingsRepository,
+      '/bingo'
     )
 
     const handler = electron.handlers.get(IPC.sessionList)
@@ -51,7 +54,7 @@ describe('registerIpc session:list', () => {
     }
     const mainFrame = {}
     const webContents = { mainFrame }
-    registerIpc({ webContents } as unknown as BrowserWindow, {} as RuntimeLocator, sessions as unknown as SessionManager, transcripts as unknown as TranscriptRepository)
+    registerIpc({ webContents } as unknown as BrowserWindow, {} as RuntimeLocator, sessions as unknown as SessionManager, transcripts as unknown as TranscriptRepository, {} as SettingsRepository, '/bingo')
 
     const handler = electron.handlers.get(IPC.sessionOpen)
     const result = await handler?.({ sender: webContents, senderFrame: mainFrame } as unknown as IpcMainInvokeEvent, { sessionId: 'session-1' }) as Result<SessionOpened>
@@ -60,5 +63,24 @@ describe('registerIpc session:list', () => {
     expect(sessions.open).toHaveBeenCalledWith('session-1')
     expect(result).toMatchObject({ ok: true, value: { history } })
     if (result.ok) expect(result.value.metadata).not.toHaveProperty('transcriptPath')
+  })
+
+  it('rejects an unavailable model before settings persistence', async () => {
+    const providers: RuntimeSettings['providers'] = [{ name: 'default', protocol: 'anthropic', apiBaseUrl: 'https://example.test', supportsImages: true, credentialConfigured: true, builtin: false }]
+    const sessions = {
+      snapshot: vi.fn().mockReturnValue({ connectionId: crypto.randomUUID(), sessionId: 'session-1', idle: true }),
+      listProviders: vi.fn().mockResolvedValue(providers),
+      listModels: vi.fn().mockResolvedValue(['valid-model'])
+    }
+    const settings = { saveRuntime: vi.fn() }
+    const mainFrame = {}
+    const webContents = { mainFrame }
+    registerIpc({ webContents } as unknown as BrowserWindow, {} as RuntimeLocator, sessions as unknown as SessionManager, {} as TranscriptRepository, settings as unknown as SettingsRepository, '/bingo')
+
+    const handler = electron.handlers.get(IPC.settingsSaveRuntime)
+    const result = await handler?.({ sender: webContents, senderFrame: mainFrame } as unknown as IpcMainInvokeEvent, { workspacePath: '/tmp', provider: 'default', model: 'invalid-model', thinkingLevel: 'off' }) as Result<unknown>
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'CONFIG_INVALID', level: 'field' } })
+    expect(settings.saveRuntime).not.toHaveBeenCalled()
   })
 })

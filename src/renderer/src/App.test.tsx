@@ -33,6 +33,13 @@ function opened(sessionId: string, history: SessionOpened['history'] = []): Sess
 
 function api(list: SessionListOutput): BingoGuiApi {
   let listener: ((event: RendererSessionEvent) => void) | undefined
+  const runtimeSettings = {
+    providers: [
+      { name: 'default', protocol: 'anthropic' as const, apiBaseUrl: 'https://example.test', supportsImages: true, credentialConfigured: true, builtin: false },
+      { name: 'opencode-go', protocol: 'openai' as const, apiBaseUrl: 'https://opencode.ai/zen/go', supportsImages: false, credentialConfigured: false, builtin: true }
+    ],
+    provider: 'opencode-go', model: 'gpt-5.6-luna', thinkingLevel: 'off' as const
+  }
   return {
     getAppInfo: vi.fn(),
     probeRuntime: vi.fn().mockResolvedValue({ ok: true, value: { binaryPath: '/bingo', bingoVersion: '0.4.0', protocolVersion: 1, workspacePath: '/workspace' } }),
@@ -43,6 +50,9 @@ function api(list: SessionListOutput): BingoGuiApi {
     ] : []) })),
     renameSession: vi.fn().mockImplementation(async ({ sessionId, name }: { sessionId: string; name: string }) => ({ ok: true, value: { previousId: sessionId, session: { ...firstSession, id: `${sessionId}--${name}`, name } } })),
     deleteSession: vi.fn().mockImplementation(async ({ sessionId }: { sessionId: string }) => ({ ok: true, value: { deletedId: sessionId } })),
+    readRuntimeSettings: vi.fn().mockResolvedValue({ ok: true, value: runtimeSettings }),
+    listModels: vi.fn().mockImplementation(async ({ provider }: { provider: string }) => ({ ok: true, value: { provider, models: provider === 'default' ? ['model-default'] : ['gpt-5.6-luna'] } })),
+    saveRuntimeSettings: vi.fn().mockImplementation(async (input) => ({ ok: true, value: { connectionId: crypto.randomUUID(), settings: { ...runtimeSettings, ...input } } })),
     closeSession: vi.fn().mockResolvedValue({ ok: true, value: { closed: true } }),
     sendTurn: vi.fn().mockResolvedValue({ ok: true, value: { accepted: true } }),
     cancelTurn: vi.fn(),
@@ -99,5 +109,21 @@ describe('session sidebar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete conversation' }))
     await waitFor(() => expect(bridge.deleteSession).toHaveBeenCalledWith({ sessionId: `${firstSession.id}--Renamed` }))
     expect(screen.queryAllByRole('button', { name: /Renamed/ }).some((button) => button.classList.contains('session-item'))).toBe(false)
+  })
+
+  it('shows credential state, reloads models by provider, and saves validated runtime choices', async () => {
+    const bridge = api({ sessions: [], warnings: [] })
+    window.bingoGui = bridge
+    render(<App />)
+
+    const provider = await screen.findByLabelText('Provider')
+    expect((provider as HTMLSelectElement).value).toBe('opencode-go')
+    expect(screen.getByRole('option', { name: 'opencode-go · built-in · not configured' })).toBeTruthy()
+    fireEvent.change(provider, { target: { value: 'default' } })
+    await waitFor(() => expect(bridge.listModels).toHaveBeenCalledWith({ workspacePath: '/workspace', provider: 'default' }))
+    expect(await screen.findByRole('option', { name: 'model-default' })).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Thinking level'), { target: { value: 'high' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(bridge.saveRuntimeSettings).toHaveBeenCalledWith({ workspacePath: '/workspace', provider: 'default', model: 'model-default', thinkingLevel: 'high' }))
   })
 })

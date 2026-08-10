@@ -5,6 +5,7 @@ import { registerIpc, sendSessionEvent } from './ipc/registerIpc'
 import { RuntimeLocator } from './runtime/runtimeLocator'
 import { SessionManager } from './runtime/sessionManager'
 import { StdioBingoSession } from './runtime/stdioBingoSession'
+import { SettingsRepository } from './storage/settingsRepository'
 import { TranscriptRepository } from './storage/transcriptRepository'
 
 let sessions: SessionManager | null = null
@@ -24,8 +25,11 @@ function createWindow(): void {
     }
   )
   const home = process.env.HOME ?? ''
+  const binaryPath = process.env.BINGO_GUI_BINARY ?? 'bingo'
   const transcripts = new TranscriptRepository(join(home, '.local', 'share', 'bingo', 'transcripts'))
-  registerIpc(window, locator, sessions, transcripts)
+  const userConfigDirectory = process.env.XDG_CONFIG_HOME ?? join(home, '.config')
+  const settings = new SettingsRepository(join(userConfigDirectory, 'bingo', 'settings.json'))
+  registerIpc(window, locator, sessions, transcripts, settings, binaryPath)
   window.once('ready-to-show', () => window.show())
   if (process.env.BINGO_GUI_E2E_PROMPT && !app.isPackaged) {
     window.webContents.once('did-finish-load', () => { void runEvidence(window, process.env.BINGO_GUI_E2E_PROMPT as string, process.env.BINGO_GUI_E2E_SCENARIO) })

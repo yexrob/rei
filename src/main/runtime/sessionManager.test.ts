@@ -8,7 +8,7 @@ describe('SessionManager', () => {
   it('closes the old session before opening another and rejects stale connections', async () => {
     const sessions: Array<BingoSession & { close: ReturnType<typeof vi.fn> }> = []
     const factory = (): BingoSession => {
-      const session = { open: vi.fn().mockResolvedValue(metadata), sendTurn: vi.fn(), cancelTurn: vi.fn(), respondToPrompt: vi.fn(), rename: vi.fn(), delete: vi.fn(), close: vi.fn() }
+      const session = { open: vi.fn().mockResolvedValue(metadata), sendTurn: vi.fn(), cancelTurn: vi.fn(), respondToPrompt: vi.fn(), listProviders: vi.fn(), listModels: vi.fn(), rename: vi.fn(), delete: vi.fn(), close: vi.fn() }
       sessions.push(session)
       return session
     }
@@ -24,7 +24,7 @@ describe('SessionManager', () => {
     const instances: Array<BingoSession & { open: ReturnType<typeof vi.fn>; rename: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }> = []
     const factory = (): BingoSession => {
       const session = {
-        open: vi.fn().mockResolvedValue(metadata), sendTurn: vi.fn(), cancelTurn: vi.fn(), respondToPrompt: vi.fn(),
+        open: vi.fn().mockResolvedValue(metadata), sendTurn: vi.fn(), cancelTurn: vi.fn(), respondToPrompt: vi.fn(), listProviders: vi.fn(), listModels: vi.fn(),
         rename: vi.fn().mockResolvedValue({ ...metadata, sessionId: 's2--renamed', displayName: 'renamed' }), delete: vi.fn(), close: vi.fn()
       }
       instances.push(session)

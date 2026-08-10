@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import type { PromptResponse, CliEvent } from '../../shared/contracts/cli'
-import type { GuiError, RendererSessionEvent, RuntimeInfo, SessionSummary } from '../../shared/contracts/ipc'
+import type { GuiError, RendererSessionEvent, RuntimeInfo, RuntimeSettings, SessionSummary } from '../../shared/contracts/ipc'
 import { chatReducer, initialChatState } from './state/chatReducer'
 
 type Connection = { id: string; sequence: number }
@@ -18,6 +18,13 @@ export default function App(): React.JSX.Element {
   const [renameDraft, setRenameDraft] = useState('')
   const [deleteSession, setDeleteSession] = useState<SessionSummary | null>(null)
   const [sessionMutationError, setSessionMutationError] = useState<GuiError | null>(null)
+  const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings | null>(null)
+  const [selectedProvider, setSelectedProvider] = useState('')
+  const [models, setModels] = useState<string[]>([])
+  const [selectedModel, setSelectedModel] = useState('')
+  const [thinkingLevel, setThinkingLevel] = useState<RuntimeSettings['thinkingLevel']>('off')
+  const [settingsError, setSettingsError] = useState<GuiError | null>(null)
+  const [savingRuntime, setSavingRuntime] = useState(false)
   const [flowError, setFlowError] = useState<GuiError | null>(null)
   const [connected, setConnected] = useState(false)
   const connection = useRef<Connection | null>(null)
@@ -48,6 +55,16 @@ export default function App(): React.JSX.Element {
       connection.current = { id: opened.value.connectionId, sequence: 0 }
       setActiveSession({ id: opened.value.metadata.sessionId, name: opened.value.metadata.displayName, preview: '', updatedAt: new Date().toISOString(), messageCount: 0 })
       dispatch({ type: 'restore', history: opened.value.history })
+      const loadedSettings = await withTimeout(window.bingoGui.readRuntimeSettings({ workspacePath: probe.value.workspacePath }), 12_000)
+      if (loadedSettings.ok) {
+        setRuntimeSettings(loadedSettings.value)
+        setSelectedProvider(loadedSettings.value.provider)
+        setSelectedModel(loadedSettings.value.model)
+        setThinkingLevel(loadedSettings.value.thinkingLevel)
+        const listedModels = await withTimeout(window.bingoGui.listModels({ workspacePath: probe.value.workspacePath, provider: loadedSettings.value.provider }), 12_000)
+        if (listedModels.ok) setModels(listedModels.value.models)
+        else setSettingsError(listedModels.error)
+      } else setSettingsError(loadedSettings.error)
       setConnected(true)
     } catch {
       setFlowError({ code: 'CONNECTION_TIMEOUT', msg: 'Could not connect to bingo within 12 seconds. Retry.', level: 'flow', recoverable: true, action: 'retry' })
@@ -123,6 +140,29 @@ export default function App(): React.JSX.Element {
     setSessionMenu(null)
   }
 
+  const changeProvider = async (provider: string): Promise<void> => {
+    if (!runtime) return
+    setSelectedProvider(provider)
+    setSelectedModel('')
+    setModels([])
+    setSettingsError(null)
+    const result = await window.bingoGui.listModels({ workspacePath: runtime.workspacePath, provider })
+    if (!result.ok) { setSettingsError(result.error); return }
+    setModels(result.value.models)
+    setSelectedModel(result.value.models[0] ?? '')
+  }
+
+  const saveRuntime = async (): Promise<void> => {
+    if (!runtime || !selectedProvider || !selectedModel) return
+    setSavingRuntime(true)
+    setSettingsError(null)
+    const result = await window.bingoGui.saveRuntimeSettings({ workspacePath: runtime.workspacePath, provider: selectedProvider, model: selectedModel, thinkingLevel })
+    setSavingRuntime(false)
+    if (!result.ok) { setSettingsError(result.error); return }
+    setRuntimeSettings(result.value.settings)
+    if (result.value.connectionId) connection.current = { id: result.value.connectionId, sequence: 0 }
+  }
+
   const submit = async (): Promise<void> => {
     const active = connection.current
     if (!draft.trim() || state.turnId || !active) return
@@ -178,7 +218,13 @@ export default function App(): React.JSX.Element {
         <span className="runtime-version">{runtime ? `bingo ${runtime.bingoVersion} · protocol ${runtime.protocolVersion}` : 'Connecting…'}</span>
       </nav>
       <main className="chat">
-        <header><p className="eyebrow">Local conversation</p><h1>{activeSession?.name ?? 'New conversation'}</h1></header>
+        <header className="chat-header"><div><p className="eyebrow">Local conversation</p><h1>{activeSession?.name ?? 'New conversation'}</h1></div>{runtimeSettings && <div className="runtime-picker" aria-label="Runtime settings">
+          <label>Provider<select aria-label="Provider" value={selectedProvider} onChange={(event) => void changeProvider(event.target.value)}>{runtimeSettings.providers.map((provider) => <option value={provider.name} key={provider.name}>{provider.name}{provider.builtin ? ' · built-in' : ''}{provider.credentialConfigured ? '' : ' · not configured'}</option>)}</select></label>
+          <label>Model<select aria-label="Model" value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)}><option value="" disabled>Select model</option>{models.map((model) => <option value={model} key={model}>{model}</option>)}</select></label>
+          <label>Thinking<select aria-label="Thinking level" value={thinkingLevel} onChange={(event) => setThinkingLevel(event.target.value as RuntimeSettings['thinkingLevel'])}>{['off', 'low', 'medium', 'high', 'xhigh', 'max'].map((level) => <option value={level} key={level}>{level}</option>)}</select></label>
+          <button type="button" disabled={savingRuntime || !selectedModel || Boolean(state.turnId)} onClick={() => void saveRuntime()}>{savingRuntime ? 'Saving…' : 'Apply'}</button>
+        </div>}</header>
+        {settingsError && <div className="settings-error" role="alert"><strong>{settingsError.code}</strong><span>{settingsError.msg}</span></div>}
         <section className="timeline" aria-live="polite">
           {state.messages.length === 0 && <p className="chat-hint">Send a prompt to start working with bingo.</p>}
           {state.messages.map((message) => <article className={`message ${message.role}`} key={message.id}><span>{message.role === 'user' ? 'You' : 'bingo'}</span><Markdown skipHtml>{message.markdown}</Markdown>{message.status === 'interrupted' && <small>Interrupted</small>}</article>)}

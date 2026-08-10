@@ -43,11 +43,16 @@ export const cliSessionMetadataSchema = z.object({
   supportsImages: z.boolean()
 })
 
-export const cliInspectionMetadataSchema = cliSessionMetadataSchema.omit({
-  sessionId: true,
-  displayName: true,
-  transcriptPath: true,
-  resumed: true
+export const cliInspectionMetadataSchema = z.object({
+  bingoVersion: z.string(),
+  protocolVersion: z.literal(1),
+  cwd: z.string().optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
+  thinkingLevel: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']).optional(),
+  permissionMode: z.string().optional(),
+  theme: z.enum(['auto', 'dark', 'light']).optional(),
+  supportsImages: z.boolean().optional()
 })
 
 const optionSchema = z.object({ id: z.string(), label: z.string(), description: z.string().optional() })
