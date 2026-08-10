@@ -6,9 +6,10 @@ import {
 } from '../../shared/contracts/ipc'
 import { RuntimeLocator } from '../runtime/runtimeLocator'
 import { SessionManager } from '../runtime/sessionManager'
+import { TranscriptRepository } from '../storage/transcriptRepository'
 import { VisualCapture, visualCaptureEnabled } from '../visual/capture'
 
-export function registerIpc(window: BrowserWindow, locator: RuntimeLocator, sessions: SessionManager): void {
+export function registerIpc(window: BrowserWindow, locator: RuntimeLocator, sessions: SessionManager, transcripts: TranscriptRepository): void {
   const trusted = (event: IpcMainInvokeEvent): void => {
     if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('Untrusted IPC sender')
   }
@@ -27,6 +28,10 @@ export function registerIpc(window: BrowserWindow, locator: RuntimeLocator, sess
   ipcMain.handle(IPC.runtimeProbe, async (event): Promise<Result<RuntimeInfo>> => {
     trusted(event)
     return locator.probe(process.env.BINGO_GUI_CWD ?? process.cwd())
+  })
+  ipcMain.handle(IPC.sessionList, async (event): Promise<Result<Awaited<ReturnType<TranscriptRepository['list']>>>> => {
+    trusted(event)
+    try { return { ok: true, value: await transcripts.list() } } catch (error) { return operationalError(error) }
   })
   handle(IPC.sessionOpen, sessionOpenInputSchema, async ({ sessionId }): Promise<SessionOpened> => {
     const opened = await sessions.open(sessionId ?? undefined)
