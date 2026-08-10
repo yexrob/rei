@@ -13,6 +13,11 @@ export default function App(): React.JSX.Element {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [sessionListError, setSessionListError] = useState<GuiError | null>(null)
   const [activeSession, setActiveSession] = useState<SessionSummary | null>(null)
+  const [sessionMenu, setSessionMenu] = useState<string | null>(null)
+  const [renameSession, setRenameSession] = useState<SessionSummary | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
+  const [deleteSession, setDeleteSession] = useState<SessionSummary | null>(null)
+  const [sessionMutationError, setSessionMutationError] = useState<GuiError | null>(null)
   const [flowError, setFlowError] = useState<GuiError | null>(null)
   const [connected, setConnected] = useState(false)
   const connection = useRef<Connection | null>(null)
@@ -90,6 +95,34 @@ export default function App(): React.JSX.Element {
     setConnected(true)
   }
 
+  const submitRename = async (): Promise<void> => {
+    if (!renameSession || !renameDraft.trim()) return
+    setSessionMutationError(null)
+    const result = await window.bingoGui.renameSession({ sessionId: renameSession.id, name: renameDraft })
+    if (!result.ok) { setSessionMutationError(result.error); return }
+    setSessions((current) => current.map((item) => item.id === result.value.previousId ? result.value.session : item))
+    if (activeSession?.id === result.value.previousId) setActiveSession(result.value.session)
+    setRenameSession(null)
+    setSessionMenu(null)
+  }
+
+  const confirmDelete = async (): Promise<void> => {
+    if (!deleteSession) return
+    setSessionMutationError(null)
+    const result = await window.bingoGui.deleteSession({ sessionId: deleteSession.id })
+    if (!result.ok) { setSessionMutationError(result.error); return }
+    setSessions((current) => current.filter((item) => item.id !== result.value.deletedId))
+    if (activeSession?.id === result.value.deletedId) {
+      connection.current = null
+      activeTurnId.current = null
+      setActiveSession(null)
+      setConnected(false)
+      dispatch({ type: 'reset' })
+    }
+    setDeleteSession(null)
+    setSessionMenu(null)
+  }
+
   const submit = async (): Promise<void> => {
     const active = connection.current
     if (!draft.trim() || state.turnId || !active) return
@@ -128,11 +161,18 @@ export default function App(): React.JSX.Element {
           {sessionListError && <p className="sidebar-error" role="alert">{sessionListError.msg}</p>}
           {sessions.length === 0 && !sessionListError && <p className="sidebar-empty">No saved conversations yet.</p>}
           {sessions.map((session) => (
-            <button type="button" className={`session-item${activeSession?.id === session.id ? ' active' : ''}`} aria-current={activeSession?.id === session.id ? 'page' : undefined} key={session.id} onClick={() => void openSession(session)}>
-              <span>{session.name}</span>
-              <small>{session.preview || 'Empty conversation'}</small>
-              <time dateTime={session.updatedAt}>{formatSessionTime(session.updatedAt)}</time>
-            </button>
+            <div className={`session-row${activeSession?.id === session.id ? ' active' : ''}`} key={session.id}>
+              <button type="button" className="session-item" aria-current={activeSession?.id === session.id ? 'page' : undefined} onClick={() => void openSession(session)}>
+                <span>{session.name}</span>
+                <small>{session.preview || 'Empty conversation'}</small>
+                <time dateTime={session.updatedAt}>{formatSessionTime(session.updatedAt)}</time>
+              </button>
+              <button type="button" className="session-more" aria-label={`Actions for ${session.name}`} onClick={() => setSessionMenu((current) => current === session.id ? null : session.id)}>•••</button>
+              {sessionMenu === session.id && <div className="session-menu">
+                <button type="button" onClick={() => { setRenameSession(session); setRenameDraft(session.name); setSessionMutationError(null) }}>Rename</button>
+                <button type="button" onClick={() => { setDeleteSession(session); setSessionMutationError(null) }}>Delete</button>
+              </div>}
+            </div>
           ))}
         </div>
         <span className="runtime-version">{runtime ? `bingo ${runtime.bingoVersion} · protocol ${runtime.protocolVersion}` : 'Connecting…'}</span>
@@ -148,6 +188,8 @@ export default function App(): React.JSX.Element {
         <footer className="composer"><textarea aria-label="Message" value={draft} disabled={Boolean(state.turnId) || !connected} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit() } }} placeholder="Ask bingo…" />{state.turnId ? <button type="button" onClick={() => void cancel()}>Cancel</button> : <button type="button" onClick={() => void submit()}>Send</button>}</footer>
       </main>
       {prompt && <div className="modal-backdrop" role="presentation"><section className="prompt-modal" role="dialog" aria-modal="true" aria-labelledby="prompt-title"><p className="eyebrow">{prompt.kind}</p><h2 id="prompt-title">{prompt.title}</h2><p>{prompt.question}</p><div className="prompt-actions">{prompt.options.map((option) => <button type="button" key={option.id} onClick={() => void respond({ kind: 'option', optionId: option.id })}>{option.label}</button>)}<button type="button" onClick={() => void respond({ kind: 'cancel' })}>Cancel</button></div></section></div>}
+      {renameSession && <div className="modal-backdrop" role="presentation"><section className="prompt-modal" role="dialog" aria-modal="true" aria-labelledby="rename-title"><p className="eyebrow">Conversation</p><h2 id="rename-title">Rename conversation</h2><label className="field-label">Name<input autoFocus value={renameDraft} onChange={(event) => setRenameDraft(event.target.value)} /></label>{sessionMutationError && <p className="dialog-error" role="alert">{sessionMutationError.msg}</p>}<div className="prompt-actions"><button type="button" onClick={() => void submitRename()}>Save</button><button type="button" className="secondary-action" onClick={() => setRenameSession(null)}>Cancel</button></div></section></div>}
+      {deleteSession && <div className="modal-backdrop" role="presentation"><section className="prompt-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-title"><p className="eyebrow">Permanent action</p><h2 id="delete-title">Delete “{deleteSession.name}”?</h2><p>This removes the conversation transcript. This action cannot be undone.</p>{sessionMutationError && <p className="dialog-error" role="alert">{sessionMutationError.msg}</p>}<div className="prompt-actions"><button type="button" className="danger-action" onClick={() => void confirmDelete()}>Delete conversation</button><button type="button" className="secondary-action" onClick={() => setDeleteSession(null)}>Cancel</button></div></section></div>}
     </div>
   )
 }

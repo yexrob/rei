@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { cliEventSchema, clientCommandSchema, type CliEvent, type CliSessionMetadata, type ClientCommand, type PromptResponse } from '../../shared/contracts/cli'
 import type { BingoSession, BingoSessionHandlers } from './bingoSession'
+import { BingoCommandError } from './bingoSession'
 
 const MAX_LINE_BYTES = 8 * 1024 * 1024
 const STARTUP_TIMEOUT_MS = 10_000
@@ -18,6 +19,7 @@ export class StdioBingoSession implements BingoSession {
   private forceTimer: NodeJS.Timeout | null = null
   private exitPromise: Promise<void> | null = null
   private resolveExit: (() => void) | null = null
+  private commandWaiters = new Map<string, { resolve: (event: CliEvent) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>()
 
   constructor(
     private readonly binaryPath: string,
@@ -54,6 +56,13 @@ export class StdioBingoSession implements BingoSession {
       this.resolveExit = null
       if (this.closed) return
       const error = code === 0 ? null : new Error(`bingo exited before session close (code=${code ?? 'null'}, signal=${signal ?? 'null'})`)
+      if (error) {
+        for (const waiter of this.commandWaiters.values()) {
+          clearTimeout(waiter.timer)
+          waiter.reject(error)
+        }
+        this.commandWaiters.clear()
+      }
       this.rejectReady?.(error ?? new Error('bingo exited before session.ready'))
       this.handlers.onExit(error)
     })
@@ -79,6 +88,19 @@ export class StdioBingoSession implements BingoSession {
 
   respondToPrompt(turnId: string, promptId: string, response: PromptResponse): Promise<void> {
     return this.write({ protocolVersion: 1, type: 'prompt.respond', commandId: randomUUID(), turnId, promptId, response })
+  }
+
+  async rename(name: string): Promise<CliSessionMetadata> {
+    const event = await this.request({ protocolVersion: 1, type: 'session.rename', commandId: randomUUID(), name }, 'session.renamed')
+    if (event.type !== 'session.renamed') throw new Error('Unexpected session.rename response')
+    return event.metadata
+  }
+
+  async delete(): Promise<string> {
+    const event = await this.request({ protocolVersion: 1, type: 'session.delete', commandId: randomUUID() }, 'session.deleted')
+    if (event.type !== 'session.deleted') throw new Error('Unexpected session.delete response')
+    await Promise.race([this.exitPromise ?? Promise.resolve(), new Promise<void>((resolve) => setTimeout(resolve, 500))])
+    return event.deletedSessionId
   }
 
   async close(): Promise<void> {
@@ -148,7 +170,39 @@ export class StdioBingoSession implements BingoSession {
       this.resolveReady = null
       this.rejectReady = null
     }
-    this.handlers.onEvent(event)
+    const commandId = 'commandId' in event ? event.commandId : undefined
+    let consumed = false
+    if (commandId) {
+      const waiter = this.commandWaiters.get(commandId)
+      if (waiter) {
+        consumed = true
+        clearTimeout(waiter.timer)
+        this.commandWaiters.delete(commandId)
+        if (event.type === 'error') waiter.reject(new BingoCommandError(event.code, event.msg, event.level, event.recoverable))
+        else waiter.resolve(event)
+      }
+    }
+    if (!consumed) this.handlers.onEvent(event)
+  }
+
+  private request(command: ClientCommand, expectedType: CliEvent['type']): Promise<CliEvent> {
+    const commandId = command.commandId
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.commandWaiters.delete(commandId)
+        reject(new Error(`${command.type} did not complete within 10 seconds`))
+      }, STARTUP_TIMEOUT_MS)
+      this.commandWaiters.set(commandId, {
+        resolve: (event) => event.type === expectedType ? resolve(event) : reject(new Error(`Expected ${expectedType}, received ${event.type}`)),
+        reject,
+        timer
+      })
+      void this.write(command).catch((error: unknown) => {
+        clearTimeout(timer)
+        this.commandWaiters.delete(commandId)
+        reject(error instanceof Error ? error : new Error('Failed to write bingo command'))
+      })
+    })
   }
 
   private write(command: ClientCommand): Promise<void> {
@@ -171,6 +225,11 @@ export class StdioBingoSession implements BingoSession {
     this.rejectReady?.(error)
     this.rejectReady = null
     this.resolveReady = null
+    for (const waiter of this.commandWaiters.values()) {
+      clearTimeout(waiter.timer)
+      waiter.reject(error)
+    }
+    this.commandWaiters.clear()
     const child = this.child
     this.child = null
     this.clearTerminationTimers()

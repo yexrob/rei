@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
-  IPC, connectionInputSchema, sessionOpenInputSchema, sessionPromptInputSchema, sessionSendInputSchema,
+  IPC, connectionInputSchema, sessionDeleteInputSchema, sessionOpenInputSchema, sessionPromptInputSchema, sessionRenameInputSchema, sessionSendInputSchema,
   sessionTurnInputSchema, visualCaptureInputSchema, type BingoGuiApi, type RendererSessionEvent
 } from '../shared/contracts/ipc'
 
@@ -9,6 +9,8 @@ const api: BingoGuiApi = {
   probeRuntime: () => ipcRenderer.invoke(IPC.runtimeProbe),
   listSessions: () => ipcRenderer.invoke(IPC.sessionList),
   openSession: (input) => ipcRenderer.invoke(IPC.sessionOpen, sessionOpenInputSchema.parse(input)),
+  renameSession: (input) => ipcRenderer.invoke(IPC.sessionRename, sessionRenameInputSchema.parse(input)),
+  deleteSession: (input) => ipcRenderer.invoke(IPC.sessionDelete, sessionDeleteInputSchema.parse(input)),
   closeSession: (input) => ipcRenderer.invoke(IPC.sessionClose, connectionInputSchema.parse(input)),
   sendTurn: (input) => ipcRenderer.invoke(IPC.sessionSend, sessionSendInputSchema.parse(input)),
   cancelTurn: (input) => ipcRenderer.invoke(IPC.sessionCancel, sessionTurnInputSchema.parse(input)),

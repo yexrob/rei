@@ -61,6 +61,44 @@ export class SessionManager {
     return active.session.respondToPrompt(turnId, promptId, response)
   }
 
+  rename(sessionId: string, name: string): Promise<CliSessionMetadata> {
+    return this.serialize(async () => {
+      const active = this.active
+      if (active?.sessionId === sessionId) {
+        if (active.turnId) throw new Error('Session mutation is only available while idle')
+        const metadata = await active.session.rename(name)
+        active.sessionId = metadata.sessionId
+        return metadata
+      }
+      const session = this.factory({ onEvent: () => undefined, onExit: () => undefined })
+      try {
+        await session.open(sessionId)
+        return await session.rename(name)
+      } finally {
+        await session.close()
+      }
+    })
+  }
+
+  delete(sessionId: string): Promise<string> {
+    return this.serialize(async () => {
+      const active = this.active
+      if (active?.sessionId === sessionId) {
+        if (active.turnId) throw new Error('Session mutation is only available while idle')
+        const deletedId = await active.session.delete()
+        if (this.active === active) this.active = null
+        return deletedId
+      }
+      const session = this.factory({ onEvent: () => undefined, onExit: () => undefined })
+      try {
+        await session.open(sessionId)
+        return await session.delete()
+      } finally {
+        await session.close()
+      }
+    })
+  }
+
   async close(connectionId?: string): Promise<void> {
     const active = this.active
     if (connectionId && active?.connectionId !== connectionId) throw new Error('Connection is stale')

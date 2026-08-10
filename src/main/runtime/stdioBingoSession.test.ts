@@ -38,4 +38,17 @@ console.log(JSON.stringify({protocolVersion:1,seq:2,sessionId:null,type:'warning
     await expect(session.open()).rejects.toThrow('sequence mismatch')
     expect(onExit).toHaveBeenCalled()
   })
+
+  it('waits for bingo-owned rename and delete responses', async () => {
+    const binary = await fixture(`#!/usr/bin/env node
+let seq=1, id=${JSON.stringify(sessionId)}
+console.log(JSON.stringify({protocolVersion:1,seq:seq++,sessionId:id,type:'session.ready',metadata:{bingoVersion:'1.0',protocolVersion:1,sessionId:id,displayName:'Test',transcriptPath:'/tmp/test',resumed:true,cwd:process.cwd(),provider:'default',model:'test',thinkingLevel:'off',permissionMode:'default',theme:'auto',supportsImages:false}}))
+let buffer=''; process.stdin.on('data', chunk => { buffer += chunk; let i; while ((i=buffer.indexOf('\\n')) >= 0) { const line=buffer.slice(0,i); buffer=buffer.slice(i+1); if (!line) continue; const c=JSON.parse(line); if(c.type==='session.rename'){ const previous=id; id=id+'--Renamed'; console.log(JSON.stringify({protocolVersion:1,seq:seq++,sessionId:id,type:'session.renamed',commandId:c.commandId,previousSessionId:previous,metadata:{bingoVersion:'1.0',protocolVersion:1,sessionId:id,displayName:'Renamed',transcriptPath:'/tmp/renamed',resumed:true,cwd:process.cwd(),provider:'default',model:'test',thinkingLevel:'off',permissionMode:'default',theme:'auto',supportsImages:false}})); } else if(c.type==='session.delete'){ console.log(JSON.stringify({protocolVersion:1,seq:seq++,sessionId:id,type:'session.deleted',commandId:c.commandId,deletedSessionId:id})); process.exit(0); } } })
+`)
+    const session = new StdioBingoSession(binary, process.cwd(), { onEvent: vi.fn(), onExit: vi.fn() })
+    await session.open(sessionId)
+    await expect(session.rename('Renamed')).resolves.toMatchObject({ sessionId: `${sessionId}--Renamed` })
+    await expect(session.delete()).resolves.toBe(`${sessionId}--Renamed`)
+    await session.close()
+  })
 })

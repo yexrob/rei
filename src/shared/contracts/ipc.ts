@@ -4,6 +4,7 @@ import type { CliEvent, CliSessionMetadata, PromptResponse } from './cli'
 export const IPC = {
   appGetInfo: 'app:get-info', runtimeProbe: 'runtime:probe', sessionOpen: 'session:open', sessionClose: 'session:close',
   sessionSend: 'session:send', sessionCancel: 'session:cancel', sessionRespondPrompt: 'session:respond-prompt',
+  sessionRename: 'session:rename', sessionDelete: 'session:delete',
   sessionEvent: 'session:event', sessionList: 'session:list', visualCapture: 'visual:capture'
 } as const
 
@@ -24,6 +25,8 @@ export type VisualCaptureInput = { runId: string; theme: 'dark' | 'light'; state
 
 const uuid = z.string().uuid()
 export const sessionOpenInputSchema = z.object({ sessionId: z.string().nullable() })
+export const sessionRenameInputSchema = z.object({ sessionId: z.string().min(1).max(255), name: z.string().trim().min(1).max(80) })
+export const sessionDeleteInputSchema = z.object({ sessionId: z.string().min(1).max(255) })
 export const connectionInputSchema = z.object({ connectionId: uuid })
 export const sessionSendInputSchema = z.object({ connectionId: uuid, turnId: uuid, prompt: z.string().min(1).max(1_000_000) })
 export const sessionTurnInputSchema = z.object({ connectionId: uuid, turnId: uuid })
@@ -38,6 +41,8 @@ export type BingoGuiApi = {
   probeRuntime(): Promise<Result<RuntimeInfo>>
   listSessions(): Promise<Result<SessionListOutput>>
   openSession(input: { sessionId: string | null }): Promise<Result<SessionOpened>>
+  renameSession(input: { sessionId: string; name: string }): Promise<Result<{ previousId: string; session: SessionSummary }>>
+  deleteSession(input: { sessionId: string }): Promise<Result<{ deletedId: string }>>
   closeSession(input: { connectionId: string }): Promise<Result<{ closed: true }>>
   sendTurn(input: { connectionId: string; turnId: string; prompt: string }): Promise<Result<{ accepted: true }>>
   cancelTurn(input: { connectionId: string; turnId: string }): Promise<Result<{ requested: true }>>
