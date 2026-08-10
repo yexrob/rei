@@ -249,7 +249,6 @@ export default function App(): React.JSX.Element {
   // The attribute goes on <html> so :root's color/background and inheritance
   // resolve against the active theme (a div-scoped attribute would leave the
   // root scope on the light values and break dark mode text contrast).
-  const themeSetting = runtimeSettings?.theme ?? 'auto'
   const effectiveTheme = themeSetting === 'auto'
     ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
     : themeSetting
