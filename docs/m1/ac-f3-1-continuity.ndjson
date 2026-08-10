@@ -1,0 +1,9 @@
+{"type":"session.ready","protocolVersion":1,"seq":1,"sessionId":"bingo-1786325961","metadata":{"bingoVersion":"0.3.3","protocolVersion":1,"sessionId":"bingo-1786325961","transcriptPath":"/Users/yexrob/.local/share/bingo/transcripts/bingo-1786325961.jsonl","resumed":false,"cwd":"/Users/yexrob/Episodes/Projects/bingo","provider":"opencode-go","model":"deepseek-v4-flash","thinkingLevel":"max","permissionMode":"bypassPermissions","theme":"auto","supportsImages":false}}
+{"type":"turn.started","protocolVersion":1,"seq":2,"sessionId":"bingo-1786325961","commandId":"4842c23a-dd96-4f95-b5c9-584c6aa31a38","turnId":"9eedb68a-4a38-49c9-8657-faa9740f5718"}
+{"type":"text.delta","protocolVersion":1,"seq":3,"sessionId":"bingo-1786325961","turnId":"9eedb68a-4a38-49c9-8657-faa9740f5718","delta":"OK"}
+{"type":"turn.completed","protocolVersion":1,"seq":4,"sessionId":"bingo-1786325961","turnId":"9eedb68a-4a38-49c9-8657-faa9740f5718"}
+{"type":"turn.started","protocolVersion":1,"seq":5,"sessionId":"bingo-1786325961","commandId":"83080234-bfba-4302-a410-01cd0c34715b","turnId":"7fd5832d-ae13-4c33-9452-22c6dfd38eb5"}
+{"type":"warning","protocolVersion":1,"seq":6,"sessionId":"bingo-1786325961","msg":"MCP xiaohongshu-mcp: handshake failed: Send message error Transport [rmcp::transport::worker::WorkerTransport<rmcp::transport::streamable_http_client::StreamableHttpClientWorker<reqwest::async_impl::c"}
+{"type":"text.delta","protocolVersion":1,"seq":7,"sessionId":"bingo-1786325961","turnId":"7fd5832d-ae13-4c33-9452-22c6dfd38eb5","delta":"ABC"}
+{"type":"text.delta","protocolVersion":1,"seq":8,"sessionId":"bingo-1786325961","turnId":"7fd5832d-ae13-4c33-9452-22c6dfd38eb5","delta":"123"}
+{"type":"turn.completed","protocolVersion":1,"seq":9,"sessionId":"bingo-1786325961","turnId":"7fd5832d-ae13-4c33-9452-22c6dfd38eb5"}

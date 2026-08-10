@@ -1,0 +1,15 @@
+{"type":"session.ready","protocolVersion":1,"seq":1,"sessionId":"bingo-1786326025","metadata":{"bingoVersion":"0.3.3","protocolVersion":1,"sessionId":"bingo-1786326025","transcriptPath":"/Users/yexrob/.local/share/bingo/transcripts/bingo-1786326025.jsonl","resumed":false,"cwd":"/Users/yexrob/Episodes/Projects/bingo","provider":"opencode-go","model":"deepseek-v4-flash","thinkingLevel":"max","permissionMode":"bypassPermissions","theme":"auto","supportsImages":false}}
+{"type":"turn.started","protocolVersion":1,"seq":2,"sessionId":"bingo-1786326025","commandId":"1f444fcf-46cf-4029-8f5b-3433d2d98562","turnId":"7eebb751-317c-4c68-a80c-178e388bd188"}
+{"type":"text.delta","protocolVersion":1,"seq":3,"sessionId":"bingo-1786326025","turnId":"7eebb751-317c-4c68-a80c-178e388bd188","delta":"UN"}
+{"type":"text.delta","protocolVersion":1,"seq":4,"sessionId":"bingo-1786326025","turnId":"7eebb751-317c-4c68-a80c-178e388bd188","delta":"KNOWN"}
+{"type":"text.delta","protocolVersion":1,"seq":5,"sessionId":"bingo-1786326025","turnId":"7eebb751-317c-4c68-a80c-178e388bd188","delta":"\n\n"}
+{"type":"text.delta","protocolVersion":1,"seq":6,"sessionId":"bingo-1786326025","turnId":"7eebb751-317c-4c68-a80c-178e388bd188","delta":"No"}
+{"type":"text.delta","protocolVersion":1,"seq":7,"sessionId":"bingo-1786326025","turnId":"7eebb751-317c-4c68-a80c-178e388bd188","delta":" non"}
+{"type":"text.delta","protocolVersion":1,"seq":8,"sessionId":"bingo-1786326025","turnId":"7eebb751-317c-4c68-a80c-178e388bd188","delta":"ce"}
+{"type":"text.delta","protocolVersion":1,"seq":9,"sessionId":"bingo-1786326025","turnId":"7eebb751-317c-4c68-a80c-178e388bd188","delta":" was"}
+{"type":"text.delta","protocolVersion":1,"seq":10,"sessionId":"bingo-1786326025","turnId":"7eebb751-317c-4c68-a80c-178e388bd188","delta":" provided"}
+{"type":"text.delta","protocolVersion":1,"seq":11,"sessionId":"bingo-1786326025","turnId":"7eebb751-317c-4c68-a80c-178e388bd188","delta":" in"}
+{"type":"text.delta","protocolVersion":1,"seq":12,"sessionId":"bingo-1786326025","turnId":"7eebb751-317c-4c68-a80c-178e388bd188","delta":" this"}
+{"type":"text.delta","protocolVersion":1,"seq":13,"sessionId":"bingo-1786326025","turnId":"7eebb751-317c-4c68-a80c-178e388bd188","delta":" conversation"}
+{"type":"text.delta","protocolVersion":1,"seq":14,"sessionId":"bingo-1786326025","turnId":"7eebb751-317c-4c68-a80c-178e388bd188","delta":"."}
+{"type":"turn.completed","protocolVersion":1,"seq":15,"sessionId":"bingo-1786326025","turnId":"7eebb751-317c-4c68-a80c-178e388bd188"}
