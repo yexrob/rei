@@ -39,7 +39,7 @@ async function runEvidence(window: BrowserWindow, prompt: string): Promise<void>
   await window.webContents.executeJavaScript(`(() => { const input = document.querySelector('textarea'); const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; setter.call(input, ${JSON.stringify(prompt)}); input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`)
   await new Promise((resolve) => setTimeout(resolve, 20_000))
   const image = await window.webContents.capturePage()
-  await import('node:fs/promises').then(({ mkdir, writeFile }) => mkdir(join(app.getAppPath(), 'docs/screenshots/m1'), { recursive: true }).then(() => writeFile(join(app.getAppPath(), 'docs/screenshots/m1/ac-f2-3-tools.png'), image.toPNG())))
+  await import('node:fs/promises').then(({ mkdir, writeFile }) => mkdir(join(app.getAppPath(), 'docs/screenshots/m1'), { recursive: true }).then(() => writeFile(join(app.getAppPath(), 'docs/screenshots/m1', process.env.BINGO_GUI_E2E_CAPTURE ?? 'evidence.png'), image.toPNG())))
 }
 
 if (!app.requestSingleInstanceLock()) app.quit()

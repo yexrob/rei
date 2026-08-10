@@ -1,0 +1,28 @@
+{"type":"session.ready","protocolVersion":1,"seq":1,"sessionId":"bingo-1786331075","metadata":{"bingoVersion":"0.3.3","protocolVersion":1,"sessionId":"bingo-1786331075","transcriptPath":"/Users/yexrob/.local/share/bingo/transcripts/bingo-1786331075.jsonl","resumed":false,"cwd":"/Users/yexrob/Episodes/Projects/bingo","provider":"opencode-go","model":"deepseek-v4-flash","thinkingLevel":"max","permissionMode":"bypassPermissions","theme":"auto","supportsImages":false}}
+{"type":"turn.started","protocolVersion":1,"seq":2,"sessionId":"bingo-1786331075","commandId":"a15c3ed5-0676-4266-98ae-852e447f6898","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6"}
+{"type":"tool.ready","protocolVersion":1,"seq":3,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","toolCallId":"call_00_cU7rgqhJMWjVemWz2t9Z7804","name":"Bash","summary":"$ sh -c \"exit 7\""}
+{"type":"tool.done","protocolVersion":1,"seq":4,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","toolCallId":"call_00_cU7rgqhJMWjVemWz2t9Z7804","name":"Bash","summary":"$ sh -c \"exit 7\"","status":"error","output":"$ sh -c \"exit 7\"\n\n[Exited with code 7]","durationMs":9}
+{"type":"text.delta","protocolVersion":1,"seq":5,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":"Failed"}
+{"type":"text.delta","protocolVersion":1,"seq":6,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":"."}
+{"type":"text.delta","protocolVersion":1,"seq":7,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":" The"}
+{"type":"text.delta","protocolVersion":1,"seq":8,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":" command"}
+{"type":"text.delta","protocolVersion":1,"seq":9,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":" `"}
+{"type":"text.delta","protocolVersion":1,"seq":10,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":"sh"}
+{"type":"text.delta","protocolVersion":1,"seq":11,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":" -"}
+{"type":"text.delta","protocolVersion":1,"seq":12,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":"c"}
+{"type":"text.delta","protocolVersion":1,"seq":13,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":" \""}
+{"type":"text.delta","protocolVersion":1,"seq":14,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":"exit"}
+{"type":"text.delta","protocolVersion":1,"seq":15,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":" "}
+{"type":"text.delta","protocolVersion":1,"seq":16,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":"7"}
+{"type":"text.delta","protocolVersion":1,"seq":17,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":"\""}
+{"type":"text.delta","protocolVersion":1,"seq":18,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":"`"}
+{"type":"text.delta","protocolVersion":1,"seq":19,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":" exited"}
+{"type":"text.delta","protocolVersion":1,"seq":20,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":" with"}
+{"type":"text.delta","protocolVersion":1,"seq":21,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":" code"}
+{"type":"text.delta","protocolVersion":1,"seq":22,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":" "}
+{"type":"text.delta","protocolVersion":1,"seq":23,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":"7"}
+{"type":"text.delta","protocolVersion":1,"seq":24,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":","}
+{"type":"text.delta","protocolVersion":1,"seq":25,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":" as"}
+{"type":"text.delta","protocolVersion":1,"seq":26,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":" expected"}
+{"type":"text.delta","protocolVersion":1,"seq":27,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6","delta":"."}
+{"type":"turn.completed","protocolVersion":1,"seq":28,"sessionId":"bingo-1786331075","turnId":"b9f6ebb1-3568-4c5c-9c1b-b10d3453e4e6"}

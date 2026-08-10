@@ -9,4 +9,12 @@
 - Tool name/summary are `Bash` / `$ uname -a`; terminal status is `done` and duration is 10ms.
 - The renderer displays one activity row keyed by that toolCallId; no transport tool was omitted.
 
+## Failing tool after adapter fix 0946d95
+
+- Raw events: `ac-f2-3-tool-error-fixed.ndjson`.
+- `tool.ready` and `tool.done` share `toolCallId=call_00_cU7rgqhJMWjVemWz2t9Z7804`.
+- Command: `sh -c "exit 7"`.
+- `tool.done.status` is now `error`; output records exit code 7.
+- The earlier defect recorded by commit `8fab477` is resolved by the rebuilt worktree binary.
+
 The `BINGO_GUI_E2E_PROMPT` path in `src/main/index.ts` is evidence-only and gated by both an explicit environment variable and `!app.isPackaged`. It is not reachable in packaged production builds and will be removed after the evidence matrix is complete.
