@@ -228,8 +228,8 @@ export default function App(): React.JSX.Element {
     <div className="app-shell" data-qa-state="chat">
       <nav className="sidebar" aria-label="Primary navigation">
         <strong>bingo</strong>
-        <button type="button" className="nav-action" onClick={() => { setView('chat'); void newConversation() }}>New conversation</button>
-        <button type="button" className={`nav-action${view === 'settings' ? ' active' : ''}`} onClick={() => void openSettings()}>Settings</button>
+        <button type="button" className={`nav-action${view === 'chat' ? ' active' : ''}`} aria-current={view === 'chat' ? 'page' : undefined} onClick={() => { setView('chat'); void newConversation() }}>New conversation</button>
+        <button type="button" className={`nav-action${view === 'settings' ? ' active' : ''}`} aria-current={view === 'settings' ? 'page' : undefined} onClick={() => void openSettings()}>Settings</button>
         <div className="session-heading"><span>Conversations</span><small>{sessions.length}</small></div>
         <div className="session-list">
           {sessionListError && <p className="sidebar-error" role="alert">{sessionListError.msg}</p>}

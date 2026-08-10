@@ -14,6 +14,7 @@ button { padding: 10px 14px; border: 0; border-radius: 8px; color: #f9f8f4; back
 .sidebar strong { font-size: 20px; letter-spacing: -0.03em; }
 .sidebar span { color: #716e67; font-size: 14px; }
 .nav-action { color: #20201e; border: 1px solid #cec9bf; background: transparent; text-align: left; }
+.nav-action.active { border-color: #c9c3b7; background: #f4f2ed; font-weight: 700; }
 .session-heading { display: flex; align-items: center; justify-content: space-between; }
 .session-heading small { color: #858078; font-variant-numeric: tabular-nums; }
 .session-list { display: flex; flex: 1; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; }
@@ -37,6 +38,7 @@ button { padding: 10px 14px; border: 0; border-radius: 8px; color: #f9f8f4; back
 .runtime-picker { display: flex; gap: 8px; align-items: end; }
 .runtime-picker label { display: grid; gap: 4px; color: #736f66; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .runtime-picker select { max-width: 170px; min-width: 110px; padding: 7px 9px; color: #282722; border: 1px solid #c9c4ba; border-radius: 7px; background: #fffefa; font-size: 12px; text-transform: none; }
+.runtime-picker select:first-of-type { max-width: 280px; }
 .runtime-picker button { padding: 8px 12px; font-size: 12px; }
 .settings-error { display: flex; gap: 10px; padding: 10px 32px; color: #762a23; border-bottom: 1px solid #dfc4bf; background: #f0d9d5; font-size: 12px; }
 .eyebrow { margin: 0 0 8px; color: #736f66; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
