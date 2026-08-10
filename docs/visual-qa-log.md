@@ -29,3 +29,28 @@ Screenshots: `docs/screenshots/m0-protocol-unsupported.png`, `docs/screenshots/m
 3. Retry button looks correct (78×46 px, dark on white, ≥44×44 hit target) but static screenshots
    cannot prove clickability — interaction test required (focus, hover, pressed, disabled,
    loading states).
+
+## Round 2 — M1 chat-loop states (2026-08-10)
+
+Screenshots: `docs/screenshots/m1/ac-f2-3-running.png`, `ac-f2-3-tools.png`,
+`ac-f2-5-cancel.png`, `ac-f2-7-error.png`, `ac-f3-2-new-conversation.png`.
+
+**Gate: PASS** (after fixes; no Critical/Major remaining).
+
+### Fixed in this round (commit 1870a6e + a77e0ae)
+1. `BINGOInterrupted` concatenation: assistant interrupted/error status is now
+   a distinct pill badge on its own line (`.message > small`).
+2. Timeline `scroll-padding-top` so a scrolled-into-view message is not flush
+   under the header divider.
+3. Tool `running` state capture added (mid-flight `sleep 18` tool row).
+
+### Verified by gui-vision (final)
+- `INTERRUPTED` badge visible on its own line, clear vertical gap from the
+  role label; the cancelled tool row shows `interrupted` next to a prior
+  `done` row; no clipping/overflow on messages, tool rows, composer, or Send.
+
+### M3 backlog (carried)
+- Secondary-text contrast ≥ 4.5:1 (done/error tool status gray-on-gray).
+- Inline code block horizontal scrollbar affordance.
+- Error "fix-command" typography.
+- Long-path wrapping >100 chars; error-state vertical anchor consistency.
