@@ -60,7 +60,8 @@ export function registerIpc(
       providers,
       provider: metadata?.provider ?? 'default',
       model: metadata?.model ?? '',
-      thinkingLevel: metadata?.thinkingLevel ?? 'off'
+      thinkingLevel: metadata?.thinkingLevel ?? 'off',
+      theme: metadata?.theme ?? 'auto'
     }
   }
 
@@ -117,7 +118,8 @@ export function registerIpc(
     const providers = await validateProviderModel(workspacePath, provider, model)
     await settings.saveRuntime({ provider, model, thinkingLevel })
     const connectionId = await reconnect()
-    const runtimeSettings: RuntimeSettings = { providers, provider, model, thinkingLevel }
+    const current = await settings.read(workspacePath)
+    const runtimeSettings: RuntimeSettings = { providers, provider, model, thinkingLevel, theme: current.values.theme }
     return connectionId ? { connectionId, settings: runtimeSettings } : { settings: runtimeSettings }
   })
   handle(IPC.settingsRead, runtimeSettingsInputSchema, async ({ workspacePath }) => readSettingsSnapshot(workspacePath))

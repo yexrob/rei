@@ -133,5 +133,6 @@ h1 { font-size: 28px; }
   --toast-bg: #2f6b50;
 }
 
-@media (max-width: 1050px) { .chat-header { align-items: flex-start; } .runtime-picker { flex-wrap: wrap; justify-content: flex-end; } .runtime-picker select { max-width: 125px; } }
+@media (max-width: 1050px) { .chat-header { flex-wrap: wrap; gap: 12px; align-items: flex-start; } .runtime-picker { flex-wrap: wrap; justify-content: flex-start; } .runtime-picker select { max-width: 150px; } }
+.inline-error, .settings-error, .settings-page-error, .dialog-error { overflow-wrap: anywhere; word-break: break-word; }
 @media (max-width: 900px) { .app-shell { grid-template-columns: 190px minmax(0,1fr); } .chat header, .timeline { padding-left: 28px; padding-right: 28px; } .composer { padding-left: 28px; padding-right: 28px; } .settings-grid { grid-template-columns: 1fr; } .provider-summary article { grid-template-columns: 100px minmax(0,1fr); } .provider-summary small { grid-column: 2; } }

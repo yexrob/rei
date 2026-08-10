@@ -39,6 +39,7 @@ export default function App(): React.JSX.Element {
   const [settingsSnapshot, setSettingsSnapshot] = useState<SettingsSnapshot | null>(null)
   const [settingsDraft, setSettingsDraft] = useState<EditableSettings | null>(null)
   const [settingsPageError, setSettingsPageError] = useState<GuiError | null>(null)
+  const [themeSetting, setThemeSetting] = useState<'auto' | 'dark' | 'light'>('auto')
   const [toast, setToast] = useState<string | null>(null)
   const [flowError, setFlowError] = useState<GuiError | null>(null)
   const [connected, setConnected] = useState(false)
@@ -78,6 +79,7 @@ export default function App(): React.JSX.Element {
       if (!opened.ok) { setFlowError(opened.error); return }
       connection.current = { id: opened.value.connectionId, sequence: 0 }
       setActiveSession({ id: opened.value.metadata.sessionId, name: opened.value.metadata.displayName, preview: '', updatedAt: new Date().toISOString(), messageCount: 0 })
+      setThemeSetting(opened.value.metadata.theme)
       dispatch({ type: 'restore', history: opened.value.history })
       const loadedSettings = await withTimeout(window.bingoGui.readRuntimeSettings({ workspacePath: probe.value.workspacePath }), 12_000)
       if (loadedSettings.ok) {
@@ -134,7 +136,8 @@ export default function App(): React.JSX.Element {
     if (!result.ok) { setSettingsPageError(result.error); return }
     setSettingsSnapshot(result.value.snapshot)
     setSettingsDraft(result.value.snapshot.values)
-    setRuntimeSettings({ providers: result.value.snapshot.providers, provider: result.value.snapshot.values.provider, model: result.value.snapshot.values.model, thinkingLevel: result.value.snapshot.values.thinkingLevel })
+    setThemeSetting(result.value.snapshot.values.theme)
+    setRuntimeSettings({ providers: result.value.snapshot.providers, provider: result.value.snapshot.values.provider, model: result.value.snapshot.values.model, thinkingLevel: result.value.snapshot.values.thinkingLevel, theme: result.value.snapshot.values.theme })
     if (result.value.connectionId) connection.current = { id: result.value.connectionId, sequence: 0 }
     setToast('Saved')
   }
@@ -246,7 +249,7 @@ export default function App(): React.JSX.Element {
   // The attribute goes on <html> so :root's color/background and inheritance
   // resolve against the active theme (a div-scoped attribute would leave the
   // root scope on the light values and break dark mode text contrast).
-  const themeSetting = settingsSnapshot?.values.theme ?? 'auto'
+  const themeSetting = runtimeSettings?.theme ?? 'auto'
   const effectiveTheme = themeSetting === 'auto'
     ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
     : themeSetting
