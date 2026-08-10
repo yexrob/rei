@@ -20,4 +20,16 @@ describe('TranscriptRepository', () => {
     const repository = new TranscriptRepository('/tmp')
     await expect(repository.load('../secret')).rejects.toThrow('Invalid session ID')
   })
+
+  it('titles a session from its first user message and strips markdown from previews', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'bingo-gui-summary-'))
+    await writeFile(join(dir, 'demo-1.jsonl'), [
+      JSON.stringify({ role: 'user', content: [{ type: 'text', text: '**First question** about X' }] }),
+      JSON.stringify({ role: 'assistant', content: [{ type: 'text', text: 'Answer with `inline` code.' }] }),
+    ].join('\n'))
+    const repo = new TranscriptRepository(dir)
+    const { sessions } = await repo.list()
+    expect(sessions[0].name).toBe('First question about X')
+    expect(sessions[0].preview).toBe('Answer with inline code.')
+  })
 })

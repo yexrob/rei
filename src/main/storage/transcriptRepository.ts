@@ -21,7 +21,10 @@ export class TranscriptRepository {
       const id = basename(name, '.jsonl')
       const parsed = this.parse(await readFile(path, 'utf8'), id)
       warnings.push(...parsed.warnings)
-      return { id, name: displayName(id), preview: parsed.messages.at(-1)?.value.markdown.replace(/\s+/g, ' ').trim().slice(0, 120) ?? '', updatedAt: metadata.mtime.toISOString(), messageCount: parsed.messages.length }
+      const firstUser = parsed.messages.find((m) => m.value.role === 'user')?.value.markdown
+      const title = id.includes('--') ? displayName(id) : (firstUser ? stripMarkdown(firstUser).slice(0, 60) : 'New conversation')
+      const preview = stripMarkdown(parsed.messages.at(-1)?.value.markdown ?? '').replace(/\s+/g, ' ').trim().slice(0, 120)
+      return { id, name: title, preview, updatedAt: metadata.mtime.toISOString(), messageCount: parsed.messages.length }
     }))
     return { sessions, warnings }
   }
@@ -56,3 +59,16 @@ function textContent(content: unknown): string {
 
 function validSessionId(id: string): boolean { return id.length > 0 && id.length <= 255 && !id.includes('/') && !id.includes('\\') && id !== '.' && id !== '..' }
 function displayName(id: string): string { const marker = id.lastIndexOf('--'); return marker >= 0 ? id.slice(marker + 2) : 'New conversation' }
+
+/** Light Markdown normalization for nav titles/previews: no code fences,
+ * inline code, links, emphasis, or heading markers in the sidebar. */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/^[#>*_~-]{1,3}\s*/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
