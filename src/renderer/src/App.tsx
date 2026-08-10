@@ -87,7 +87,8 @@ export default function App(): React.JSX.Element {
         setThinkingLevel(loadedSettings.value.thinkingLevel)
         const listedModels = await withTimeout(window.bingoGui.listModels({ workspacePath: probe.value.workspacePath, provider: loadedSettings.value.provider }), 12_000)
         if (listedModels.ok) setModels(listedModels.value.models)
-        else setSettingsError(listedModels.error)
+        // Background model-list probe failures stay quiet: the picker shows
+        // "Select model" and the settings page surfaces save-time errors.
       } else setSettingsError(loadedSettings.error)
       setConnected(true)
     } catch {
@@ -242,15 +243,21 @@ export default function App(): React.JSX.Element {
   }
 
   // F6-7: effective theme follows the bingo setting (auto = system preference).
+  // The attribute goes on <html> so :root's color/background and inheritance
+  // resolve against the active theme (a div-scoped attribute would leave the
+  // root scope on the light values and break dark mode text contrast).
   const themeSetting = settingsSnapshot?.values.theme ?? 'auto'
   const effectiveTheme = themeSetting === 'auto'
     ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
     : themeSetting
+  useEffect(() => {
+    document.documentElement.dataset.theme = effectiveTheme
+  }, [effectiveTheme])
 
   if (flowError) return <FlowError error={flowError} retry={connect} />
 
   return (
-    <div className="app-shell" data-theme={effectiveTheme} data-qa-state="chat">
+    <div className="app-shell" data-qa-state="chat">
       <nav className="sidebar" aria-label="Primary navigation">
         <strong>bingo</strong>
         <button type="button" className={`nav-action${view === 'chat' ? ' active' : ''}`} aria-current={view === 'chat' ? 'page' : undefined} onClick={() => { setView('chat'); void newConversation() }}>New conversation</button>
