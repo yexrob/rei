@@ -57,10 +57,10 @@ export default function App(): React.JSX.Element {
 
   const newConversation = async (): Promise<void> => {
     const current = connection.current
-    if (current) await window.bingoGui.closeSession({ connectionId: current.id })
     connection.current = null
     activeTurnId.current = null
     dispatch({ type: 'reset' })
+    if (current) await window.bingoGui.closeSession({ connectionId: current.id })
     const opened = await window.bingoGui.openSession({ sessionId: null })
     if (!opened.ok) { setFlowError(opened.error); return }
     connection.current = { id: opened.value.connectionId, sequence: 0 }
