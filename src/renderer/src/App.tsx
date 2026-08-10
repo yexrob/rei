@@ -241,10 +241,16 @@ export default function App(): React.JSX.Element {
     if (!result.ok) dispatch({ type: 'transport-error', code: result.error.code, msg: result.error.msg })
   }
 
+  // F6-7: effective theme follows the bingo setting (auto = system preference).
+  const themeSetting = settingsSnapshot?.values.theme ?? 'auto'
+  const effectiveTheme = themeSetting === 'auto'
+    ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    : themeSetting
+
   if (flowError) return <FlowError error={flowError} retry={connect} />
 
   return (
-    <div className="app-shell" data-qa-state="chat">
+    <div className="app-shell" data-theme={effectiveTheme} data-qa-state="chat">
       <nav className="sidebar" aria-label="Primary navigation">
         <strong>bingo</strong>
         <button type="button" className={`nav-action${view === 'chat' ? ' active' : ''}`} aria-current={view === 'chat' ? 'page' : undefined} onClick={() => { setView('chat'); void newConversation() }}>New conversation</button>
