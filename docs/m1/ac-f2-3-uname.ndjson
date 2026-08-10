@@ -1,0 +1,106 @@
+{"type":"session.ready","protocolVersion":1,"seq":1,"sessionId":"bingo-1786322622","metadata":{"bingoVersion":"0.3.3","protocolVersion":1,"sessionId":"bingo-1786322622","transcriptPath":"/Users/yexrob/.local/share/bingo/transcripts/bingo-1786322622.jsonl","resumed":false,"cwd":"/Users/yexrob/Episodes/Projects/bingo","provider":"default","model":"deepseek-v4-flash","thinkingLevel":"max","permissionMode":"bypassPermissions","theme":"auto","supportsImages":true}}
+{"type":"turn.started","protocolVersion":1,"seq":2,"sessionId":"bingo-1786322622","commandId":"0579d3c8-28e4-416c-9041-639e147d1210","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa"}
+{"type":"tool.ready","protocolVersion":1,"seq":3,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","toolCallId":"call_00_BBnoWYFIrizJwJdH2Twc7788","name":"Bash","summary":"$ uname -a"}
+{"type":"tool.done","protocolVersion":1,"seq":4,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","toolCallId":"call_00_BBnoWYFIrizJwJdH2Twc7788","name":"Bash","summary":"$ uname -a","status":"done","output":"$ uname -a\nDarwin yexrobs-MacBook-Pro.local 27.0.0 Darwin Kernel Version 27.0.0: Mon Jun 15 23:11:05 PDT 2026; root:xnu-13432.0.5.501.1~2/RELEASE_ARM64_T6000 arm64\n\n[Exited with code 0]","durationMs":10}
+{"type":"text.delta","protocolVersion":1,"seq":5,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"Ex"}
+{"type":"text.delta","protocolVersion":1,"seq":6,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"act"}
+{"type":"text.delta","protocolVersion":1,"seq":7,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" output"}
+{"type":"text.delta","protocolVersion":1,"seq":8,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":":\n\n"}
+{"type":"text.delta","protocolVersion":1,"seq":9,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"```\n"}
+{"type":"text.delta","protocolVersion":1,"seq":10,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"Dar"}
+{"type":"text.delta","protocolVersion":1,"seq":11,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"win"}
+{"type":"text.delta","protocolVersion":1,"seq":12,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" y"}
+{"type":"text.delta","protocolVersion":1,"seq":13,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"ex"}
+{"type":"text.delta","protocolVersion":1,"seq":14,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"ro"}
+{"type":"text.delta","protocolVersion":1,"seq":15,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"bs"}
+{"type":"text.delta","protocolVersion":1,"seq":16,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"-M"}
+{"type":"text.delta","protocolVersion":1,"seq":17,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"ac"}
+{"type":"text.delta","protocolVersion":1,"seq":18,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"Book"}
+{"type":"text.delta","protocolVersion":1,"seq":19,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"-Pro"}
+{"type":"text.delta","protocolVersion":1,"seq":20,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":".local"}
+{"type":"text.delta","protocolVersion":1,"seq":21,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" "}
+{"type":"text.delta","protocolVersion":1,"seq":22,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"27"}
+{"type":"text.delta","protocolVersion":1,"seq":23,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"."}
+{"type":"text.delta","protocolVersion":1,"seq":24,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"0"}
+{"type":"text.delta","protocolVersion":1,"seq":25,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"."}
+{"type":"text.delta","protocolVersion":1,"seq":26,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"0"}
+{"type":"text.delta","protocolVersion":1,"seq":27,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" Darwin"}
+{"type":"text.delta","protocolVersion":1,"seq":28,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" Kernel"}
+{"type":"text.delta","protocolVersion":1,"seq":29,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" Version"}
+{"type":"text.delta","protocolVersion":1,"seq":30,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" "}
+{"type":"text.delta","protocolVersion":1,"seq":31,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"27"}
+{"type":"text.delta","protocolVersion":1,"seq":32,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"."}
+{"type":"text.delta","protocolVersion":1,"seq":33,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"0"}
+{"type":"text.delta","protocolVersion":1,"seq":34,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"."}
+{"type":"text.delta","protocolVersion":1,"seq":35,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"0"}
+{"type":"text.delta","protocolVersion":1,"seq":36,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":":"}
+{"type":"text.delta","protocolVersion":1,"seq":37,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" Mon"}
+{"type":"text.delta","protocolVersion":1,"seq":38,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" Jun"}
+{"type":"text.delta","protocolVersion":1,"seq":39,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" "}
+{"type":"text.delta","protocolVersion":1,"seq":40,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"15"}
+{"type":"text.delta","protocolVersion":1,"seq":41,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" "}
+{"type":"text.delta","protocolVersion":1,"seq":42,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"23"}
+{"type":"text.delta","protocolVersion":1,"seq":43,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":":"}
+{"type":"text.delta","protocolVersion":1,"seq":44,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"11"}
+{"type":"text.delta","protocolVersion":1,"seq":45,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":":"}
+{"type":"text.delta","protocolVersion":1,"seq":46,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"05"}
+{"type":"text.delta","protocolVersion":1,"seq":47,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" PDT"}
+{"type":"text.delta","protocolVersion":1,"seq":48,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" "}
+{"type":"text.delta","protocolVersion":1,"seq":49,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"202"}
+{"type":"text.delta","protocolVersion":1,"seq":50,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"6"}
+{"type":"text.delta","protocolVersion":1,"seq":51,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":";"}
+{"type":"text.delta","protocolVersion":1,"seq":52,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" root"}
+{"type":"text.delta","protocolVersion":1,"seq":53,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":":x"}
+{"type":"text.delta","protocolVersion":1,"seq":54,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"nu"}
+{"type":"text.delta","protocolVersion":1,"seq":55,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"-"}
+{"type":"text.delta","protocolVersion":1,"seq":56,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"134"}
+{"type":"text.delta","protocolVersion":1,"seq":57,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"32"}
+{"type":"text.delta","protocolVersion":1,"seq":58,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"."}
+{"type":"text.delta","protocolVersion":1,"seq":59,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"0"}
+{"type":"text.delta","protocolVersion":1,"seq":60,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"."}
+{"type":"text.delta","protocolVersion":1,"seq":61,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"5"}
+{"type":"text.delta","protocolVersion":1,"seq":62,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"."}
+{"type":"text.delta","protocolVersion":1,"seq":63,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"501"}
+{"type":"text.delta","protocolVersion":1,"seq":64,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"."}
+{"type":"text.delta","protocolVersion":1,"seq":65,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"1"}
+{"type":"text.delta","protocolVersion":1,"seq":66,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"~"}
+{"type":"text.delta","protocolVersion":1,"seq":67,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"2"}
+{"type":"text.delta","protocolVersion":1,"seq":68,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"/"}
+{"type":"text.delta","protocolVersion":1,"seq":69,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"RE"}
+{"type":"text.delta","protocolVersion":1,"seq":70,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"LEASE"}
+{"type":"text.delta","protocolVersion":1,"seq":71,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"_"}
+{"type":"text.delta","protocolVersion":1,"seq":72,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"ARM"}
+{"type":"text.delta","protocolVersion":1,"seq":73,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"64"}
+{"type":"text.delta","protocolVersion":1,"seq":74,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"_T"}
+{"type":"text.delta","protocolVersion":1,"seq":75,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"600"}
+{"type":"text.delta","protocolVersion":1,"seq":76,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"0"}
+{"type":"text.delta","protocolVersion":1,"seq":77,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" arm"}
+{"type":"text.delta","protocolVersion":1,"seq":78,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"64"}
+{"type":"text.delta","protocolVersion":1,"seq":79,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"\n"}
+{"type":"text.delta","protocolVersion":1,"seq":80,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"```\n\n"}
+{"type":"text.delta","protocolVersion":1,"seq":81,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"This"}
+{"type":"text.delta","protocolVersion":1,"seq":82,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" is"}
+{"type":"text.delta","protocolVersion":1,"seq":83,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" macOS"}
+{"type":"text.delta","protocolVersion":1,"seq":84,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" ("}
+{"type":"text.delta","protocolVersion":1,"seq":85,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"Dar"}
+{"type":"text.delta","protocolVersion":1,"seq":86,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"win"}
+{"type":"text.delta","protocolVersion":1,"seq":87,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":")"}
+{"type":"text.delta","protocolVersion":1,"seq":88,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" "}
+{"type":"text.delta","protocolVersion":1,"seq":89,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"27"}
+{"type":"text.delta","protocolVersion":1,"seq":90,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"."}
+{"type":"text.delta","protocolVersion":1,"seq":91,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"0"}
+{"type":"text.delta","protocolVersion":1,"seq":92,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"."}
+{"type":"text.delta","protocolVersion":1,"seq":93,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"0"}
+{"type":"text.delta","protocolVersion":1,"seq":94,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" on"}
+{"type":"text.delta","protocolVersion":1,"seq":95,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" an"}
+{"type":"text.delta","protocolVersion":1,"seq":96,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" arm"}
+{"type":"text.delta","protocolVersion":1,"seq":97,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"64"}
+{"type":"text.delta","protocolVersion":1,"seq":98,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" ("}
+{"type":"text.delta","protocolVersion":1,"seq":99,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"Apple"}
+{"type":"text.delta","protocolVersion":1,"seq":100,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" Silicon"}
+{"type":"text.delta","protocolVersion":1,"seq":101,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":")"}
+{"type":"text.delta","protocolVersion":1,"seq":102,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" Mac"}
+{"type":"text.delta","protocolVersion":1,"seq":103,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"Book"}
+{"type":"text.delta","protocolVersion":1,"seq":104,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":" Pro"}
+{"type":"text.delta","protocolVersion":1,"seq":105,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa","delta":"."}
+{"type":"turn.completed","protocolVersion":1,"seq":106,"sessionId":"bingo-1786322622","turnId":"d348e0a9-4c36-48f7-9545-a883a434e4aa"}

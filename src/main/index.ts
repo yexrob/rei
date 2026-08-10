@@ -23,8 +23,23 @@ function createWindow(): void {
   )
   registerIpc(window, locator, sessions)
   window.once('ready-to-show', () => window.show())
+  if (process.env.BINGO_GUI_E2E_PROMPT && !app.isPackaged) {
+    window.webContents.once('did-finish-load', () => { void runEvidence(window, process.env.BINGO_GUI_E2E_PROMPT as string) })
+  }
   if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL)
   else void window.loadFile(join(__dirname, '../renderer/index.html'))
+}
+
+async function runEvidence(window: BrowserWindow, prompt: string): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const ready = await window.webContents.executeJavaScript(`Boolean(document.querySelector('textarea:not(:disabled)'))`)
+    if (ready) break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  await window.webContents.executeJavaScript(`(() => { const input = document.querySelector('textarea'); const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; setter.call(input, ${JSON.stringify(prompt)}); input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`)
+  await new Promise((resolve) => setTimeout(resolve, 20_000))
+  const image = await window.webContents.capturePage()
+  await import('node:fs/promises').then(({ mkdir, writeFile }) => mkdir(join(app.getAppPath(), 'docs/screenshots/m1'), { recursive: true }).then(() => writeFile(join(app.getAppPath(), 'docs/screenshots/m1/ac-f2-3-tools.png'), image.toPNG())))
 }
 
 if (!app.requestSingleInstanceLock()) app.quit()
