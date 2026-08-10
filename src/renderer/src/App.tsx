@@ -6,6 +6,16 @@ import { chatReducer, initialChatState } from './state/chatReducer'
 
 type Connection = { id: string; sequence: number }
 
+/** F6-1: a busy indicator that appears only after the 200 ms feedback threshold. */
+function DelayedThinking(): React.JSX.Element | null {
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), 200)
+    return () => clearTimeout(timer)
+  }, [])
+  return visible ? <p className="thinking" role="status" aria-live="polite">Working…</p> : null
+}
+
 export default function App(): React.JSX.Element {
   const [state, dispatch] = useReducer(chatReducer, initialChatState)
   const [draft, setDraft] = useState('')
@@ -35,11 +45,20 @@ export default function App(): React.JSX.Element {
   const connection = useRef<Connection | null>(null)
   const activeTurnId = useRef<string | null>(null)
   const connectInFlight = useRef(false)
+  const errorRef = useRef<HTMLDivElement | null>(null)
   const prompt = state.prompts[0]
 
   useEffect(() => {
     activeTurnId.current = state.turnId
   }, [state.turnId])
+
+  // F6-6: focus the inline error region (asynchronously, after render) so
+  // assistive tech and keyboard users land on what failed.
+  useEffect(() => {
+    if (!state.error) return
+    const frame = requestAnimationFrame(() => errorRef.current?.focus())
+    return () => cancelAnimationFrame(frame)
+  }, [state.error])
 
   const connect = useCallback(async () => {
     if (connectInFlight.current) return
@@ -261,9 +280,10 @@ export default function App(): React.JSX.Element {
         {settingsError && <div className="settings-error" role="alert"><strong>{settingsError.code}</strong><span>{settingsError.msg}</span></div>}
         <section className="timeline" aria-live="polite">
           {state.messages.length === 0 && <p className="chat-hint">Send a prompt to start working with bingo.</p>}
+          {state.turnId && !state.messages.some((m) => m.role === 'assistant' && m.markdown) && <DelayedThinking />}
           {state.messages.map((message) => <article className={`message ${message.role}`} key={message.id}><span>{message.role === 'user' ? 'You' : 'bingo'}</span><Markdown skipHtml>{message.markdown}</Markdown>{message.status === 'interrupted' && <small>Interrupted</small>}</article>)}
           {state.tools.map((tool) => <article className="tool-row" key={tool.id}><strong>{tool.name}</strong><span>{tool.summary}</span><small>{tool.status}</small></article>)}
-          {state.error && <div className="inline-error" role="alert"><strong>{state.error.code}</strong><span>{state.error.msg}</span></div>}
+          {state.error && <div ref={errorRef} tabIndex={-1} className="inline-error" role="alert"><strong>{state.error.code}</strong><span>{state.error.msg}</span></div>}
         </section>
         <footer className="composer"><textarea aria-label="Message" value={draft} disabled={Boolean(state.turnId) || !connected} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit() } }} placeholder="Ask bingo…" />{state.turnId ? <button type="button" onClick={() => void cancel()}>Cancel</button> : <button type="button" onClick={() => void submit()}>Send</button>}</footer>
       </main> : <SettingsScreen snapshot={settingsSnapshot} draft={settingsDraft} error={settingsPageError} onChange={setSettingsDraft} onSave={saveSettings} />}

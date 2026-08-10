@@ -46,6 +46,8 @@ h1, h2 { margin: 0; letter-spacing: -.04em; }
 h1 { font-size: 28px; }
 .timeline { min-height: 0; flex: 1 1 auto; overflow: auto; padding: 28px 40px; scroll-padding-top: 20px; }
 .chat-hint { color: #77736b; }
+.thinking { margin: 0; color: #716e67; font-size: 13px; }
+.inline-error:focus { outline: 2px solid #a83c32; outline-offset: 2px; }
 .message { max-width: 720px; margin: 0 0 28px; }
 .message > span { color: #77736b; font-size: 12px; font-weight: 700; text-transform: uppercase; }
 .message > small { display: block; width: fit-content; margin-top: 10px; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #762a23; background: #f0d9d5; text-transform: uppercase; letter-spacing: .08em; }
