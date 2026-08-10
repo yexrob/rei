@@ -65,6 +65,23 @@ describe('registerIpc session:list', () => {
     if (result.ok) expect(result.value.metadata).not.toHaveProperty('transcriptPath')
   })
 
+  it('returns the active session theme through runtime settings', async () => {
+    const providers: RuntimeSettings['providers'] = [{ name: 'default', protocol: 'anthropic', apiBaseUrl: 'https://example.test', supportsImages: true, credentialConfigured: true, builtin: false }]
+    const sessions = {
+      snapshot: vi.fn().mockReturnValue({ connectionId: crypto.randomUUID(), sessionId: 'session-1', idle: true }),
+      listProviders: vi.fn().mockResolvedValue(providers),
+      currentMetadata: vi.fn().mockReturnValue({ provider: 'default', model: 'model', thinkingLevel: 'high', theme: 'dark' })
+    }
+    const mainFrame = {}
+    const webContents = { mainFrame }
+    registerIpc({ webContents } as unknown as BrowserWindow, {} as RuntimeLocator, sessions as unknown as SessionManager, {} as TranscriptRepository, {} as SettingsRepository, '/bingo')
+
+    const handler = electron.handlers.get(IPC.settingsReadRuntime)
+    const result = await handler?.({ sender: webContents, senderFrame: mainFrame } as unknown as IpcMainInvokeEvent, { workspacePath: '/tmp' }) as Result<RuntimeSettings>
+
+    expect(result).toEqual({ ok: true, value: { providers, provider: 'default', model: 'model', thinkingLevel: 'high', theme: 'dark' } })
+  })
+
   it('rejects an unavailable model before settings persistence', async () => {
     const providers: RuntimeSettings['providers'] = [{ name: 'default', protocol: 'anthropic', apiBaseUrl: 'https://example.test', supportsImages: true, credentialConfigured: true, builtin: false }]
     const sessions = {
