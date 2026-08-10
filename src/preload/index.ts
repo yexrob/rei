@@ -7,6 +7,7 @@ import {
 const api: BingoGuiApi = {
   getAppInfo: () => ipcRenderer.invoke(IPC.appGetInfo),
   probeRuntime: () => ipcRenderer.invoke(IPC.runtimeProbe),
+  listSessions: () => ipcRenderer.invoke(IPC.sessionList),
   openSession: (input) => ipcRenderer.invoke(IPC.sessionOpen, sessionOpenInputSchema.parse(input)),
   closeSession: (input) => ipcRenderer.invoke(IPC.sessionClose, connectionInputSchema.parse(input)),
   sendTurn: (input) => ipcRenderer.invoke(IPC.sessionSend, sessionSendInputSchema.parse(input)),

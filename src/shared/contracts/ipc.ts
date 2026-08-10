@@ -4,7 +4,7 @@ import type { CliEvent, CliSessionMetadata, PromptResponse } from './cli'
 export const IPC = {
   appGetInfo: 'app:get-info', runtimeProbe: 'runtime:probe', sessionOpen: 'session:open', sessionClose: 'session:close',
   sessionSend: 'session:send', sessionCancel: 'session:cancel', sessionRespondPrompt: 'session:respond-prompt',
-  sessionEvent: 'session:event', visualCapture: 'visual:capture'
+  sessionEvent: 'session:event', sessionList: 'session:list', visualCapture: 'visual:capture'
 } as const
 
 export type GuiError = { code: string; msg: string; level: 'field' | 'page' | 'flow'; recoverable: boolean; action?: 'retry' }
@@ -16,7 +16,10 @@ export type RendererCliPayload = Exclude<CliEvent, { type: 'protocol.ready' | 'i
   type: 'transport.error'; error: GuiError; exitCode: number | null; signal: string | null
 }
 export type RendererSessionEvent = { connectionId: string; sequence: number; payload: RendererCliPayload }
-export type SessionOpened = { connectionId: string; metadata: RendererSessionMetadata; history: [] }
+export type SessionSummary = { id: string; name: string; preview: string; updatedAt: string; messageCount: number }
+export type SessionHistoryItem = { type: 'message'; value: { id: string; role: 'user' | 'assistant'; markdown: string } }
+export type SessionListOutput = { sessions: SessionSummary[]; warnings: string[] }
+export type SessionOpened = { connectionId: string; metadata: RendererSessionMetadata; history: SessionHistoryItem[] }
 export type VisualCaptureInput = { runId: string; theme: 'dark' | 'light'; state: 'chat' | 'empty' | 'loading' | 'error'; viewport: '1440x900' | '800x600' }
 
 const uuid = z.string().uuid()
@@ -33,6 +36,7 @@ export const visualCaptureInputSchema = z.object({ runId: z.string().regex(/^[a-
 export type BingoGuiApi = {
   getAppInfo(): Promise<Result<AppInfo>>
   probeRuntime(): Promise<Result<RuntimeInfo>>
+  listSessions(): Promise<Result<SessionListOutput>>
   openSession(input: { sessionId: string | null }): Promise<Result<SessionOpened>>
   closeSession(input: { connectionId: string }): Promise<Result<{ closed: true }>>
   sendTurn(input: { connectionId: string; turnId: string; prompt: string }): Promise<Result<{ accepted: true }>>
