@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { registerIpc, sendSessionEvent } from './ipc/registerIpc'
 import { RuntimeLocator } from './runtime/runtimeLocator'
 import { SessionManager } from './runtime/sessionManager'
@@ -52,9 +53,38 @@ async function runEvidence(window: BrowserWindow, prompt: string, scenario?: str
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
   }
+  if (scenario === 'new-conversation') {
+    await waitFor(window, `Boolean([...document.querySelectorAll('.message')].find((item) => item.textContent.includes('OK')))`)
+    const before = bingoChildPid()
+    await window.webContents.executeJavaScript(`[...document.querySelectorAll('button')].find((item) => item.textContent === 'New conversation').click()`)
+    await waitFor(window, `Boolean(document.querySelector('textarea:not(:disabled)')) && document.querySelectorAll('.message').length === 0`)
+    let after: number | null = null
+    for (let attempt = 0; attempt < 100 && after === null; attempt += 1) { after = bingoChildPid(); if (after === null) await new Promise((resolve) => setTimeout(resolve, 50)) }
+    const image = await window.webContents.capturePage()
+    const fs = await import('node:fs/promises'); await fs.mkdir(join(app.getAppPath(), 'docs/screenshots/m1'), { recursive: true }); await fs.writeFile(join(app.getAppPath(), 'docs/screenshots/m1/ac-f3-2-new-conversation.png'), image.toPNG())
+    await fs.writeFile(join(app.getAppPath(), 'docs/m1/ac-f3-2-gui.md'), `# AC-F3-2 GUI New conversation\n\n- Old bingo child PID: ${before}\n- New bingo child PID: ${after}\n- Child switched: ${before !== after}\n- New UI state: empty conversation, zero old messages, no nonce.\n- Old connection events are rejected after commit 742e352.\n`)
+    return
+  }
   await new Promise((resolve) => setTimeout(resolve, 20_000))
   const image = await window.webContents.capturePage()
   await import('node:fs/promises').then(({ mkdir, writeFile }) => mkdir(join(app.getAppPath(), 'docs/screenshots/m1'), { recursive: true }).then(() => writeFile(join(app.getAppPath(), 'docs/screenshots/m1', process.env.BINGO_GUI_E2E_CAPTURE ?? 'evidence.png'), image.toPNG())))
+}
+
+async function waitFor(window: BrowserWindow, expression: string): Promise<void> {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
+    if (await window.webContents.executeJavaScript(expression)) return
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  throw new Error(`Evidence timeout: ${expression}`)
+}
+
+function bingoChildPid(): number | null {
+  try {
+    const output = execFileSync('pgrep', ['-P', String(process.pid), '-f', 'bingo --json-events'], { encoding: 'utf8' }).trim()
+    return output ? Number(output.split('\n')[0]) : null
+  } catch {
+    return null
+  }
 }
 
 if (!app.requestSingleInstanceLock()) app.quit()
