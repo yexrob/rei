@@ -37,13 +37,14 @@ input[type="checkbox"] { accent-color: var(--accent-strong); }
 .sidebar strong { font-size: 20px; letter-spacing: -0.03em; }
 .sidebar span { color: var(--text-secondary); font-size: 14px; }
 .nav-action { color: var(--text); border: 1px solid var(--border); background: transparent; text-align: left; }
-.nav-action.active { border-color: var(--border-strong); background: var(--bg); font-weight: 700; }
+.nav-action.active { border-color: var(--border-strong); background: var(--bg-hover); font-weight: 700; border-left: 3px solid var(--accent-strong); padding-left: 11px; }
 .session-heading { display: flex; align-items: center; justify-content: space-between; }
 .session-heading small { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .session-list { display: flex; flex: 1; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; }
 .session-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 30px; border: 1px solid transparent; border-radius: 8px; }
 .session-row:hover { background: var(--bg-hover); }
-.session-row.active { border-color: var(--border-strong); background: var(--bg); }
+.session-row.active { border-color: var(--border-strong); background: var(--bg-hover); }
+.session-row.active::before { content: ''; position: absolute; left: 0; top: 18%; bottom: 18%; width: 3px; border-radius: 2px; background: var(--accent-strong); }
 .session-item { display: grid; gap: 5px; min-width: 0; padding: 11px 4px 11px 12px; color: var(--text-strong); border: 0; background: transparent; text-align: left; }
 .session-item > span { overflow: hidden; color: inherit; font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .session-item > small { overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
