@@ -16,11 +16,13 @@ export type ChatState = {
 export const initialChatState: ChatState = { turnId: null, messages: [], tools: [], prompts: [], error: null }
 
 export type ChatAction =
+  | { type: 'reset' }
   | { type: 'submit'; turnId: string; prompt: string }
   | { type: 'event'; event: CliEvent }
   | { type: 'transport-error'; code: string; msg: string }
 
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
+  if (action.type === 'reset') return initialChatState
   if (action.type === 'submit') {
     if (state.turnId) return state
     return {

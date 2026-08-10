@@ -55,6 +55,17 @@ export default function App(): React.JSX.Element {
     return unsubscribe
   }, [connect])
 
+  const newConversation = async (): Promise<void> => {
+    const current = connection.current
+    if (current) await window.bingoGui.closeSession({ connectionId: current.id })
+    connection.current = null
+    activeTurnId.current = null
+    dispatch({ type: 'reset' })
+    const opened = await window.bingoGui.openSession({ sessionId: null })
+    if (!opened.ok) { setFlowError(opened.error); return }
+    connection.current = { id: opened.value.connectionId, sequence: 0 }
+  }
+
   const submit = async (): Promise<void> => {
     const active = connection.current
     if (!draft.trim() || state.turnId || !active) return
@@ -85,7 +96,7 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className="app-shell" data-qa-state="chat">
-      <nav className="sidebar" aria-label="Primary navigation"><strong>bingo</strong><button type="button" className="nav-action">New conversation</button><span>Conversations</span><span>{runtime ? `bingo ${runtime.bingoVersion} · protocol ${runtime.protocolVersion}` : 'Connecting…'}</span></nav>
+      <nav className="sidebar" aria-label="Primary navigation"><strong>bingo</strong><button type="button" className="nav-action" onClick={() => void newConversation()}>New conversation</button><span>Conversations</span><span>{runtime ? `bingo ${runtime.bingoVersion} · protocol ${runtime.protocolVersion}` : 'Connecting…'}</span></nav>
       <main className="chat">
         <header><p className="eyebrow">Local conversation</p><h1>New conversation</h1></header>
         <section className="timeline" aria-live="polite">
