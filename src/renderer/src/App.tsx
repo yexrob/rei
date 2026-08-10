@@ -11,8 +11,10 @@ export default function App(): React.JSX.Element {
   const [draft, setDraft] = useState('')
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
   const [flowError, setFlowError] = useState<GuiError | null>(null)
+  const [connected, setConnected] = useState(false)
   const connection = useRef<Connection | null>(null)
   const activeTurnId = useRef<string | null>(null)
+  const connectInFlight = useRef(false)
   const prompt = state.prompts[0]
 
   useEffect(() => {
@@ -20,13 +22,24 @@ export default function App(): React.JSX.Element {
   }, [state.turnId])
 
   const connect = useCallback(async () => {
+    if (connectInFlight.current) return
+    connectInFlight.current = true
     setFlowError(null)
-    const probe = await window.bingoGui.probeRuntime()
-    if (!probe.ok) { setFlowError(probe.error); return }
-    setRuntime(probe.value)
-    const opened = await window.bingoGui.openSession({ sessionId: null })
-    if (!opened.ok) { setFlowError(opened.error); return }
-    connection.current = { id: opened.value.connectionId, sequence: 0 }
+    const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
+      Promise.race([promise, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms))])
+    try {
+      const probe = await withTimeout(window.bingoGui.probeRuntime(), 12_000)
+      if (!probe.ok) { setFlowError(probe.error); return }
+      setRuntime(probe.value)
+      const opened = await withTimeout(window.bingoGui.openSession({ sessionId: null }), 12_000)
+      if (!opened.ok) { setFlowError(opened.error); return }
+      connection.current = { id: opened.value.connectionId, sequence: 0 }
+      setConnected(true)
+    } catch {
+      setFlowError({ code: 'CONNECTION_TIMEOUT', msg: 'Could not connect to bingo within 12 seconds. Retry.', level: 'flow', recoverable: true, action: 'retry' })
+    } finally {
+      connectInFlight.current = false
+    }
   }, [])
 
   useEffect(() => {
@@ -81,7 +94,7 @@ export default function App(): React.JSX.Element {
           {state.tools.map((tool) => <article className="tool-row" key={tool.id}><strong>{tool.name}</strong><span>{tool.summary}</span><small>{tool.status}</small></article>)}
           {state.error && <div className="inline-error" role="alert"><strong>{state.error.code}</strong><span>{state.error.msg}</span></div>}
         </section>
-        <footer className="composer"><textarea aria-label="Message" value={draft} disabled={Boolean(state.turnId) || !connection.current} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit() } }} placeholder="Ask bingo…" />{state.turnId ? <button type="button" onClick={() => void cancel()}>Cancel</button> : <button type="button" onClick={() => void submit()}>Send</button>}</footer>
+        <footer className="composer"><textarea aria-label="Message" value={draft} disabled={Boolean(state.turnId) || !connected} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit() } }} placeholder="Ask bingo…" />{state.turnId ? <button type="button" onClick={() => void cancel()}>Cancel</button> : <button type="button" onClick={() => void submit()}>Send</button>}</footer>
       </main>
       {prompt && <div className="modal-backdrop" role="presentation"><section className="prompt-modal" role="dialog" aria-modal="true" aria-labelledby="prompt-title"><p className="eyebrow">{prompt.kind}</p><h2 id="prompt-title">{prompt.title}</h2><p>{prompt.question}</p><div className="prompt-actions">{prompt.options.map((option) => <button type="button" key={option.id} onClick={() => void respond({ kind: 'option', optionId: option.id })}>{option.label}</button>)}<button type="button" onClick={() => void respond({ kind: 'cancel' })}>Cancel</button></div></section></div>}
     </div>

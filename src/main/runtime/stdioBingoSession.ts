@@ -85,7 +85,15 @@ export class StdioBingoSession implements BingoSession {
     if (!this.child) return
     this.closed = true
     const exited = this.exitPromise ?? Promise.resolve()
-    try { await this.write({ protocolVersion: 1, type: 'session.close', commandId: randomUUID() }) } catch { /* terminate below */ }
+    try {
+      // The write callback may never fire once another close() ended stdin;
+      // never let close() hang on it (SessionManager serializes opens, but
+      // session:close can still race an in-flight open).
+      await Promise.race([
+        this.write({ protocolVersion: 1, type: 'session.close', commandId: randomUUID() }),
+        new Promise<void>((resolve) => setTimeout(resolve, 500))
+      ])
+    } catch { /* terminate below */ }
     this.child?.stdin.end()
     const graceful = await Promise.race([exited.then(() => true), new Promise<false>((resolve) => setTimeout(() => resolve(false), 2_000))])
     if (graceful || !this.child) return

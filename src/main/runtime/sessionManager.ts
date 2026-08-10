@@ -9,22 +9,33 @@ type Active = { connectionId: string; sessionId: string; session: BingoSession; 
 
 export class SessionManager {
   private active: Active | null = null
+  private chain: Promise<unknown> = Promise.resolve()
 
   constructor(private readonly factory: SessionFactory, private readonly emit: (event: ManagedSessionEvent) => void) {}
 
-  async open(sessionId?: string): Promise<{ connectionId: string; metadata: CliSessionMetadata }> {
-    await this.close()
-    const connectionId = randomUUID()
-    const session = this.factory({
-      onEvent: (event) => this.handleEvent(connectionId, event),
-      onExit: () => {
-        if (this.active?.connectionId === connectionId) this.active = null
-      }
+  /** Serialize session lifecycle mutations: concurrent opens (e.g. StrictMode
+   *  double-effect) would otherwise race close/spawn and wedge the manager. */
+  private serialize<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.chain.then(operation)
+    this.chain = run.then(() => undefined, () => undefined)
+    return run
+  }
+
+  open(sessionId?: string): Promise<{ connectionId: string; metadata: CliSessionMetadata }> {
+    return this.serialize(async () => {
+      await this.close()
+      const connectionId = randomUUID()
+      const session = this.factory({
+        onEvent: (event) => this.handleEvent(connectionId, event),
+        onExit: () => {
+          if (this.active?.connectionId === connectionId) this.active = null
+        }
+      })
+      const metadata = await session.open(sessionId)
+      if (!metadata.sessionId) throw new Error('Conversation session.ready did not contain a session ID')
+      this.active = { connectionId, sessionId: metadata.sessionId, session, sequence: 0, turnId: null, prompts: new Set() }
+      return { connectionId, metadata }
     })
-    const metadata = await session.open(sessionId)
-    if (!metadata.sessionId) throw new Error('Conversation session.ready did not contain a session ID')
-    this.active = { connectionId, sessionId: metadata.sessionId, session, sequence: 0, turnId: null, prompts: new Set() }
-    return { connectionId, metadata }
   }
 
   async send(connectionId: string, turnId: string, prompt: string): Promise<void> {
