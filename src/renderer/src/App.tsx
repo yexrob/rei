@@ -306,8 +306,9 @@ function SettingsScreen({ snapshot, draft, error, onChange, onSave }: { snapshot
   if (!snapshot || !draft) return <main className="settings-page"><p>Loading settings…</p></main>
   const update = <K extends keyof EditableSettings>(key: K, value: EditableSettings[K]): void => onChange({ ...draft, [key]: value })
   const shadowed = (key: keyof EditableSettings): boolean => snapshot.shadowed.includes(key)
+  const clean = JSON.stringify(draft) === JSON.stringify(snapshot.values)
   return <main className="settings-page">
-    <header><div><p className="eyebrow">User configuration</p><h1>Settings</h1><p className="settings-path">{snapshot.path}</p></div><button type="button" onClick={() => void onSave()}>Save changes</button></header>
+    <header><div><p className="eyebrow">User configuration</p><h1>Settings</h1><p className="settings-path">{snapshot.path}</p></div><button type="button" disabled={clean} onClick={() => void onSave()}>Save changes</button></header>
     {error && <div className="settings-page-error" role="alert"><strong>{error.code}</strong><span>{error.msg}</span></div>}
     <section className="settings-panel">
       <h2>Runtime</h2><p>Changes write only to the user layer. Workspace overrides remain read-only.</p>
