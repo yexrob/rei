@@ -82,3 +82,30 @@ Screenshots: `docs/screenshots/m2/session-list.png`, `settings-page.png`.
 - Distinguish "global default" fields from "current provider" details.
 - Save action stickiness for scrollable settings content (sticky header/footer).
 - Native blue checkbox (`Send images`) vs the black/cream palette — unify in M3.
+
+## Round 4 — M3 dual-theme matrix: final gate (2026-08-11)
+
+`docs/screenshots/m3/{light,dark}/*` (10 files). Independent review
+(vision-final-4) after two fix cycles:
+
+**Gate: PASS — no Critical/Major.**
+
+Fixed in this round (and their root causes):
+1. Dark theme never applied → `RuntimeSettings` contract lacked the `theme`
+   field, so the renderer always resolved auto/light; theme now flows from
+   session metadata on read/save (2a2de37, 260e643) and is applied on
+   `<html>` (5962264). Verified live: `htmlTheme="dark"`, sidebar
+   `rgb(21,20,17)`.
+2. Right-edge clipping of Apply/Send at 1440x900 → chat-header now
+   `flex-wrap` at any width (cf88d28).
+3. 800x600 horizontal overflow → header wrap + `overflow-wrap:anywhere` on
+   error cards; re-captured chat/settings at 800x600.
+4. Loading state evidence → captured mid-tool-turn (tool row running,
+   Cancel visible), distinct from the completed chat capture.
+5. Selected states → 3px accent bar on active nav/session row; verified live
+   (`::before` present, `activeRows=1`).
+
+Also fixed while reproducing: dark captures previously identical to light
+because `auto` resolved to the system's Dark appearance while the contract
+never carried theme; the light chat capture uses an isolated HOME with the
+real transcripts symlinked (707 sessions) so history renders in true light.
