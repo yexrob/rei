@@ -28,6 +28,21 @@ describe('chatReducer', () => {
     expect(state.turnId).toBeNull()
   })
 
+  it('restores persisted history as settled messages', () => {
+    const state = chatReducer(initialChatState, {
+      type: 'restore',
+      history: [
+        { type: 'message', value: { id: 's:1', role: 'user', markdown: 'Remember amber' } },
+        { type: 'message', value: { id: 's:2', role: 'assistant', markdown: 'Remembered' } }
+      ]
+    })
+    expect(state.messages).toEqual([
+      { id: 's:1', role: 'user', markdown: 'Remember amber', status: 'done' },
+      { id: 's:2', role: 'assistant', markdown: 'Remembered', status: 'done' }
+    ])
+    expect(state.turnId).toBeNull()
+  })
+
   it('rejects a duplicate submit while a turn is active', () => {
     const active = chatReducer(initialChatState, { type: 'submit', turnId, prompt: 'first' })
     const second = chatReducer(active, { type: 'submit', turnId: 'second-turn', prompt: 'second' })

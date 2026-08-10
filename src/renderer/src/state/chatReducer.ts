@@ -1,4 +1,5 @@
 import type { CliEvent } from '../../../shared/contracts/cli'
+import type { SessionHistoryItem } from '../../../shared/contracts/ipc'
 
 export type ChatMessage = { id: string; role: 'user' | 'assistant'; markdown: string; status?: 'streaming' | 'done' | 'interrupted' }
 export type ToolActivity = { id: string; name: string; summary: string; status: 'running' | 'done' | 'error' | 'interrupted'; output?: string }
@@ -17,12 +18,19 @@ export const initialChatState: ChatState = { turnId: null, messages: [], tools: 
 
 export type ChatAction =
   | { type: 'reset' }
+  | { type: 'restore'; history: SessionHistoryItem[] }
   | { type: 'submit'; turnId: string; prompt: string }
   | { type: 'event'; event: CliEvent }
   | { type: 'transport-error'; code: string; msg: string }
 
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   if (action.type === 'reset') return initialChatState
+  if (action.type === 'restore') {
+    return {
+      ...initialChatState,
+      messages: action.history.map((item) => ({ ...item.value, status: 'done' }))
+    }
+  }
   if (action.type === 'submit') {
     if (state.turnId) return state
     return {

@@ -3,7 +3,7 @@ import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
 import type { RuntimeLocator } from '../runtime/runtimeLocator'
 import type { SessionManager } from '../runtime/sessionManager'
 import type { TranscriptRepository } from '../storage/transcriptRepository'
-import { IPC, type Result, type SessionListOutput } from '../../shared/contracts/ipc'
+import { IPC, type Result, type SessionListOutput, type SessionOpened } from '../../shared/contracts/ipc'
 
 const electron = vi.hoisted(() => ({
   handlers: new Map<string, (event: IpcMainInvokeEvent, input?: unknown) => unknown>()
@@ -38,5 +38,27 @@ describe('registerIpc session:list', () => {
     const result = await handler?.({ sender: webContents, senderFrame: mainFrame } as unknown as IpcMainInvokeEvent) as Result<SessionListOutput>
     expect(result).toEqual({ ok: true, value: output })
     expect(transcripts.list).toHaveBeenCalledOnce()
+  })
+
+  it('loads history before opening the exact requested session', async () => {
+    const history = [{ type: 'message' as const, value: { id: 'session-1:1', role: 'user' as const, markdown: 'Remember amber' } }]
+    const transcripts = { list: vi.fn(), load: vi.fn().mockResolvedValue({ history, warnings: [] }) }
+    const sessions = {
+      open: vi.fn().mockResolvedValue({
+        connectionId: crypto.randomUUID(),
+        metadata: { bingoVersion: '1', protocolVersion: 1, sessionId: 'session-1', displayName: 'Session 1', transcriptPath: '/private/session-1.jsonl', resumed: true, cwd: '/tmp', provider: 'default', model: 'm', thinkingLevel: 'off', permissionMode: 'default', theme: 'auto', supportsImages: false }
+      })
+    }
+    const mainFrame = {}
+    const webContents = { mainFrame }
+    registerIpc({ webContents } as unknown as BrowserWindow, {} as RuntimeLocator, sessions as unknown as SessionManager, transcripts as unknown as TranscriptRepository)
+
+    const handler = electron.handlers.get(IPC.sessionOpen)
+    const result = await handler?.({ sender: webContents, senderFrame: mainFrame } as unknown as IpcMainInvokeEvent, { sessionId: 'session-1' }) as Result<SessionOpened>
+
+    expect(transcripts.load).toHaveBeenCalledWith('session-1')
+    expect(sessions.open).toHaveBeenCalledWith('session-1')
+    expect(result).toMatchObject({ ok: true, value: { history } })
+    if (result.ok) expect(result.value.metadata).not.toHaveProperty('transcriptPath')
   })
 })

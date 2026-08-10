@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import type { PromptResponse, CliEvent } from '../../shared/contracts/cli'
-import type { GuiError, RendererSessionEvent, RuntimeInfo } from '../../shared/contracts/ipc'
+import type { GuiError, RendererSessionEvent, RuntimeInfo, SessionSummary } from '../../shared/contracts/ipc'
 import { chatReducer, initialChatState } from './state/chatReducer'
 
 type Connection = { id: string; sequence: number }
@@ -10,6 +10,9 @@ export default function App(): React.JSX.Element {
   const [state, dispatch] = useReducer(chatReducer, initialChatState)
   const [draft, setDraft] = useState('')
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
+  const [sessions, setSessions] = useState<SessionSummary[]>([])
+  const [sessionListError, setSessionListError] = useState<GuiError | null>(null)
+  const [activeSession, setActiveSession] = useState<SessionSummary | null>(null)
   const [flowError, setFlowError] = useState<GuiError | null>(null)
   const [connected, setConnected] = useState(false)
   const connection = useRef<Connection | null>(null)
@@ -25,15 +28,21 @@ export default function App(): React.JSX.Element {
     if (connectInFlight.current) return
     connectInFlight.current = true
     setFlowError(null)
+    setSessionListError(null)
     const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
       Promise.race([promise, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms))])
     try {
       const probe = await withTimeout(window.bingoGui.probeRuntime(), 12_000)
       if (!probe.ok) { setFlowError(probe.error); return }
       setRuntime(probe.value)
+      const listed = await withTimeout(window.bingoGui.listSessions(), 12_000)
+      if (listed.ok) setSessions(listed.value.sessions)
+      else setSessionListError(listed.error)
       const opened = await withTimeout(window.bingoGui.openSession({ sessionId: null }), 12_000)
       if (!opened.ok) { setFlowError(opened.error); return }
       connection.current = { id: opened.value.connectionId, sequence: 0 }
+      setActiveSession({ id: opened.value.metadata.sessionId, name: opened.value.metadata.displayName, preview: '', updatedAt: new Date().toISOString(), messageCount: 0 })
+      dispatch({ type: 'restore', history: opened.value.history })
       setConnected(true)
     } catch {
       setFlowError({ code: 'CONNECTION_TIMEOUT', msg: 'Could not connect to bingo within 12 seconds. Retry.', level: 'flow', recoverable: true, action: 'retry' })
@@ -56,14 +65,29 @@ export default function App(): React.JSX.Element {
   }, [connect])
 
   const newConversation = async (): Promise<void> => {
-    const current = connection.current
     connection.current = null
     activeTurnId.current = null
+    setConnected(false)
     dispatch({ type: 'reset' })
-    if (current) await window.bingoGui.closeSession({ connectionId: current.id })
     const opened = await window.bingoGui.openSession({ sessionId: null })
     if (!opened.ok) { setFlowError(opened.error); return }
     connection.current = { id: opened.value.connectionId, sequence: 0 }
+    setActiveSession({ id: opened.value.metadata.sessionId, name: opened.value.metadata.displayName, preview: '', updatedAt: new Date().toISOString(), messageCount: 0 })
+    setConnected(true)
+  }
+
+  const openSession = async (session: SessionSummary): Promise<void> => {
+    if (state.turnId || activeSession?.id === session.id) return
+    connection.current = null
+    activeTurnId.current = null
+    setConnected(false)
+    setFlowError(null)
+    const opened = await window.bingoGui.openSession({ sessionId: session.id })
+    if (!opened.ok) { setFlowError(opened.error); return }
+    connection.current = { id: opened.value.connectionId, sequence: 0 }
+    setActiveSession(session)
+    dispatch({ type: 'restore', history: opened.value.history })
+    setConnected(true)
   }
 
   const submit = async (): Promise<void> => {
@@ -96,9 +120,25 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className="app-shell" data-qa-state="chat">
-      <nav className="sidebar" aria-label="Primary navigation"><strong>bingo</strong><button type="button" className="nav-action" onClick={() => void newConversation()}>New conversation</button><span>Conversations</span><span>{runtime ? `bingo ${runtime.bingoVersion} · protocol ${runtime.protocolVersion}` : 'Connecting…'}</span></nav>
+      <nav className="sidebar" aria-label="Primary navigation">
+        <strong>bingo</strong>
+        <button type="button" className="nav-action" onClick={() => void newConversation()}>New conversation</button>
+        <div className="session-heading"><span>Conversations</span><small>{sessions.length}</small></div>
+        <div className="session-list">
+          {sessionListError && <p className="sidebar-error" role="alert">{sessionListError.msg}</p>}
+          {sessions.length === 0 && !sessionListError && <p className="sidebar-empty">No saved conversations yet.</p>}
+          {sessions.map((session) => (
+            <button type="button" className={`session-item${activeSession?.id === session.id ? ' active' : ''}`} aria-current={activeSession?.id === session.id ? 'page' : undefined} key={session.id} onClick={() => void openSession(session)}>
+              <span>{session.name}</span>
+              <small>{session.preview || 'Empty conversation'}</small>
+              <time dateTime={session.updatedAt}>{formatSessionTime(session.updatedAt)}</time>
+            </button>
+          ))}
+        </div>
+        <span className="runtime-version">{runtime ? `bingo ${runtime.bingoVersion} · protocol ${runtime.protocolVersion}` : 'Connecting…'}</span>
+      </nav>
       <main className="chat">
-        <header><p className="eyebrow">Local conversation</p><h1>New conversation</h1></header>
+        <header><p className="eyebrow">Local conversation</p><h1>{activeSession?.name ?? 'New conversation'}</h1></header>
         <section className="timeline" aria-live="polite">
           {state.messages.length === 0 && <p className="chat-hint">Send a prompt to start working with bingo.</p>}
           {state.messages.map((message) => <article className={`message ${message.role}`} key={message.id}><span>{message.role === 'user' ? 'You' : 'bingo'}</span><Markdown skipHtml>{message.markdown}</Markdown>{message.status === 'interrupted' && <small>Interrupted</small>}</article>)}
@@ -110,6 +150,12 @@ export default function App(): React.JSX.Element {
       {prompt && <div className="modal-backdrop" role="presentation"><section className="prompt-modal" role="dialog" aria-modal="true" aria-labelledby="prompt-title"><p className="eyebrow">{prompt.kind}</p><h2 id="prompt-title">{prompt.title}</h2><p>{prompt.question}</p><div className="prompt-actions">{prompt.options.map((option) => <button type="button" key={option.id} onClick={() => void respond({ kind: 'option', optionId: option.id })}>{option.label}</button>)}<button type="button" onClick={() => void respond({ kind: 'cancel' })}>Cancel</button></div></section></div>}
     </div>
   )
+}
+
+function formatSessionTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 }
 
 function FlowError({ error, retry }: { error: GuiError; retry: () => Promise<void> }): React.JSX.Element {

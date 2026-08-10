@@ -34,9 +34,10 @@ export function registerIpc(window: BrowserWindow, locator: RuntimeLocator, sess
     try { return { ok: true, value: await transcripts.list() } } catch (error) { return operationalError(error) }
   })
   handle(IPC.sessionOpen, sessionOpenInputSchema, async ({ sessionId }): Promise<SessionOpened> => {
+    const history = sessionId ? (await transcripts.load(sessionId)).history : []
     const opened = await sessions.open(sessionId ?? undefined)
     const { transcriptPath: _, ...metadata } = opened.metadata
-    return { connectionId: opened.connectionId, metadata, history: [] }
+    return { connectionId: opened.connectionId, metadata, history }
   })
   handle(IPC.sessionClose, connectionInputSchema, async ({ connectionId }) => { await sessions.close(connectionId); return { closed: true as const } })
   handle(IPC.sessionSend, sessionSendInputSchema, async ({ connectionId, turnId, prompt }) => { await sessions.send(connectionId, turnId, prompt); return { accepted: true as const } })

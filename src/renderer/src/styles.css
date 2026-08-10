@@ -9,10 +9,23 @@ html, body, #root { min-width: 800px; min-height: 600px; height: 100%; margin: 0
 button, input, textarea { font: inherit; }
 button { padding: 10px 14px; border: 0; border-radius: 8px; color: #f9f8f4; background: #262521; }
 .app-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); height: 100%; min-height: 0; overflow: hidden; }
-.sidebar { display: flex; flex-direction: column; gap: 24px; padding: 28px 24px; border-right: 1px solid #d9d5cc; background: #ebe8e1; }
+.sidebar { display: flex; flex-direction: column; gap: 20px; min-height: 0; padding: 28px 16px 20px; border-right: 1px solid #d9d5cc; background: #ebe8e1; }
+.sidebar > strong, .sidebar > .nav-action, .sidebar > .session-heading, .sidebar > .runtime-version { margin-left: 8px; margin-right: 8px; }
 .sidebar strong { font-size: 20px; letter-spacing: -0.03em; }
 .sidebar span { color: #716e67; font-size: 14px; }
 .nav-action { color: #20201e; border: 1px solid #cec9bf; background: transparent; text-align: left; }
+.session-heading { display: flex; align-items: center; justify-content: space-between; }
+.session-heading small { color: #858078; font-variant-numeric: tabular-nums; }
+.session-list { display: flex; flex: 1; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; }
+.session-item { display: grid; gap: 5px; width: 100%; padding: 11px 12px; color: #282722; border: 1px solid transparent; background: transparent; text-align: left; }
+.session-item:hover { background: #e2ded5; }
+.session-item.active { border-color: #c9c3b7; background: #f4f2ed; }
+.session-item > span { overflow: hidden; color: inherit; font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.session-item > small { overflow: hidden; color: #706c65; text-overflow: ellipsis; white-space: nowrap; }
+.session-item > time { color: #908b82; font-size: 10px; }
+.sidebar-empty, .sidebar-error { margin: 4px 12px; color: #77736b; font-size: 12px; line-height: 1.45; }
+.sidebar-error { color: #762a23; }
+.runtime-version { margin-top: auto; }
 .chat { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
 .chat header { flex: 0 0 auto; padding: 28px 40px 20px; border-bottom: 1px solid #dedad2; }
 .eyebrow { margin: 0 0 8px; color: #736f66; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
