@@ -18,3 +18,7 @@
 - The earlier defect recorded by commit `8fab477` is resolved by the rebuilt worktree binary.
 
 The `BINGO_GUI_E2E_PROMPT` path in `src/main/index.ts` is evidence-only and gated by both an explicit environment variable and `!app.isPackaged`. It is not reachable in packaged production builds and will be removed after the evidence matrix is complete.
+
+## Update (CSS fix re-capture)
+- `../screenshots/m1/ac-f2-3-running.png` added: same tool turn captured mid-flight (tool row `running`).
+- `../screenshots/m1/ac-f2-3-tools.png` re-captured after the status-badge/scroll-padding CSS fix.

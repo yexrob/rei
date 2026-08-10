@@ -18,10 +18,11 @@ button { padding: 10px 14px; border: 0; border-radius: 8px; color: #f9f8f4; back
 .eyebrow { margin: 0 0 8px; color: #736f66; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 h1, h2 { margin: 0; letter-spacing: -.04em; }
 h1 { font-size: 28px; }
-.timeline { min-height: 0; flex: 1 1 auto; overflow: auto; padding: 28px 40px; }
+.timeline { min-height: 0; flex: 1 1 auto; overflow: auto; padding: 28px 40px; scroll-padding-top: 20px; }
 .chat-hint { color: #77736b; }
 .message { max-width: 720px; margin: 0 0 28px; }
 .message > span { color: #77736b; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+.message > small { display: block; width: fit-content; margin-top: 10px; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #762a23; background: #f0d9d5; text-transform: uppercase; letter-spacing: .08em; }
 .message.user { margin-left: auto; padding: 14px 18px; border-radius: 14px; background: #e6e1d7; }
 .message pre { overflow-x: auto; padding: 14px; border-radius: 8px; background: #272621; color: #f4f2ed; }
 .tool-row { display: grid; grid-template-columns: 100px minmax(0,1fr) auto; gap: 14px; align-items: center; max-width: 720px; margin: 10px 0; padding: 12px 14px; border: 1px solid #d8d3ca; border-radius: 8px; }

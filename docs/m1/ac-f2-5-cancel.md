@@ -10,3 +10,6 @@
 Raw events: `ac-f2-5-cancel.ndjson`; diagnostics: `ac-f2-5-cancel.stderr`.
 
 GUI screenshot automation for the physical Cancel click remains pending; the transport and reducer portions pass, but this document does not claim the QA 1-second UI measurement.
+
+## Update (GUI evidence)
+- `../screenshots/m1/ac-f2-5-cancel.png` re-captured after the CSS fix: the interrupted message now shows a distinct `INTERRUPTED` status badge on its own line (was `BINGOInterrupted` concatenation).
