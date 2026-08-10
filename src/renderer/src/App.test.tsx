@@ -20,25 +20,25 @@ const secondSession = {
   messageCount: 1
 }
 
-function opened(sessionId: string, history: SessionOpened['history'] = []): SessionOpened {
+function opened(sessionId: string, history: SessionOpened['history'] = [], theme: 'auto' | 'dark' | 'light' = 'auto'): SessionOpened {
   return {
     connectionId: crypto.randomUUID(),
     metadata: {
       bingoVersion: '0.4.0', protocolVersion: 1, sessionId, displayName: sessionId === firstSession.id ? firstSession.name : 'New conversation', resumed: history.length > 0,
-      cwd: '/workspace', provider: 'default', model: 'model', thinkingLevel: 'off', permissionMode: 'default', theme: 'auto', supportsImages: false
+      cwd: '/workspace', provider: 'default', model: 'model', thinkingLevel: 'off', permissionMode: 'default', theme, supportsImages: false
     },
     history
   }
 }
 
-function api(list: SessionListOutput): BingoGuiApi {
+function api(list: SessionListOutput, theme: 'auto' | 'dark' | 'light' = 'auto'): BingoGuiApi {
   let listener: ((event: RendererSessionEvent) => void) | undefined
   const runtimeSettings = {
     providers: [
       { name: 'default', protocol: 'anthropic' as const, apiBaseUrl: 'https://example.test', supportsImages: true, credentialConfigured: true, builtin: false },
       { name: 'opencode-go', protocol: 'openai' as const, apiBaseUrl: 'https://opencode.ai/zen/go', supportsImages: false, credentialConfigured: false, builtin: true }
     ],
-    provider: 'opencode-go', model: 'gpt-5.6-luna', thinkingLevel: 'off' as const
+    provider: 'opencode-go', model: 'gpt-5.6-luna', thinkingLevel: 'off' as const, theme
   }
   const snapshot = {
     path: '/home/.config/bingo/settings.json', revision: 'a'.repeat(64),
@@ -57,7 +57,7 @@ function api(list: SessionListOutput): BingoGuiApi {
     openSession: vi.fn().mockImplementation(async ({ sessionId }: { sessionId: string | null }) => ({ ok: true, value: opened(sessionId ?? 'new-session', sessionId === firstSession.id ? [
       { type: 'message', value: { id: 'history-user', role: 'user', markdown: 'Remember amber' } },
       { type: 'message', value: { id: 'history-assistant', role: 'assistant', markdown: 'I will remember amber' } }
-    ] : []) })),
+    ] : [], theme) })),
     renameSession: vi.fn().mockImplementation(async ({ sessionId, name }: { sessionId: string; name: string }) => ({ ok: true, value: { previousId: sessionId, session: { ...firstSession, id: `${sessionId}--${name}`, name } } })),
     deleteSession: vi.fn().mockImplementation(async ({ sessionId }: { sessionId: string }) => ({ ok: true, value: { deletedId: sessionId } })),
     readRuntimeSettings: vi.fn().mockResolvedValue({ ok: true, value: runtimeSettings }),
@@ -76,7 +76,10 @@ function api(list: SessionListOutput): BingoGuiApi {
 
 describe('session sidebar', () => {
   beforeEach(() => { vi.clearAllMocks() })
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    delete document.documentElement.dataset.theme
+  })
 
   it('shows newest-first summaries and opens the exact session with restored history', async () => {
     const bridge = api({ sessions: [secondSession, firstSession], warnings: [] })
@@ -137,6 +140,15 @@ describe('session sidebar', () => {
     fireEvent.change(screen.getByLabelText('Thinking level'), { target: { value: 'high' } })
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
     await waitFor(() => expect(bridge.saveRuntimeSettings).toHaveBeenCalledWith({ workspacePath: '/workspace', provider: 'default', model: 'model-default', thinkingLevel: 'high' }))
+  })
+
+  it('applies the effective runtime theme without opening Settings', async () => {
+    const bridge = api({ sessions: [], warnings: [] }, 'dark')
+    window.bingoGui = bridge
+    render(<App />)
+
+    await screen.findByLabelText('Provider')
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'))
   })
 
   it('loads the settings snapshot and shows a Saved toast after persistence', async () => {
