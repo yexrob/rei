@@ -27,4 +27,11 @@ describe('chatReducer', () => {
     expect(state.prompts).toEqual([])
     expect(state.turnId).toBeNull()
   })
+
+  it('rejects a duplicate submit while a turn is active', () => {
+    const active = chatReducer(initialChatState, { type: 'submit', turnId, prompt: 'first' })
+    const second = chatReducer(active, { type: 'submit', turnId: 'second-turn', prompt: 'second' })
+    expect(second.turnId).toBe(turnId)
+    expect(second.messages).toHaveLength(1)
+  })
 })
