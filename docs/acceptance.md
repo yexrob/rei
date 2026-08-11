@@ -3,7 +3,8 @@
 > Status: framework ready; execution not started
 > Owner: QA (`gui-qa`)
 > Product source: `docs/prd.md`
-> CLI contract source: `/Users/yexrob/Episodes/Projects/bingo` (read-only)
+> Protocol v1 source: `docs/architecture.md` §4 (sole normative schema)
+> CLI implementation source: `/Users/yexrob/Episodes/Projects/bingo/.bingo/worktrees/feat/gui-json-events`
 >
 > All items are intentionally unchecked. This document defines future acceptance; no application
 > tests were run while creating it.
@@ -42,13 +43,25 @@ Network-dependent checks must first record that the selected provider is healthy
 
 ### Contract oracles
 
-- Structured CLI failure oracle: stderr contains exactly one terminal error record of the form
-  `[error] code=<SCREAMING_SNAKE> msg=<single line of at most 200 characters>` and the process exits
-  `1`. The GUI must preserve the parsed `code` and full `msg`; it must not replace them with generic
-  copy. Other diagnostic stderr lines may precede the terminal record.
-- Success oracle: bingo exits `0`; streamed stdout concatenates to the final assistant text.
-- Tool-visibility oracle: every unique tool-call ID in the architecture-approved event transport
-  has exactly one visible activity row and a terminal `done` or `error` state.
+- Protocol v1 oracle: `docs/architecture.md` §4 is the sole normative source for JSON command/event
+  names, fields, ordering, and error scope. `docs/cli-facts.md` §10 is historical gap analysis only.
+- Persistent JSON turn-error oracle: stdout emits exactly one terminal
+  `error(scope="turn", recoverable=true)` carrying bingo's stable `code` and sanitized single-line
+  `msg` (at most 200 characters). No `turn.completed` or `turn.cancelled` follows; the same child
+  returns to idle and accepts the next turn. No duplicate legacy `[error]` line is emitted.
+- JSON session-fatal oracle: stdout flushes `error(scope="session")`, then the child exits `1`.
+  Invocation/clap misuse before framing may exit `2`. Electron surfaces the structured event where
+  present and never infers scope or level from `code`.
+- Legacy CLI failure oracle: non-JSON `--print` stderr contains exactly one terminal error record of
+  the form `[error] code=<SCREAMING_SNAKE> msg=<single line of at most 200 characters>` and exits
+  `1`. The GUI does not parse this legacy stream; it is retained only as the compatibility oracle.
+- Success oracle: a JSON turn has one `turn.started`, ordered `text.delta` events, then exactly one
+  `turn.completed`; concatenated deltas equal the final assistant text and the child stays alive.
+- Tool-visibility oracle: every `tool.ready.toolCallId` has exactly one visible activity row and
+  exactly one matching `tool.done` before the terminal turn event. Terminal status is
+  `done | error | interrupted`; correlation by name or array position is forbidden.
+- Inspection oracle: `--json-events --inspect` starts with `inspection.ready`, creates no transcript,
+  accepts only `providers.list`, `models.list`, and `session.close`, and is always reaped.
 - Storage oracle: SHA-256 hashes plus a recursive file manifest before and after the action.
 - Process oracle: capture the launched app PID and descendant bingo PIDs; inspect that PID tree,
   rather than using an unscoped process-name search that may match another session.
@@ -154,11 +167,14 @@ Evidence/defects: _not run_
   `javascript:` link. **Observe:** semantic rendered elements and renderer side-effect sentinel.
   **Pass:** required Markdown forms render correctly, dangerous content is escaped/removed, no
   script/event/link executes, and model HTML cannot invoke Electron/Node capabilities.
-- [ ] **AC-F2-7 — Structured non-zero error.** Cause a real bingo exit `1` with a known terminal
-  `[error]` line; capture raw stderr and UI. Include messages containing spaces and HTML metacharacters.
-  **Observe:** inline turn error and still-enabled composer. **Pass:** UI `code` and `msg` exactly
-  equal the raw terminal record, copy remains safely escaped, no partial assistant turn is reported
-  as success, and the next prompt can be sent without restart.
+- [ ] **AC-F2-7 — Structured turn error and continued child.** Through the real persistent JSON
+  session, cause a recoverable `error(scope="turn")` with a message containing spaces and HTML
+  metacharacters; capture raw NDJSON, child PID, UI, and the next successful turn. **Observe:** the
+  failed turn's exactly-once terminal event, inline error, enabled composer, unchanged child PID, and
+  absence of a second terminal event or legacy `[error]` line. **Pass:** UI `code` and `msg` exactly
+  equal the structured event, copy remains safely escaped, partial assistant output stays visibly
+  incomplete rather than successful, the child remains alive/idle, and the next prompt succeeds
+  without app or child restart.
 - [ ] **AC-F3-1 — Context continuity.** In one conversation send “Remember the exact nonce
   `<unique value>`” and then “Return only the nonce I asked you to remember.” Also inspect the
   second request/session identity. **Observe:** second turn uses the same conversation context.
@@ -175,12 +191,14 @@ Evidence/defects: _not run_
 
 **Required error-path matrix at M1**
 
-- [ ] **M1-ERR-API — API failures remain structured.** Through the real bingo process, make the
-  provider return 401, 403, 429, and 5xx, plus an unreachable endpoint. **Observe:** raw terminal
-  lines and UI errors. **Pass:** each exit is `1`; UI preserves bingo's emitted code (normally
+- [ ] **M1-ERR-API — API failures remain structured and recoverable.** Through the real persistent
+  JSON session, make the provider return 401, 403, 429, and 5xx, plus an unreachable endpoint.
+  **Observe:** raw terminal turn-error events, UI errors, terminal-event cardinality, child PID, and
+  a subsequent successful turn after restoring the provider. **Pass:** each failure emits exactly one
+  `error(scope="turn", recoverable=true)`; UI preserves bingo's emitted code (normally
   `AUTH_REQUIRED`, `PERMISSION_DENIED`, `RATE_LIMITED`, `SERVER_ERROR`, and `OFFLINE`) and exact
-  sanitized `msg`, gives a useful next action, and remains usable. The emitted line—not this list—is
-  the final oracle if upstream adds a code.
+  sanitized `msg`, gives a useful next action, remains usable, and keeps the same child alive. The
+  emitted structured event—not this list—is the final oracle if upstream adds a code.
 
 **M1 verdict:** `[ ] PASS  [ ] FAIL  [ ] BLOCKED`
 Evidence/defects: _not run_
@@ -203,11 +221,14 @@ Evidence/defects: _not run_
   the nonce. **Observe:** restored order/content and invocation target. **Pass:** full history is
   rendered once in order and the next real bingo turn resumes the selected—not merely latest—session
   and returns the nonce.
-- [ ] **AC-F3-5 — Rename and confirmed delete.** Rename a seeded session, restart the GUI, then
-  initiate delete and first cancel, then confirm. **Observe:** persistence, confirmation dialog,
-  transcript state, and list. **Pass:** rename survives restart; cancellation changes nothing;
-  confirmation removes the row and transcript; all mutation is delegated through the
-  architecture-approved bingo-owned path rather than an unapproved renderer write.
+- [ ] **AC-F3-5 — Bingo-owned rename and confirmed delete.** Rename an idle seeded session, restart
+  the GUI, then initiate delete and first cancel, then confirm. Exercise an inactive row as well as
+  the active session. **Observe:** persistence, confirmation dialog, active-conversation continuity,
+  maintenance-child PID/events, transcript state, and list. **Pass:** rename survives restart and
+  returns bingo's validated display slug; rename collision returns `SESSION_NAME_CONFLICT` without
+  overwriting either file; cancellation changes nothing; confirmation removes the row/transcript;
+  all mutation is performed by the active or isolated maintenance bingo child, never renderer,
+  preload, or Electron-main filesystem code.
 - [ ] **AC-F3-6 — GUI is not a transcript writer.** Hash/manifest the transcript directory, browse
   and resume without sending, then compare; separately send one turn and trace file writers.
   **Observe:** idle-read diff and writer attribution for expected turn changes. **Pass:** browsing
@@ -219,33 +240,39 @@ Evidence/defects: _not run_
 
 - [ ] **AC-F4-1 — Effective provider parity.** In an isolated QA workspace, seed distinct custom
   providers across the user, project, and local settings layers, including one overridden name;
-  obtain the canonical effective provider list from the same bingo binary and working directory via
-  `/provider`, then open the GUI switcher. **Observe:** the canonical and GUI provider sets, active
-  marker, current model, and thinking level. **Pass:** the normalized GUI set exactly equals bingo's
-  reported set (including `default`, built-in `codex` and `opencode-go`, and every effective custom
-  provider), with no duplicate or shadow-only entry; the active provider, model, and thinking level
-  match bingo. Evidence must come from bingo's output—the test must not reconstruct the expected set
-  by independently merging settings.
+  obtain bingo's canonical `/provider` list, then query `providers.list` through both an idle active
+  child and `--json-events --inspect` with no conversation, and open the GUI switcher. **Observe:**
+  ordered provider names/metadata, active marker, model, thinking level, transcript manifest, and
+  inspection-child cleanup. **Pass:** the GUI set/order exactly equals bingo's reported effective set
+  (`default`, built-in `codex`/`opencode-go`, and every effective custom provider), with no duplicate
+  or shadow-only entry; active values match bingo; inspection creates no transcript and leaves no
+  child. Evidence comes from bingo's outputs—the test never reconstructs the merge in TypeScript.
 - [ ] **AC-F4-2 — Persistence and plain-CLI round trip.** Change provider, model, and thinking level,
   close the app, parse settings JSON, then run plain `bingo --print "hi"` against a request-capture
   provider. **Observe:** valid file and captured provider/model/thinking request. **Pass:** all three
   selections persist in the user layer and the independent CLI invocation uses them; unrelated and
   unknown keys are unchanged.
 - [ ] **AC-F4-3 — Bad model rejected safely.** Enter `qa-definitely-invalid-model`, record the
-  settings checksum, and attempt save/use. **Observe:** field-level error and file/request state.
-  **Pass:** error specifically explains why the value is invalid and what to do, the bad value is
-  not written or sent, checksum remains unchanged, and valid prior settings still work. If bingo
-  supplies a structured error, its `code` and `msg` are also preserved verbatim.
+  settings checksum, and attempt save/use. Capture the matching `models.list`/`models.result` or
+  structured failure through the active/inspection child. **Observe:** field-level error,
+  request-generation correlation, file/request state, and inspection-child cleanup. **Pass:** an
+  explicitly changed model is written only when a successful non-empty provider list contains the
+  exact ID; unsupported/empty/list/auth/transport failure explains why validation failed and writes
+  nothing; the bad value is neither written nor sent, checksum is unchanged, valid prior settings
+  still work, and an unchanged pre-existing model does not block unrelated saves.
 - [ ] **AC-F4-4 — API-key secrecy.** Seed a unique sentinel API key; visit every settings/switcher
   view, save, trigger success and failure, and capture screenshots, accessibility text, app logs,
   child command lines, and renderer console. **Observe:** visual masking and sentinel search.
   **Pass:** key is never displayed in plain text and sentinel is absent from logs, console, error
   copy, screenshots, telemetry, and process arguments; it appears only in the intended settings
   file/provider request secret channel.
-- [ ] **AC-F4-5 — Next-turn activation.** Complete turn A, switch provider/model, then send turn B
-  without restart while capturing both requests. **Observe:** selected active marker and request
-  routing. **Pass:** A uses old values, B uses new values, no extra stale-provider request occurs,
-  and the app remains usable.
+- [ ] **AC-F4-5 — Next-turn activation.** Complete turn A, change provider/model/thinking while idle,
+  then send turn B without app restart while capturing settings-save result, connection IDs,
+  `session.reconnected(reason="settings-changed")`, and both provider requests. **Observe:** selected
+  active marker, request routing, and stale-event handling. **Pass:** A uses old values; save resolves
+  only after reconnect to the same exact session with a new connection ID; B uses new values; no
+  event/request from the old connection mutates state. With no active conversation, save creates no
+  child and the first subsequent turn uses the new values.
 
 ### Settings screen
 
