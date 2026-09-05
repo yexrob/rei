@@ -1,347 +1,169 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-import Markdown from 'react-markdown'
-import type { PromptResponse, CliEvent } from '../../shared/contracts/cli'
-import type { EditableSettings, GuiError, RendererSessionEvent, RuntimeInfo, RuntimeSettings, SessionSummary, SettingsSnapshot } from '../../shared/contracts/ipc'
-import { chatReducer, initialChatState } from './state/chatReducer'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowUpRight, Download, FolderOpen, Globe2, Info, MessageSquare, MoreHorizontal, PanelLeft, Plus, Search, Settings2, SquareTerminal, Terminal, Trash2, X } from 'lucide-react'
+import { DESKTOP_IMAGE_LIMITS } from '../../shared/desktop'
+import { useWorkspace, unwrap } from './state/useWorkspace'
+import { itemText, selectSessionTitle, selectStatus, selectUsage } from './state/session'
+import { Composer, emptyDraft, type Draft } from './components/Composer'
+import { Timeline } from './components/Timeline'
+import { StartupTransition } from './components/StartupTransition'
+import { BrowserPanel } from './components/BrowserPanel'
+import { I18nProvider, useI18n } from './i18n'
+import { InteractionPanel } from './components/InteractionPanel'
+import { Settings, Onboarding } from './components/Settings'
+import { StructuredView, type RunAction } from './components/Content'
+import { basename, ErrorBanner, IconButton, Modal, number, object } from './components/primitives'
 
-type Connection = { id: string; sequence: number }
+const TerminalPanel = lazy(() => import('./components/TerminalPanel').then((module) => ({ default: module.TerminalPanel })))
 
-/** F6-1: a busy indicator that appears only after the 200 ms feedback threshold. */
-function DelayedThinking(): React.JSX.Element | null {
-  const [visible, setVisible] = useState(false)
-  useEffect(() => {
-    const timer = setTimeout(() => setVisible(true), 200)
-    return () => clearTimeout(timer)
-  }, [])
-  return visible ? <p className="thinking" role="status" aria-live="polite">Working…</p> : null
+function loadDrafts(): Record<string, Draft> {
+  try {
+    const saved = object(JSON.parse(localStorage.getItem('rei.drafts.v1') ?? '{}'))
+    return Object.fromEntries(Object.entries(saved).filter(([, value]) => typeof value === 'string').map(([key, text]) => [key, { text: String(text), images: [] }]))
+  } catch { return {} }
 }
 
-export default function App(): React.JSX.Element {
-  const [state, dispatch] = useReducer(chatReducer, initialChatState)
-  const [draft, setDraft] = useState('')
-  const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
-  const [sessions, setSessions] = useState<SessionSummary[]>([])
-  const [sessionListError, setSessionListError] = useState<GuiError | null>(null)
-  const [activeSession, setActiveSession] = useState<SessionSummary | null>(null)
-  const [sessionMenu, setSessionMenu] = useState<string | null>(null)
-  const [renameSession, setRenameSession] = useState<SessionSummary | null>(null)
-  const [renameDraft, setRenameDraft] = useState('')
-  const [deleteSession, setDeleteSession] = useState<SessionSummary | null>(null)
-  const [sessionMutationError, setSessionMutationError] = useState<GuiError | null>(null)
-  const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings | null>(null)
-  const [selectedProvider, setSelectedProvider] = useState('')
-  const [models, setModels] = useState<string[]>([])
-  const [selectedModel, setSelectedModel] = useState('')
-  const [thinkingLevel, setThinkingLevel] = useState<RuntimeSettings['thinkingLevel']>('off')
-  const [settingsError, setSettingsError] = useState<GuiError | null>(null)
-  const [savingRuntime, setSavingRuntime] = useState(false)
-  const [view, setView] = useState<'chat' | 'settings'>('chat')
-  const [settingsSnapshot, setSettingsSnapshot] = useState<SettingsSnapshot | null>(null)
-  const [settingsDraft, setSettingsDraft] = useState<EditableSettings | null>(null)
-  const [settingsPageError, setSettingsPageError] = useState<GuiError | null>(null)
-  const [themeSetting, setThemeSetting] = useState<'auto' | 'dark' | 'light'>('auto')
-  const [toast, setToast] = useState<string | null>(null)
-  const [flowError, setFlowError] = useState<GuiError | null>(null)
-  const [connected, setConnected] = useState(false)
-  const connection = useRef<Connection | null>(null)
-  const activeTurnId = useRef<string | null>(null)
-  const connectInFlight = useRef(false)
-  const errorRef = useRef<HTMLDivElement | null>(null)
-  const prompt = state.prompts[0]
+export default function App(): React.JSX.Element { return <I18nProvider><WorkspaceApp /></I18nProvider> }
+
+function WorkspaceApp(): React.JSX.Element {
+  const { t, locale } = useI18n()
+  const w = useWorkspace()
+  const [sidebar, setSidebar] = useState(() => window.innerWidth >= 760)
+  const [settings, setSettings] = useState(false)
+  const [settingsPage, setSettingsPage] = useState('general')
+  const [palette, setPalette] = useState(false)
+  const [query, setQuery] = useState('')
+  const [details, setDetails] = useState(false)
+  const [menu, setMenu] = useState(false)
+  const [rename, setRename] = useState<string | null>(null)
+  const [bypass, setBypass] = useState(false)
+  const [browserOpen, setBrowserOpen] = useState(false)
+  const [terminalOpen, setTerminalOpen] = useState(false)
+  const [terminalMounted, setTerminalMounted] = useState(false)
+  const [drafts, setDrafts] = useState(loadDrafts)
+  const [sending, setSending] = useState(false)
+  const sendLock = useRef(false)
+  const [commandBusy, setCommandBusy] = useState(false)
+  const [draftError, setDraftError] = useState('')
+  const input = useRef<HTMLTextAreaElement>(null)
+  const key = `${w.connection.workspace ?? 'welcome'}:${w.activeId ?? 'new'}`
+  const draft = drafts[key] ?? emptyDraft
+  const draftRef = useRef(drafts); draftRef.current = drafts
+  const ready = w.connection.status === 'ready'
+  const state = w.active?.snapshot
+  const title = w.active ? selectSessionTitle(w.active) : t('New session')
+  const status = w.active ? selectStatus(w.active) : 'ready'
+  const scratch = w.connection.workspace === w.bootstrap?.scratchWorkspace
+  const workspaceLabel = scratch ? t('Personal space') : w.connection.workspace ? basename(w.connection.workspace) : t('Personal space')
+  const model = w.runtimeSelection.model ?? ''
+  const thinking = w.runtimeSelection.thinking ?? '__default'
+  const permission = state ? String(object(state.config?.plugins?.['bingo.permissions']).mode ?? 'default') : '__default'
+  const visibleSessions = useMemo(() => w.sessions.filter((session) => !session.parent && session.cwd === w.connection.workspace).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [w.sessions, w.connection.workspace])
+  const setDraft = (draft: Draft) => setDrafts((current) => ({ ...current, [key]: draft }))
+  const showBrowser = useCallback(() => { setBrowserOpen(true); if (window.innerWidth < 1050) setSidebar(false) }, [])
+  const openLink = useCallback((url: string) => {
+    if (!window.bingoPanels) { w.report(new Error('Browser unavailable')); return }
+    showBrowser(); void window.bingoPanels.browserNavigate(url).then(unwrap).catch(w.report)
+  }, [w.report, showBrowser])
+  const openSignIn = useCallback((url: string) => { void window.bingoDesktop.openExternal(url).then(unwrap).catch(w.report) }, [w.report])
+  useEffect(() => window.bingoPanels?.onEvent((event) => { if (event.type === 'browser-open') showBrowser() }), [showBrowser])
+  const runAction: RunAction = useCallback((action) => { void w.runAction(action.name, action.args).catch(w.report) }, [w.runAction, w.report])
+  const newSession = useCallback(() => { w.newSession(); if (window.innerWidth < 760) setSidebar(false); requestAnimationFrame(() => input.current?.focus()) }, [w.newSession])
+  const openSession = (id: string) => { setPalette(false); setMenu(false); if (window.innerWidth < 760) setSidebar(false); void w.openSession(id).then(() => input.current?.focus()).catch(w.report) }
 
   useEffect(() => {
-    activeTurnId.current = state.turnId
-  }, [state.turnId])
-
-  // F6-6: focus the inline error region (asynchronously, after render) so
-  // assistive tech and keyboard users land on what failed.
+    const theme = w.preferences?.theme ?? 'system'
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const apply = () => { document.documentElement.dataset.theme = theme === 'system' ? media.matches ? 'dark' : 'light' : theme }
+    apply(); media.addEventListener('change', apply)
+    return () => media.removeEventListener('change', apply)
+  }, [w.preferences?.theme])
   useEffect(() => {
-    if (!state.error) return
-    const frame = requestAnimationFrame(() => errorRef.current?.focus())
-    return () => cancelAnimationFrame(frame)
-  }, [state.error])
+    const timer = setTimeout(() => {
+      try { localStorage.setItem('rei.drafts.v1', JSON.stringify(Object.fromEntries(Object.entries(drafts).filter(([, draft]) => draft.text).slice(-100).map(([key, draft]) => [key, draft.text])))); setDraftError('') }
+      catch { setDraftError(t('Drafts cannot be saved on this device. Keep the window open to preserve unsent text.')) }
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [drafts, t])
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return
+      if (event.key.toLowerCase() === 'n') { event.preventDefault(); newSession() }
+      if (event.key.toLowerCase() === 'k') { event.preventDefault(); setPalette(true); setQuery('') }
+      if (event.key === ',') { event.preventDefault(); setSettings(true) }
+      if (event.key.toLowerCase() === 'b') { event.preventDefault(); setSidebar((value) => !value) }
+      if (event.key.toLowerCase() === 'l') { event.preventDefault(); input.current?.focus() }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [newSession])
+  useEffect(() => {
+    if (!menu) return
+    const dismiss = (event: PointerEvent) => { if (!(event.target as Element).closest('.session-options')) setMenu(false) }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setMenu(false) }
+    document.addEventListener('pointerdown', dismiss); document.addEventListener('keydown', escape)
+    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape) }
+  }, [menu])
+  useEffect(() => { if (!w.notice) return; const timer = setTimeout(() => w.setNotice(''), 7000); return () => clearTimeout(timer) }, [w.notice, w.setNotice])
+  w.menuHandler.current = (action) => { if (action === 'new-session') newSession(); if (action === 'preferences') setSettings(true); if (action === 'choose-workspace') void w.chooseWorkspace().catch(w.report) }
 
-  const connect = useCallback(async () => {
-    if (connectInFlight.current) return
-    connectInFlight.current = true
-    setFlowError(null)
-    setSessionListError(null)
-    const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
-      Promise.race([promise, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms))])
+  const send = async () => {
+    if (sendLock.current || !ready) return
+    const submitted = draft, draftKey = key, workspace = w.connection.workspace
+    sendLock.current = true; setSending(true); w.setError('')
     try {
-      const probe = await withTimeout(window.bingoGui.probeRuntime(), 12_000)
-      if (!probe.ok) { setFlowError(probe.error); return }
-      setRuntime(probe.value)
-      const listed = await withTimeout(window.bingoGui.listSessions(), 12_000)
-      if (listed.ok) setSessions(listed.value.sessions)
-      else setSessionListError(listed.error)
-      const opened = await withTimeout(window.bingoGui.openSession({ sessionId: null }), 12_000)
-      if (!opened.ok) { setFlowError(opened.error); return }
-      connection.current = { id: opened.value.connectionId, sequence: 0 }
-      setActiveSession({ id: opened.value.metadata.sessionId, name: opened.value.metadata.displayName, preview: '', updatedAt: new Date().toISOString(), messageCount: 0 })
-      setThemeSetting(opened.value.metadata.theme)
-      dispatch({ type: 'restore', history: opened.value.history })
-      const loadedSettings = await withTimeout(window.bingoGui.readRuntimeSettings({ workspacePath: probe.value.workspacePath }), 12_000)
-      if (loadedSettings.ok) {
-        setRuntimeSettings(loadedSettings.value)
-        setSelectedProvider(loadedSettings.value.provider)
-        setSelectedModel(loadedSettings.value.model)
-        setThinkingLevel(loadedSettings.value.thinkingLevel)
-        const listedModels = await withTimeout(window.bingoGui.listModels({ workspacePath: probe.value.workspacePath, provider: loadedSettings.value.provider }), 12_000)
-        if (listedModels.ok) setModels(listedModels.value.models)
-        // Background model-list probe failures stay quiet: the picker shows
-        // "Select model" and the settings page surfaces save-time errors.
-      } else setSettingsError(loadedSettings.error)
-      setConnected(true)
-    } catch {
-      setFlowError({ code: 'CONNECTION_TIMEOUT', msg: 'Could not connect to bingo within 12 seconds. Retry.', level: 'flow', recoverable: true, action: 'retry' })
-    } finally {
-      connectInFlight.current = false
-    }
-  }, [])
-
-  useEffect(() => {
-    const unsubscribe = window.bingoGui.onSessionEvent((event: RendererSessionEvent) => {
-      const current = connection.current
-      if (!current || event.connectionId !== current.id || event.sequence !== current.sequence + 1) return
-      if ('turnId' in event.payload && event.payload.turnId && activeTurnId.current && event.payload.turnId !== activeTurnId.current) return
-      current.sequence = event.sequence
-      if (event.payload.type === 'transport.error') dispatch({ type: 'transport-error', code: event.payload.error.code, msg: event.payload.error.msg })
-      else dispatch({ type: 'event', event: event.payload as CliEvent })
-    })
-    void connect()
-    return unsubscribe
-  }, [connect])
-
-  useEffect(() => {
-    if (!toast) return
-    const timer = setTimeout(() => setToast(null), 3_000)
-    return () => clearTimeout(timer)
-  }, [toast])
-
-  const openSettings = async (): Promise<void> => {
-    if (!runtime) return
-    setView('settings')
-    setSettingsPageError(null)
-    const result = await window.bingoGui.readSettings({ workspacePath: runtime.workspacePath })
-    if (!result.ok) { setSettingsPageError(result.error); return }
-    setSettingsSnapshot(result.value)
-    setSettingsDraft(result.value.values)
+      const session = w.activeId ?? await w.openSession()
+      const targetKey = `${workspace}:${session}`
+      if (targetKey !== draftKey) setDrafts((current) => ({ ...current, [targetKey]: submitted, ...(current[draftKey] === submitted ? { [draftKey]: emptyDraft } : {}) }))
+      await w.send(submitted.text, submitted.images, session)
+      setDrafts((current) => current[targetKey] === submitted ? { ...current, [targetKey]: emptyDraft } : current)
+    } catch (error) { w.report(error) } finally { sendLock.current = false; setSending(false); input.current?.focus() }
   }
-
-  const saveSettings = async (): Promise<void> => {
-    if (!runtime || !settingsSnapshot || !settingsDraft) return
-    setSettingsPageError(null)
-    const result = await window.bingoGui.saveSettings({ workspacePath: runtime.workspacePath, baseRevision: settingsSnapshot.revision, values: settingsDraft })
-    if (!result.ok) { setSettingsPageError(result.error); return }
-    setSettingsSnapshot(result.value.snapshot)
-    setSettingsDraft(result.value.snapshot.values)
-    setThemeSetting(result.value.snapshot.values.theme)
-    setRuntimeSettings({ providers: result.value.snapshot.providers, provider: result.value.snapshot.values.provider, model: result.value.snapshot.values.model, thinkingLevel: result.value.snapshot.values.thinkingLevel, theme: result.value.snapshot.values.theme })
-    if (result.value.connectionId) connection.current = { id: result.value.connectionId, sequence: 0 }
-    setToast('Saved')
+  const command = (name: string, value: string) => {
+    if (name === 'permission' && value === 'bypassPermissions') { setBypass(true); return }
+    setCommandBusy(true); void w.runAction(name, value).then(() => w.setError('')).catch(w.report).finally(() => setCommandBusy(false))
   }
-
-  const newConversation = async (): Promise<void> => {
-    connection.current = null
-    activeTurnId.current = null
-    setConnected(false)
-    dispatch({ type: 'reset' })
-    const opened = await window.bingoGui.openSession({ sessionId: null })
-    if (!opened.ok) { setFlowError(opened.error); return }
-    connection.current = { id: opened.value.connectionId, sequence: 0 }
-    setActiveSession({ id: opened.value.metadata.sessionId, name: opened.value.metadata.displayName, preview: '', updatedAt: new Date().toISOString(), messageCount: 0 })
-    setConnected(true)
+  const attach = () => { const draftKey = key; void window.bingoDesktop.chooseImages().then(unwrap).then((images) => { const previous = draftRef.current[draftKey] ?? emptyDraft; if (previous.images.length + images.length > DESKTOP_IMAGE_LIMITS.count) { w.report(new Error(t('Attach at most two images per message. Remove an image before adding another.'))); return } setDrafts((current) => ({ ...current, [draftKey]: { ...(current[draftKey] ?? emptyDraft), images: [...previous.images, ...images] } })) }).catch(w.report) }
+  const retry = () => { void w.connect(w.connection.workspace || w.preferences?.workspace || undefined) }
+  const exportSession = () => {
+    if (!state) return
+    void window.bingoDesktop.exportText({ suggestedName: `${title.replace(/[^\p{L}\p{N} -]/gu, '').slice(0, 60) || 'conversation'}.md`, text: `# ${title}\n\n${state.items.map(itemText).filter(Boolean).join('\n\n---\n\n')}` }).then(unwrap).then((saved) => { if (saved) w.setNotice(t('Conversation exported. Only currently loaded history was included.')) }).catch(w.report)
+    setMenu(false)
   }
+  const currentError = w.error || w.connection.error?.message || draftError
+  const browserOccluded = settings || palette || rename !== null || bypass || Boolean(state?.interactions?.length)
 
-  const openSession = async (session: SessionSummary): Promise<void> => {
-    if (state.turnId || activeSession?.id === session.id) return
-    connection.current = null
-    activeTurnId.current = null
-    setConnected(false)
-    setFlowError(null)
-    const opened = await window.bingoGui.openSession({ sessionId: session.id })
-    if (!opened.ok) { setFlowError(opened.error); return }
-    connection.current = { id: opened.value.connectionId, sequence: 0 }
-    setActiveSession(session)
-    dispatch({ type: 'restore', history: opened.value.history })
-    setConnected(true)
-  }
-
-  const submitRename = async (): Promise<void> => {
-    if (!renameSession || !renameDraft.trim()) return
-    setSessionMutationError(null)
-    const result = await window.bingoGui.renameSession({ sessionId: renameSession.id, name: renameDraft })
-    if (!result.ok) { setSessionMutationError(result.error); return }
-    setSessions((current) => current.map((item) => item.id === result.value.previousId ? result.value.session : item))
-    if (activeSession?.id === result.value.previousId) setActiveSession(result.value.session)
-    setRenameSession(null)
-    setSessionMenu(null)
-  }
-
-  const confirmDelete = async (): Promise<void> => {
-    if (!deleteSession) return
-    setSessionMutationError(null)
-    const result = await window.bingoGui.deleteSession({ sessionId: deleteSession.id })
-    if (!result.ok) { setSessionMutationError(result.error); return }
-    setSessions((current) => current.filter((item) => item.id !== result.value.deletedId))
-    if (activeSession?.id === result.value.deletedId) {
-      connection.current = null
-      activeTurnId.current = null
-      setActiveSession(null)
-      setConnected(false)
-      dispatch({ type: 'reset' })
-    }
-    setDeleteSession(null)
-    setSessionMenu(null)
-  }
-
-  const changeProvider = async (provider: string): Promise<void> => {
-    if (!runtime) return
-    setSelectedProvider(provider)
-    setSelectedModel('')
-    setModels([])
-    setSettingsError(null)
-    const result = await window.bingoGui.listModels({ workspacePath: runtime.workspacePath, provider })
-    if (!result.ok) { setSettingsError(result.error); return }
-    setModels(result.value.models)
-    setSelectedModel(result.value.models[0] ?? '')
-  }
-
-  const saveRuntime = async (): Promise<void> => {
-    if (!runtime || !selectedProvider || !selectedModel) return
-    setSavingRuntime(true)
-    setSettingsError(null)
-    const result = await window.bingoGui.saveRuntimeSettings({ workspacePath: runtime.workspacePath, provider: selectedProvider, model: selectedModel, thinkingLevel })
-    setSavingRuntime(false)
-    if (!result.ok) { setSettingsError(result.error); return }
-    setRuntimeSettings(result.value.settings)
-    if (result.value.connectionId) connection.current = { id: result.value.connectionId, sequence: 0 }
-  }
-
-  const submit = async (): Promise<void> => {
-    const active = connection.current
-    if (!draft.trim() || state.turnId || !active) return
-    const turnId = crypto.randomUUID()
-    const promptText = draft
-    activeTurnId.current = turnId
-    dispatch({ type: 'submit', turnId, prompt: promptText })
-    setDraft('')
-    const result = await window.bingoGui.sendTurn({ connectionId: active.id, turnId, prompt: promptText })
-    if (!result.ok) dispatch({ type: 'transport-error', code: result.error.code, msg: result.error.msg })
-  }
-
-  const cancel = async (): Promise<void> => {
-    const active = connection.current
-    if (!active || !state.turnId) return
-    const result = await window.bingoGui.cancelTurn({ connectionId: active.id, turnId: state.turnId })
-    if (!result.ok) dispatch({ type: 'transport-error', code: result.error.code, msg: result.error.msg })
-  }
-
-  const respond = async (response: PromptResponse): Promise<void> => {
-    const active = connection.current
-    if (!active || !prompt) return
-    const result = await window.bingoGui.respondToPrompt({ connectionId: active.id, turnId: prompt.turnId, promptId: prompt.promptId, response })
-    if (!result.ok) dispatch({ type: 'transport-error', code: result.error.code, msg: result.error.msg })
-  }
-
-  // F6-7: effective theme follows the bingo setting (auto = system preference).
-  // The attribute goes on <html> so :root's color/background and inheritance
-  // resolve against the active theme (a div-scoped attribute would leave the
-  // root scope on the light values and break dark mode text contrast).
-  const effectiveTheme = themeSetting === 'auto'
-    ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-    : themeSetting
-  useEffect(() => {
-    document.documentElement.dataset.theme = effectiveTheme
-  }, [effectiveTheme])
-
-  if (flowError) return <FlowError error={flowError} retry={connect} />
-
-  return (
-    <div className="app-shell" data-qa-state="chat">
-      <nav className="sidebar" aria-label="Primary navigation">
-        <strong>bingo</strong>
-        <button type="button" className={`nav-action${view === 'chat' ? ' active' : ''}`} aria-current={view === 'chat' ? 'page' : undefined} onClick={() => { setView('chat'); void newConversation() }}>New conversation</button>
-        <button type="button" className={`nav-action${view === 'settings' ? ' active' : ''}`} aria-current={view === 'settings' ? 'page' : undefined} onClick={() => void openSettings()}>Settings</button>
-        <div className="session-heading"><span>Conversations</span><small>{sessions.length}</small></div>
-        <div className="session-list">
-          {sessionListError && <p className="sidebar-error" role="alert">{sessionListError.msg}</p>}
-          {sessions.length === 0 && !sessionListError && <p className="sidebar-empty">No saved conversations yet.</p>}
-          {sessions.map((session) => (
-            <div className={`session-row${activeSession?.id === session.id ? ' active' : ''}`} key={session.id}>
-              <button type="button" className="session-item" aria-current={activeSession?.id === session.id ? 'page' : undefined} onClick={() => void openSession(session)}>
-                <span>{session.name}</span>
-                <small>{session.preview || 'Empty conversation'}</small>
-                <time dateTime={session.updatedAt}>{formatSessionTime(session.updatedAt)}</time>
-              </button>
-              <button type="button" className="session-more" aria-label={`Actions for ${session.name}`} onClick={() => setSessionMenu((current) => current === session.id ? null : session.id)}>•••</button>
-              {sessionMenu === session.id && <div className="session-menu">
-                <button type="button" onClick={() => { setRenameSession(session); setRenameDraft(session.name); setSessionMutationError(null) }}>Rename</button>
-                <button type="button" onClick={() => { setDeleteSession(session); setSessionMutationError(null) }}>Delete</button>
-              </div>}
-            </div>
-          ))}
-        </div>
-        <span className="runtime-version">{runtime ? `bingo ${runtime.bingoVersion} · protocol ${runtime.protocolVersion}` : 'Connecting…'}</span>
-      </nav>
-      {view === 'chat' ? <main className="chat">
-        <header className="chat-header"><div><p className="eyebrow">Local conversation</p><h1>{activeSession?.name ?? 'New conversation'}</h1></div>{runtimeSettings && <div className="runtime-picker" aria-label="Runtime settings">
-          <label>Provider<select aria-label="Provider" value={selectedProvider} onChange={(event) => void changeProvider(event.target.value)}>{runtimeSettings.providers.map((provider) => <option value={provider.name} key={provider.name}>{provider.name}{provider.builtin ? ' · built-in' : ''}{provider.credentialConfigured ? '' : ' · not configured'}</option>)}</select></label>
-          <label>Model<select aria-label="Model" value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)}><option value="" disabled>Select model</option>{models.map((model) => <option value={model} key={model}>{model}</option>)}</select></label>
-          <label>Thinking<select aria-label="Thinking level" value={thinkingLevel} onChange={(event) => setThinkingLevel(event.target.value as RuntimeSettings['thinkingLevel'])}>{['off', 'low', 'medium', 'high', 'xhigh', 'max'].map((level) => <option value={level} key={level}>{level}</option>)}</select></label>
-          <button type="button" disabled={savingRuntime || !selectedModel || Boolean(state.turnId)} onClick={() => void saveRuntime()}>{savingRuntime ? 'Saving…' : 'Apply'}</button>
-        </div>}</header>
-        {settingsError && <div className="settings-error" role="alert"><strong>{settingsError.code}</strong><span>{settingsError.msg}</span></div>}
-        <section className="timeline" aria-live="polite">
-          {state.messages.length === 0 && <p className="chat-hint">Send a prompt to start working with bingo.</p>}
-          {state.turnId && !state.messages.some((m) => m.role === 'assistant' && m.markdown) && <DelayedThinking />}
-          {state.messages.map((message) => <article className={`message ${message.role}`} key={message.id}><span>{message.role === 'user' ? 'You' : 'bingo'}</span><Markdown skipHtml>{message.markdown}</Markdown>{message.status === 'interrupted' && <small>Interrupted</small>}</article>)}
-          {state.tools.map((tool) => <article className="tool-row" key={tool.id}><strong>{tool.name}</strong><span>{tool.summary}</span><small>{tool.status}</small></article>)}
-          {state.error && <div ref={errorRef} tabIndex={-1} className="inline-error" role="alert"><strong>{state.error.code}</strong><span>{state.error.msg}</span></div>}
-        </section>
-        <footer className="composer"><textarea aria-label="Message" value={draft} disabled={Boolean(state.turnId) || !connected} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit() } }} placeholder="Ask bingo…" />{state.turnId ? <button type="button" onClick={() => void cancel()}>Cancel</button> : <button type="button" onClick={() => void submit()}>Send</button>}</footer>
-      </main> : <SettingsScreen snapshot={settingsSnapshot} draft={settingsDraft} error={settingsPageError} onChange={setSettingsDraft} onSave={saveSettings} />}
-      {toast && <div className="toast" role="status" aria-live="polite" onMouseEnter={(event) => { event.currentTarget.dataset.paused = 'true' }}>{toast}</div>}
-      {prompt && <div className="modal-backdrop" role="presentation"><section className="prompt-modal" role="dialog" aria-modal="true" aria-labelledby="prompt-title"><p className="eyebrow">{prompt.kind}</p><h2 id="prompt-title">{prompt.title}</h2><p>{prompt.question}</p><div className="prompt-actions">{prompt.options.map((option) => <button type="button" key={option.id} onClick={() => void respond({ kind: 'option', optionId: option.id })}>{option.label}</button>)}<button type="button" onClick={() => void respond({ kind: 'cancel' })}>Cancel</button></div></section></div>}
-      {renameSession && <div className="modal-backdrop" role="presentation"><section className="prompt-modal" role="dialog" aria-modal="true" aria-labelledby="rename-title"><p className="eyebrow">Conversation</p><h2 id="rename-title">Rename conversation</h2><label className="field-label">Name<input autoFocus value={renameDraft} onChange={(event) => setRenameDraft(event.target.value)} /></label>{sessionMutationError && <p className="dialog-error" role="alert">{sessionMutationError.msg}</p>}<div className="prompt-actions"><button type="button" onClick={() => void submitRename()}>Save</button><button type="button" className="secondary-action" onClick={() => setRenameSession(null)}>Cancel</button></div></section></div>}
-      {deleteSession && <div className="modal-backdrop" role="presentation"><section className="prompt-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-title"><p className="eyebrow">Permanent action</p><h2 id="delete-title">Delete “{deleteSession.name}”?</h2><p>This removes the conversation transcript. This action cannot be undone.</p>{sessionMutationError && <p className="dialog-error" role="alert">{sessionMutationError.msg}</p>}<div className="prompt-actions"><button type="button" className="danger-action" onClick={() => void confirmDelete()}>Delete conversation</button><button type="button" className="secondary-action" onClick={() => setDeleteSession(null)}>Cancel</button></div></section></div>}
-    </div>
-  )
-}
-
-function SettingsScreen({ snapshot, draft, error, onChange, onSave }: { snapshot: SettingsSnapshot | null; draft: EditableSettings | null; error: GuiError | null; onChange: (value: EditableSettings) => void; onSave: () => Promise<void> }): React.JSX.Element {
-  if (error && !snapshot) return <main className="settings-page"><section className="settings-panel" role="alert"><p className="eyebrow">Settings unavailable</p><h1>{error.code}</h1><p>{error.msg}</p></section></main>
-  if (!snapshot || !draft) return <main className="settings-page"><p>Loading settings…</p></main>
-  const update = <K extends keyof EditableSettings>(key: K, value: EditableSettings[K]): void => onChange({ ...draft, [key]: value })
-  const shadowed = (key: keyof EditableSettings): boolean => snapshot.shadowed.includes(key)
-  const clean = JSON.stringify(draft) === JSON.stringify(snapshot.values)
-  return <main className="settings-page">
-    <header><div><p className="eyebrow">User configuration</p><h1>Settings</h1><p className="settings-path">{snapshot.path}</p></div><button type="button" disabled={clean} onClick={() => void onSave()}>Save changes</button></header>
-    {error && <div className="settings-page-error" role="alert"><strong>{error.code}</strong><span>{error.msg}</span></div>}
-    <section className="settings-panel">
-      <h2>Runtime</h2><p>Changes write only to the user layer. Workspace overrides remain read-only.</p>
-      <div className="settings-grid">
-        <label>Provider<select value={draft.provider} disabled={shadowed('provider')} onChange={(event) => update('provider', event.target.value)}>{snapshot.providers.map((provider) => <option key={provider.name} value={provider.name}>{provider.name}{provider.credentialConfigured ? '' : ' · not configured'}</option>)}</select>{shadowed('provider') && <small>Managed by {snapshot.sources.provider}</small>}</label>
-        <label>Model<input value={draft.model} disabled={shadowed('model')} onChange={(event) => update('model', event.target.value)} /></label>
-        <label>Thinking level<select value={draft.thinkingLevel} disabled={shadowed('thinkingLevel')} onChange={(event) => update('thinkingLevel', event.target.value as EditableSettings['thinkingLevel'])}>{['off', 'low', 'medium', 'high', 'xhigh', 'max'].map((level) => <option key={level}>{level}</option>)}</select></label>
-        <label>Permission mode<input value={draft.permissionMode} disabled={shadowed('permissionMode')} onChange={(event) => update('permissionMode', event.target.value)} /></label>
-        <label>Theme<select value={draft.theme} disabled={shadowed('theme')} onChange={(event) => update('theme', event.target.value as EditableSettings['theme'])}><option>auto</option><option>dark</option><option>light</option></select></label>
-        <label>API endpoint<input value={draft.apiBaseUrl} disabled={shadowed('apiBaseUrl')} onChange={(event) => update('apiBaseUrl', event.target.value)} /></label>
-        <label className="checkbox-field"><input type="checkbox" checked={draft.sendImages} disabled={shadowed('sendImages')} onChange={(event) => update('sendImages', event.target.checked)} />Send images</label>
-      </div>
-      <div className="provider-summary">{snapshot.providers.map((provider) => <article key={provider.name}><strong>{provider.name}</strong><span>{provider.apiBaseUrl}</span><small>{provider.protocol} · {provider.supportsImages ? 'images' : 'text only'} · {provider.credentialConfigured ? 'credential configured' : 'credential not configured'}</small></article>)}</div>
-      <div className="layer-summary"><h2>Configuration layers</h2>{Object.entries(snapshot.layers).map(([name, layer]) => <p key={name}><strong>{name}</strong><span>{layer.path}</span><small>{layer.exists ? `${layer.keys.length} keys` : 'not present'}</small></p>)}</div>
-    </section>
-  </main>
-}
-
-function formatSessionTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
-}
-
-function FlowError({ error, retry }: { error: GuiError; retry: () => Promise<void> }): React.JSX.Element {
-  return <main className="content" data-qa-state="error"><section className="flow-error" role="alert"><p className="eyebrow">Connection required</p><h1>Unable to connect bingo</h1><p className="error-code">{error.code}</p><p>{error.msg}</p><button type="button" onClick={() => void retry()}>Retry</button></section></main>
+  return <StartupTransition ready={Boolean(w.bootstrap) || Boolean(w.error)}><div className={`app-shell ${sidebar ? 'sidebar-visible' : 'sidebar-hidden'}`} data-platform={w.bootstrap?.platform ?? 'unknown'}>
+    <a className="skip-link" href="#message-input">{t('Skip to message')}</a>
+    <aside className="sidebar" aria-label={t('Workspace navigation')} inert={!sidebar}>
+      <div className="sidebar-brand"><span className="bingo-mark">b.</span><strong>bingo</strong><IconButton label="Hide sidebar" onClick={() => setSidebar(false)}><PanelLeft size={17} /></IconButton></div>
+      <div className="sidebar-actions"><button onClick={newSession}><Plus size={17} />{t('New session')}<kbd aria-hidden="true">{w.bootstrap?.platform === 'darwin' ? '⌘ N' : 'Ctrl N'}</kbd></button><button aria-label={t('Search & commands')} onClick={() => { setPalette(true); setQuery('') }}><Search size={16} />{t('Search')}<kbd aria-hidden="true">{w.bootstrap?.platform === 'darwin' ? '⌘ K' : 'Ctrl K'}</kbd></button></div>
+      <button className="workspace-switch" onClick={() => { void w.chooseWorkspace().catch(w.report) }} title={w.connection.workspace ?? 'Open a project'}><FolderOpen size={16} /><span>{workspaceLabel}</span><MoreHorizontal size={16} /></button>
+      <div className="session-heading"><span>{t('Sessions')}</span><span>{visibleSessions.length}</span></div>
+      <nav className="session-list" aria-label={t('Sessions')}>{visibleSessions.map((session) => <button key={session.id} aria-current={session.id === w.activeId ? 'page' : undefined} className={`session-row ${session.id === w.activeId ? 'selected' : ''}`} onClick={() => openSession(session.id)}><span className={`session-dot ${session.busy ? 'running' : ''}`} /><span>{session.title || t('Untitled session')}</span><time dateTime={session.updatedAt}>{new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(new Date(session.updatedAt))}</time></button>)}{!visibleSessions.length && <p className="sidebar-empty">{ready ? t('Your conversations, all in one place.') : t('Getting your space ready.')}</p>}</nav>
+      <div className="sidebar-bottom"><button onClick={() => setSettings(true)}><Settings2 size={16} />{t('Settings')}</button><div className="connection-indicator" role="status"><span className={`connection-dot ${ready ? 'connected' : ''}`} /><span>{ready ? t('Connected locally') : w.connection.status === 'connecting' ? t('Connecting…') : t('Not connected')}</span>{w.connection.server && <small>v{w.connection.server.version}</small>}</div></div>
+    </aside>
+    {sidebar && <button className="sidebar-scrim" aria-label={t('Close navigation')} onClick={() => setSidebar(false)} />}
+    <main className="workspace-main"><header className="workspace-header"><div className="header-location">{!sidebar && <IconButton label="Show sidebar" onClick={() => setSidebar(true)}><PanelLeft size={18} /></IconButton>}<span className="breadcrumb">{workspaceLabel}</span><span className="breadcrumb-divider">/</span><h1>{title}</h1></div><div className="header-actions">{state && <><span className={`session-status ${status}`}>{t(status === 'ready' ? 'Ready' : status === 'waiting' ? 'Needs attention' : status.charAt(0).toUpperCase() + status.slice(1))}</span><IconButton label="Session details" aria-pressed={details} onClick={() => setDetails(!details)}><Info size={17} /></IconButton><div className="session-options"><IconButton label="Session actions" aria-expanded={menu} onClick={() => setMenu(!menu)}><MoreHorizontal size={19} /></IconButton>{menu && <div className="options-popover"><button onClick={() => { setRename(title); setMenu(false) }}>{t('Rename session')}</button><button onClick={exportSession}><Download size={14} />{t('Export Markdown')}</button><button className="danger-text" onClick={() => { setMenu(false); void w.removeSession().catch(w.report) }}><Trash2 size={14} />{t('Delete session…')}</button></div>}</div></>}<div className="header-panel-toggles"><IconButton label="Browser" aria-pressed={browserOpen} className={`icon-button tool-toggle ${browserOpen ? 'active' : ''}`} onClick={() => browserOpen ? setBrowserOpen(false) : showBrowser()}><Globe2 size={17} /></IconButton><IconButton label="Terminal" aria-pressed={terminalOpen} className={`icon-button tool-toggle ${terminalOpen ? 'active' : ''}`} onClick={() => { setTerminalMounted(true); setTerminalOpen(!terminalOpen) }}><SquareTerminal size={18} /></IconButton></div></div></header>
+      <div className="workspace-body"><div className={`workspace-content ${browserOpen ? 'with-browser' : ''}`}><div className="conversation-column">
+      {!ready && currentError && <ErrorBanner message={currentError} onDismiss={() => { w.setError(''); setDraftError('') }} onRetry={w.active?.resync && w.activeId ? () => { void w.openSession(w.activeId!, true).catch(w.report) } : !ready ? retry : undefined} />}
+      {!ready && state && <div className="reconnect-banner"><span>{t('Your conversation is still here. Reconnect to continue.')}</span><button onClick={retry}>{t('Reconnect')}</button><button onClick={() => setSettings(true)}>{t('Settings')}</button></div>}
+      {ready && w.catalogs.providers && !w.catalogs.providers.entries.some((entry) => ['ready', 'notApplicable'].includes(String(object(object(entry.meta).auth).kind))) && <div className="reconnect-banner"><span>{t('Connect a model provider before starting your first task.')}</span><button onClick={() => { setSettingsPage('models'); setSettings(true) }}>{t('Set up provider')}</button></div>}
+      {state?.summary.driver === 'log' && !state.interactions?.length && <div className="reconnect-banner"><span>{t('This session is for provider setup. Start a new session when sign-in is complete.')}</span><button onClick={newSession}>{t('New session')}</button></div>}
+      {details && state && <section className="session-details" aria-label={t('Session details')}><div><span>{t('Working directory')}</span><strong>{state.summary.cwd}</strong></div><div><span>{t('Runtime')}</span><strong>{state.summary.provider} / {state.summary.model}</strong></div><div><span>{t('Total tokens')}</span><strong>{t('{input} in · {output} out', { input: number(selectUsage(w.active!).inputTokens), output: number(selectUsage(w.active!).outputTokens) })}</strong></div>{state.context && <div><span>{t('Context')}</span><strong>{number(state.context.used)} / {number(state.context.window)}</strong></div>}</section>}
+      {!ready && !state ? <Onboarding workspace={w} openLink={openLink} /> : <div className={`conversation ${!state?.items.length ? 'empty-conversation' : ''}`}>
+        {w.active && state?.items.length ? <Timeline key={w.activeId} projection={w.active} openLink={openLink} runAction={runAction} loadHistory={() => { void w.loadHistory().catch(w.report) }} loading={w.loading} /> : <div className="empty-state"><h2>{t('What’s on your mind?')}</h2></div>}
+        {w.commandView && !settings && <div className="command-result"><IconButton label="Dismiss command result" onClick={() => w.setCommandView(null)}><X size={15} /></IconButton><StructuredView view={w.commandView} runAction={runAction} openLink={openLink} /></div>}
+        {state?.interactions?.map((interaction) => <InteractionPanel key={interaction.id} interaction={interaction} disabled={!ready} openLink={interaction.kind.kind === 'login' ? openSignIn : openLink} respond={(answer, activation) => w.respond(interaction.session, interaction.id, answer, activation)} />)}
+        {ready && currentError && <div className="composer-error"><ErrorBanner message={currentError} onDismiss={() => { w.setError(''); setDraftError('') }} onRetry={w.active?.resync && w.activeId ? () => { void w.openSession(w.activeId!, true).catch(w.report) } : undefined} /></div>}
+        <Composer draft={draft} setDraft={setDraft} send={() => void send()} stop={() => { void w.interrupt().catch(w.report) }} attach={attach} ready={ready && !w.active?.resync} busy={Boolean(state?.turn)} sending={sending || commandBusy || w.loading} model={model} thinking={thinking} permission={permission} models={w.catalogs.models?.entries ?? []} commands={w.catalogs.commands?.entries ?? []} command={command} inputRef={input} queue={state?.queue} />
+        {!state?.items.length && <div className="empty-context"><button className="text-button" onClick={() => { void w.chooseWorkspace().catch(w.report) }}><FolderOpen size={14} />{scratch ? t('Attach a project') : workspaceLabel}<ArrowUpRight size={12} /></button>{scratch && <span>{t('Optional. You can simply start talking.')}</span>}</div>}
+      </div>}
+      </div><BrowserPanel visible={browserOpen} occluded={browserOccluded} onClose={() => setBrowserOpen(false)} /></div>{terminalMounted && <Suspense fallback={<section className="terminal-panel"><p className="terminal-status">{t('Starting terminal…')}</p></section>}><TerminalPanel visible={terminalOpen} onClose={() => setTerminalOpen(false)} /></Suspense>}</div>
+    </main>
+    {w.notice && <div className="toast" role="status"><span>{w.notice}</span><IconButton label="Dismiss notification" onClick={() => w.setNotice('')}><X size={14} /></IconButton></div>}
+    {settings && <Settings workspace={w} initialPage={settingsPage} onClose={() => { setSettings(false); setSettingsPage('general') }} openLink={openLink} clearDrafts={() => { setDrafts({}); localStorage.removeItem('rei.drafts.v1') }} />}
+    {palette && <Modal title={t('Search & commands')} onClose={() => setPalette(false)}><input className="palette-input" autoFocus aria-label={t('Search sessions and commands')} placeholder={t('Find a session or type a command…')} value={query} onChange={(event) => setQuery(event.target.value)} /><div className="palette-results">{w.sessions.filter((session) => `${session.title} ${session.cwd}`.toLowerCase().includes(query.toLowerCase())).slice(0, 12).map((session) => <button key={session.id} onClick={() => openSession(session.id)}><MessageSquare size={16} /><span>{session.title || t('Untitled session')}<small>{basename(session.cwd)}</small></span><ArrowUpRight size={14} /></button>)}{w.catalogs.commands?.entries.filter((entry) => entry.id.includes(query.replace(/^\//, '').toLowerCase())).slice(0, 8).map((entry) => <button key={entry.id} onClick={() => { setDraft({ ...draft, text: `/${entry.id} ` }); setPalette(false); requestAnimationFrame(() => input.current?.focus()) }}><Terminal size={16} /><span>/{entry.id}<small>{entry.label}</small></span></button>)}{!w.sessions.some((session) => `${session.title} ${session.cwd}`.toLowerCase().includes(query.toLowerCase())) && !w.catalogs.commands?.entries.some((entry) => entry.id.includes(query.replace(/^\//, '').toLowerCase())) && <p className="secondary">{t('No matching sessions or commands.')}</p>}</div></Modal>}
+    {rename !== null && <Modal title={t('Rename session')} onClose={() => setRename(null)}><form onSubmit={(event) => { event.preventDefault(); setCommandBusy(true); void w.runAction('rename', rename.trim()).then(() => setRename(null)).catch(w.report).finally(() => setCommandBusy(false)) }}><label className="field-label">{t('Session name')}<input autoFocus maxLength={80} value={rename} onChange={(event) => setRename(event.target.value)} /></label><div className="button-row"><button type="button" onClick={() => setRename(null)}>{t('Cancel')}</button><button className="primary" disabled={commandBusy || !rename.trim()} type="submit">{t('Save name')}</button></div></form></Modal>}
+    {bypass && <Modal title={t('Bypass permission prompts?')} onClose={() => setBypass(false)}><p>{t('bingo will run tools without asking, except actions reserved for a person. This can change files, execute commands and contact external services. Explicit deny rules still apply.')}</p><div className="button-row"><button onClick={() => setBypass(false)}>{t('Keep asking')}</button><button className="danger-button" onClick={() => { setBypass(false); setCommandBusy(true); void w.runAction('permission', 'bypassPermissions').catch(w.report).finally(() => setCommandBusy(false)) }}>{t('Bypass for this session')}</button></div></Modal>}
+  </div></StartupTransition>
 }

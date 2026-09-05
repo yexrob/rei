@@ -1,31 +1,32 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import {
-  IPC, connectionInputSchema, modelListInputSchema, runtimeSettingsInputSchema, runtimeSettingsSaveInputSchema, settingsSaveInputSchema, sessionDeleteInputSchema, sessionOpenInputSchema, sessionPromptInputSchema, sessionRenameInputSchema, sessionSendInputSchema,
-  sessionTurnInputSchema, visualCaptureInputSchema, type BingoGuiApi, type RendererSessionEvent
-} from '../shared/contracts/ipc'
+import { installPanelsBridge } from './panels'
+import { DESKTOP_IPC, type BingoDesktopApi, type DesktopEvent } from '../shared/desktop'
 
-const api: BingoGuiApi = {
-  getAppInfo: () => ipcRenderer.invoke(IPC.appGetInfo),
-  probeRuntime: () => ipcRenderer.invoke(IPC.runtimeProbe),
-  listSessions: () => ipcRenderer.invoke(IPC.sessionList),
-  openSession: (input) => ipcRenderer.invoke(IPC.sessionOpen, sessionOpenInputSchema.parse(input)),
-  renameSession: (input) => ipcRenderer.invoke(IPC.sessionRename, sessionRenameInputSchema.parse(input)),
-  deleteSession: (input) => ipcRenderer.invoke(IPC.sessionDelete, sessionDeleteInputSchema.parse(input)),
-  readRuntimeSettings: (input) => ipcRenderer.invoke(IPC.settingsReadRuntime, runtimeSettingsInputSchema.parse(input)),
-  listModels: (input) => ipcRenderer.invoke(IPC.settingsListModels, modelListInputSchema.parse(input)),
-  saveRuntimeSettings: (input) => ipcRenderer.invoke(IPC.settingsSaveRuntime, runtimeSettingsSaveInputSchema.parse(input)),
-  readSettings: (input) => ipcRenderer.invoke(IPC.settingsRead, runtimeSettingsInputSchema.parse(input)),
-  saveSettings: (input) => ipcRenderer.invoke(IPC.settingsSave, settingsSaveInputSchema.parse(input)),
-  closeSession: (input) => ipcRenderer.invoke(IPC.sessionClose, connectionInputSchema.parse(input)),
-  sendTurn: (input) => ipcRenderer.invoke(IPC.sessionSend, sessionSendInputSchema.parse(input)),
-  cancelTurn: (input) => ipcRenderer.invoke(IPC.sessionCancel, sessionTurnInputSchema.parse(input)),
-  respondToPrompt: (input) => ipcRenderer.invoke(IPC.sessionRespondPrompt, sessionPromptInputSchema.parse(input)),
-  captureVisual: (input) => ipcRenderer.invoke(IPC.visualCapture, visualCaptureInputSchema.parse(input)),
-  onSessionEvent: (listener) => {
-    const handler = (_event: Electron.IpcRendererEvent, value: RendererSessionEvent): void => listener(value)
-    ipcRenderer.on(IPC.sessionEvent, handler)
-    return () => ipcRenderer.removeListener(IPC.sessionEvent, handler)
+const listeners = new Set<(event: DesktopEvent) => void>()
+ipcRenderer.on(DESKTOP_IPC.event, (_event, delivery: { id: number; event: DesktopEvent }) => {
+  try { for (const listener of listeners) { try { listener(delivery.event) } catch { /* One subscriber must not block the others or the acknowledgement. */ } } }
+  finally { ipcRenderer.send('desktop:event-ack', delivery.id) }
+})
+
+// The main process validates both sender and input. Never expose ipcRenderer,
+// filesystem paths-as-operations, shell access, or Electron event objects.
+const api: BingoDesktopApi = {
+  bootstrap: () => ipcRenderer.invoke(DESKTOP_IPC.bootstrap),
+  connect: (input) => ipcRenderer.invoke(DESKTOP_IPC.connect, input),
+  request: (input) => ipcRenderer.invoke(DESKTOP_IPC.request, input),
+  chooseWorkspace: () => ipcRenderer.invoke(DESKTOP_IPC.chooseWorkspace),
+  chooseBinary: () => ipcRenderer.invoke(DESKTOP_IPC.chooseBinary),
+  chooseImages: () => ipcRenderer.invoke(DESKTOP_IPC.chooseImages),
+  savePreferences: (input) => ipcRenderer.invoke(DESKTOP_IPC.savePreferences, input),
+  openExternal: (url) => ipcRenderer.invoke(DESKTOP_IPC.openExternal, url),
+  exportText: (input) => ipcRenderer.invoke(DESKTOP_IPC.exportText, input),
+  deleteSession: (input) => ipcRenderer.invoke(DESKTOP_IPC.deleteSession, input),
+  configureProvider: (input) => ipcRenderer.invoke(DESKTOP_IPC.configureProvider, input),
+  onEvent: (listener) => {
+    if (listeners.size >= 32) throw new Error('Too many desktop event subscriptions.')
+    listeners.add(listener)
+    return () => { listeners.delete(listener) }
   }
 }
-
-contextBridge.exposeInMainWorld('bingoGui', api)
+contextBridge.exposeInMainWorld('bingoDesktop', Object.freeze(api))
+installPanelsBridge()

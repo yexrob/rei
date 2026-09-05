@@ -1,168 +1,176 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BingoGuiApi, RendererSessionEvent, SessionListOutput, SessionOpened } from '../../shared/contracts/ipc'
+import type { BingoDesktopApi, DesktopEvent, DesktopRequest } from '../../shared/desktop'
+import type { Event, RpcMethods, SessionState } from '../../shared/rpc'
 import App from './App'
+import { rustInitial } from './state/fixtures'
+import { InteractionPanel } from './components/InteractionPanel'
 
-const firstSession = {
-  id: 'project-1',
-  name: 'First session',
-  preview: 'Remember the amber nonce',
-  updatedAt: '2026-08-10T05:00:00.000Z',
-  messageCount: 2
-}
-
-const secondSession = {
-  id: 'project-2',
-  name: 'Second session',
-  preview: 'Latest answer',
-  updatedAt: '2026-08-10T06:00:00.000Z',
-  messageCount: 1
-}
-
-function opened(sessionId: string, history: SessionOpened['history'] = [], theme: 'auto' | 'dark' | 'light' = 'auto'): SessionOpened {
-  return {
-    connectionId: crypto.randomUUID(),
-    metadata: {
-      bingoVersion: '0.4.0', protocolVersion: 1, sessionId, displayName: sessionId === firstSession.id ? firstSession.name : 'New conversation', resumed: history.length > 0,
-      cwd: '/workspace', provider: 'default', model: 'model', thinkingLevel: 'off', permissionMode: 'default', theme, supportsImages: false
-    },
-    history
+const time = '2026-09-05T10:00:00Z'
+function desktop({ welcome = false, reject = false } = {}) {
+  let listener: (event: DesktopEvent) => void = () => {}
+  let seq = 0
+  let preferences = { theme: 'light' as 'light' | 'dark' | 'system', workspace: welcome ? null : '/work', binaryPath: '/bin/bingo', recentWorkspaces: [] as string[] }
+  const summary = { ...rustInitial.summary, id: 'session-one', title: 'Review the workspace', cwd: '/work', provider: 'custom', model: 'same-model', createdAt: time, updatedAt: time }
+  const state: SessionState = { ...rustInitial, seq: 0, summary, items: [], config: { kernel: { thinking: 'xHigh' }, plugins: { 'bingo.permissions': { mode: 'plan' } } } }
+  const emit = (event: Event) => listener({ type: 'rpc', connectionId: 'connection', method: 'event', params: { session: summary.id, ts: time, seq: ++seq, event } })
+  const api: BingoDesktopApi = {
+    bootstrap: vi.fn(async () => ({ ok: true as const, value: { version: '0.1.0', platform: 'linux', scratchWorkspace: '/scratch', preferences, binary: { path: '/bin/bingo', source: 'test' }, connection: { status: 'disconnected' as const, connectionId: null, workspace: null, binary: null } } })),
+    connect: vi.fn(async ({ workspace = '/scratch' }) => ({ ok: true as const, value: { status: 'ready' as const, connectionId: 'connection', workspace, binary: '/bin/bingo' } })),
+    request: vi.fn(async (input: DesktopRequest) => {
+      if (input.method === 'session/list') return { ok: true as const, value: { sessions: [summary] } }
+      if (input.method === 'session/open') return { ok: true as const, value: { session: summary.id, snapshot: { ...state, seq } } }
+      if (input.method === 'catalog/read') {
+        const { kind } = input.params as RpcMethods['catalog/read']['params']
+        return { ok: true as const, value: { kind, entries: kind === 'models' ? [{ id: 'other/same-model', label: 'same-model' }, { id: 'custom/same-model', label: 'same-model' }] : kind === 'commands' ? [{ id: 'status', label: 'Show runtime status' }] : kind === 'providers' ? [{ id: 'custom', label: 'custom', meta: { auth: { kind: 'ready' } } }] : [] } }
+      }
+      if (input.method === 'session/submit') {
+        const { intent, input: payload } = input.params as RpcMethods['session/submit']['params']
+        if (reject) emit({ type: 'intentAck', intent, outcome: { kind: 'rejected', error: { code: 'INVALID_INPUT', message: 'The runtime rejected this message.' } } })
+        else if (payload.kind === 'text') {
+          emit({ type: 'itemCompleted', item: { id: 'user-message', status: 'completed', startedAt: time, body: { kind: 'user', parts: [{ type: 'text', text: payload.text }], origin: { surface: 'desktop' } } } })
+          emit({ type: 'intentAck', intent, outcome: { kind: 'turnStarted', turn: 'turn' } })
+          emit({ type: 'itemCompleted', item: { id: 'assistant-message', status: 'completed', startedAt: time, body: { kind: 'assistant', text: '## Answer\n\nThe workspace is ready.' } } })
+        } else emit({ type: 'intentAck', intent, outcome: { kind: 'applied', result: { view: { kind: 'text', text: 'Status from the runtime' } } } })
+      }
+      return { ok: true as const, value: {} }
+    }) as BingoDesktopApi['request'],
+    onEvent: vi.fn((next) => { listener = next; return () => { listener = () => {} } }),
+    chooseWorkspace: vi.fn(async () => ({ ok: true as const, value: '/work' })),
+    chooseBinary: vi.fn(async () => ({ ok: true as const, value: '/bin/bingo' })),
+    chooseImages: vi.fn(async () => ({ ok: true as const, value: [] })),
+    savePreferences: vi.fn(async (patch) => { preferences = { ...preferences, ...patch }; return { ok: true as const, value: preferences } }),
+    openExternal: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    exportText: vi.fn(async () => ({ ok: true as const, value: true })),
+    deleteSession: vi.fn(async () => ({ ok: true as const, value: false })),
+    configureProvider: vi.fn(async () => ({ ok: true as const, value: undefined }))
   }
+  window.bingoDesktop = api
+  return { api, emit, state }
 }
 
-function api(list: SessionListOutput, theme: 'auto' | 'dark' | 'light' = 'auto'): BingoGuiApi {
-  let listener: ((event: RendererSessionEvent) => void) | undefined
-  const runtimeSettings = {
-    providers: [
-      { name: 'default', protocol: 'anthropic' as const, apiBaseUrl: 'https://example.test', supportsImages: true, credentialConfigured: true, builtin: false },
-      { name: 'opencode-go', protocol: 'openai' as const, apiBaseUrl: 'https://opencode.ai/zen/go', supportsImages: false, credentialConfigured: false, builtin: true }
-    ],
-    provider: 'opencode-go', model: 'gpt-5.6-luna', thinkingLevel: 'off' as const, theme
-  }
-  const snapshot = {
-    path: '/home/.config/bingo/settings.json', revision: 'a'.repeat(64),
-    values: { apiBaseUrl: 'https://example.test', provider: 'opencode-go', model: 'gpt-5.6-luna', thinkingLevel: 'off' as const, permissionMode: 'default', theme: 'auto' as const, sendImages: true },
-    layers: {
-      user: { path: '/home/.config/bingo/settings.json', exists: true, keys: ['provider'], values: { provider: 'opencode-go' } },
-      project: { path: '/workspace/.bingo/settings.json', exists: false, keys: [], values: {} },
-      local: { path: '/workspace/.bingo/local.json', exists: false, keys: [], values: {} }
-    },
-    sources: { provider: '/home/.config/bingo/settings.json' }, shadowed: [], providers: runtimeSettings.providers
-  }
-  return {
-    getAppInfo: vi.fn(),
-    probeRuntime: vi.fn().mockResolvedValue({ ok: true, value: { binaryPath: '/bingo', bingoVersion: '0.4.0', protocolVersion: 1, workspacePath: '/workspace' } }),
-    listSessions: vi.fn().mockResolvedValue({ ok: true, value: list }),
-    openSession: vi.fn().mockImplementation(async ({ sessionId }: { sessionId: string | null }) => ({ ok: true, value: opened(sessionId ?? 'new-session', sessionId === firstSession.id ? [
-      { type: 'message', value: { id: 'history-user', role: 'user', markdown: 'Remember amber' } },
-      { type: 'message', value: { id: 'history-assistant', role: 'assistant', markdown: 'I will remember amber' } }
-    ] : [], theme) })),
-    renameSession: vi.fn().mockImplementation(async ({ sessionId, name }: { sessionId: string; name: string }) => ({ ok: true, value: { previousId: sessionId, session: { ...firstSession, id: `${sessionId}--${name}`, name } } })),
-    deleteSession: vi.fn().mockImplementation(async ({ sessionId }: { sessionId: string }) => ({ ok: true, value: { deletedId: sessionId } })),
-    readRuntimeSettings: vi.fn().mockResolvedValue({ ok: true, value: runtimeSettings }),
-    listModels: vi.fn().mockImplementation(async ({ provider }: { provider: string }) => ({ ok: true, value: { provider, models: provider === 'default' ? ['model-default'] : ['gpt-5.6-luna'] } })),
-    saveRuntimeSettings: vi.fn().mockImplementation(async (input) => ({ ok: true, value: { connectionId: crypto.randomUUID(), settings: { ...runtimeSettings, ...input } } })),
-    readSettings: vi.fn().mockResolvedValue({ ok: true, value: snapshot }),
-    saveSettings: vi.fn().mockResolvedValue({ ok: true, value: { connectionId: crypto.randomUUID(), snapshot } }),
-    closeSession: vi.fn().mockResolvedValue({ ok: true, value: { closed: true } }),
-    sendTurn: vi.fn().mockResolvedValue({ ok: true, value: { accepted: true } }),
-    cancelTurn: vi.fn(),
-    respondToPrompt: vi.fn(),
-    captureVisual: vi.fn(),
-    onSessionEvent: vi.fn().mockImplementation((next) => { listener = next; return () => { listener = undefined } })
-  } as BingoGuiApi
-}
+beforeEach(() => {
+  localStorage.clear()
+  Object.defineProperty(window, 'matchMedia', { configurable: true, value: vi.fn((query: string) => ({ matches: query.includes('prefers-reduced-motion'), addEventListener: vi.fn(), removeEventListener: vi.fn() })) })
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', '') }
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute('open') }
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+  HTMLElement.prototype.hasPointerCapture = vi.fn(() => false)
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 1 })
+})
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-describe('session sidebar', () => {
-  beforeEach(() => { vi.clearAllMocks() })
-  afterEach(() => {
-    cleanup()
-    delete document.documentElement.dataset.theme
+async function ready() { await screen.findByText('Connected locally'); await waitFor(() => expect(screen.getByRole('button', { name: 'Send message' }).hasAttribute('disabled')).toBe(true)) }
+
+describe('desktop user journeys', () => {
+  it('starts in personal space without requiring a folder or creating an empty session', async () => {
+    const { api } = desktop({ welcome: true }); render(<App />)
+    await screen.findByText('Connected locally')
+    expect(screen.getByRole('heading', { name: 'What’s on your mind?' })).toBeTruthy()
+    expect(api.chooseWorkspace).not.toHaveBeenCalled()
+    expect(api.connect).toHaveBeenCalledWith({ binary: '/bin/bingo' })
+    expect(vi.mocked(api.request).mock.calls.some(([call]) => call.method === 'session/open')).toBe(false)
+    expect(screen.getByRole('button', { name: 'Attach a project' })).toBeTruthy()
   })
-
-  it('shows newest-first summaries and opens the exact session with restored history', async () => {
-    const bridge = api({ sessions: [secondSession, firstSession], warnings: [] })
-    window.bingoGui = bridge
-    render(<App />)
-
-    expect((await screen.findAllByRole('button', { name: /Second session/ })).find((button) => button.classList.contains('session-item'))).toBeTruthy()
-    const conversationButtons = screen.getAllByRole('button').filter((button) => button.classList.contains('session-item'))
-    expect(conversationButtons.map((button) => button.textContent)).toEqual([
-      expect.stringContaining('Second session'),
-      expect.stringContaining('First session')
-    ])
-    expect(screen.getByText('Latest answer')).toBeTruthy()
-
-    const firstButton = screen.getAllByRole('button', { name: /First session/ }).find((button) => button.classList.contains('session-item'))
-    expect(firstButton).toBeTruthy()
-    if (firstButton) fireEvent.click(firstButton)
-
-    await waitFor(() => expect(bridge.openSession).toHaveBeenCalledWith({ sessionId: firstSession.id }))
-    expect(await screen.findByText('Remember amber')).toBeTruthy()
-    expect(screen.getByText('I will remember amber')).toBeTruthy()
-    expect(screen.getByRole('heading', { name: firstSession.name })).toBeTruthy()
+  it('submits through the real protocol contract, renders response, and clears only accepted drafts', async () => {
+    desktop(); render(<App />); await ready()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message bingo' }), { target: { value: 'Explain the project' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+    expect(await screen.findByRole('heading', { name: 'Answer' })).toBeTruthy()
+    await waitFor(() => expect((screen.getByRole('textbox', { name: 'Message bingo' }) as HTMLTextAreaElement).value).toBe(''))
   })
-
-  it('renames through IPC and requires confirmation before delete', async () => {
-    const bridge = api({ sessions: [firstSession], warnings: [] })
-    window.bingoGui = bridge
-    render(<App />)
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /First session/ }).some((button) => button.classList.contains('session-item'))).toBe(true))
-
-    fireEvent.click(screen.getByRole('button', { name: 'Actions for First session' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Renamed' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
-    await waitFor(() => expect(bridge.renameSession).toHaveBeenCalledWith({ sessionId: firstSession.id, name: 'Renamed' }))
-    expect((await screen.findAllByRole('button', { name: /Renamed/ })).some((button) => button.classList.contains('session-item'))).toBe(true)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Actions for Renamed' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
-    expect(screen.getByRole('alertdialog', { name: /Delete “Renamed”/ })).toBeTruthy()
-    expect(bridge.deleteSession).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Delete conversation' }))
-    await waitFor(() => expect(bridge.deleteSession).toHaveBeenCalledWith({ sessionId: `${firstSession.id}--Renamed` }))
-    expect(screen.queryAllByRole('button', { name: /Renamed/ }).some((button) => button.classList.contains('session-item'))).toBe(false)
+  it('keeps a rejected first draft visible in its newly created session', async () => {
+    desktop({ reject: true }); render(<App />); await ready()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message bingo' }), { target: { value: 'Keep this draft' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+    await screen.findByText('The runtime rejected this message.')
+    expect((screen.getByRole('textbox', { name: 'Message bingo' }) as HTMLTextAreaElement).value).toBe('Keep this draft')
   })
-
-  it('shows credential state, reloads models by provider, and saves validated runtime choices', async () => {
-    const bridge = api({ sessions: [], warnings: [] })
-    window.bingoGui = bridge
-    render(<App />)
-
-    const provider = await screen.findByLabelText('Provider')
-    expect((provider as HTMLSelectElement).value).toBe('opencode-go')
-    expect(screen.getByRole('option', { name: 'opencode-go · built-in · not configured' })).toBeTruthy()
-    fireEvent.change(provider, { target: { value: 'default' } })
-    await waitFor(() => expect(bridge.listModels).toHaveBeenCalledWith({ workspacePath: '/workspace', provider: 'default' }))
-    expect(await screen.findByRole('option', { name: 'model-default' })).toBeTruthy()
-    fireEvent.change(screen.getByLabelText('Thinking level'), { target: { value: 'high' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
-    await waitFor(() => expect(bridge.saveRuntimeSettings).toHaveBeenCalledWith({ workspacePath: '/workspace', provider: 'default', model: 'model-default', thinkingLevel: 'high' }))
+  it('does not submit while a Chinese input method is composing', async () => {
+    const { api } = desktop(); render(<App />); await ready()
+    const input = screen.getByRole('textbox', { name: 'Message bingo' })
+    fireEvent.compositionStart(input)
+    fireEvent.change(input, { target: { value: '编写测试' } })
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+    expect(vi.mocked(api.request).mock.calls.some(([call]) => call.method === 'session/submit')).toBe(false)
+    fireEvent.compositionEnd(input)
   })
-
-  it('applies the effective runtime theme without opening Settings', async () => {
-    const bridge = api({ sessions: [], warnings: [] }, 'dark')
-    window.bingoGui = bridge
-    render(<App />)
-
-    await screen.findByLabelText('Provider')
-    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'))
+  it('preserves drafts across new-session navigation and existing session selection', async () => {
+    desktop(); render(<App />); await ready()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message bingo' }), { target: { value: 'Unsent new draft' } })
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button'))
+    await screen.findByRole('heading', { name: 'Review the workspace' })
+    expect((screen.getByRole('textbox', { name: 'Message bingo' }) as HTMLTextAreaElement).value).toBe('')
+    fireEvent.click(screen.getByRole('button', { name: 'New session' }))
+    expect((screen.getByRole('textbox', { name: 'Message bingo' }) as HTMLTextAreaElement).value).toBe('Unsent new draft')
   })
-
-  it('loads the settings snapshot and shows a Saved toast after persistence', async () => {
-    const bridge = api({ sessions: [], warnings: [] })
-    window.bingoGui = bridge
-    render(<App />)
-    await screen.findByLabelText('Provider')
+  it('shows provider-qualified model identity and authoritative live permission mode', async () => {
+    desktop(); render(<App />); await ready()
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button'))
+    await screen.findByRole('heading', { name: 'Review the workspace' })
+    expect(screen.getByRole('button', { name: 'Model' }).getAttribute('title')).toBe('custom/same-model')
+    expect(screen.getByRole('combobox', { name: 'Permission mode' }).textContent).toContain('Plan · read only')
+  })
+  it('requires explicit confirmation before enabling permission bypass', async () => {
+    const { api } = desktop(); render(<App />); await ready()
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Permission mode' }), { key: 'ArrowDown' })
+    fireEvent.click(await screen.findByRole('option', { name: /^Bypass permissions/ }))
+    expect(screen.getByRole('dialog', { name: 'Bypass permission prompts?' })).toBeTruthy()
+    expect(vi.mocked(api.request).mock.calls.some(([call]) => call.method === 'session/submit')).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Keep asking' }))
+  })
+  it('exposes complete settings and persists theme through the native preferences API', async () => {
+    const { api } = desktop(); render(<App />); await ready()
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeTruthy()
-    expect(screen.getAllByText('/home/.config/bingo/settings.json')).toHaveLength(2)
-    expect(screen.getByText(/credential not configured/)).toBeTruthy()
-    fireEvent.change(screen.getByLabelText('Theme'), { target: { value: 'dark' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
-    await waitFor(() => expect(bridge.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: '/workspace', baseRevision: 'a'.repeat(64), values: expect.objectContaining({ theme: 'dark' }) })))
-    expect((await screen.findByRole('status')).textContent).toBe('Saved')
+    fireEvent.click(screen.getByRole('button', { name: 'Dark' }))
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'))
+    expect(api.savePreferences).toHaveBeenCalledWith({ theme: 'dark' })
+    fireEvent.click(screen.getByRole('button', { name: 'Models & providers' }))
+    expect(screen.getByRole('button', { name: 'Add API provider' })).toBeTruthy()
+    expect(screen.getByText('Ready')).toBeTruthy()
+  })
+  it('clears in-memory drafts as well as persisted drafts', async () => {
+    desktop(); render(<App />); await ready()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message bingo' }), { target: { value: 'Remove this draft' } })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear saved drafts' }))
+    expect((screen.getByRole('textbox', { name: 'Message bingo' }) as HTMLTextAreaElement).value).toBe('')
+    await waitFor(() => expect(localStorage.getItem('rei.drafts.v1')).toBe('{}'))
+  })
+  it('routes API keys only through the native provider setup boundary', async () => {
+    const { api } = desktop(); render(<App />); await ready()
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Models & providers' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add API provider' }))
+    fireEvent.change(screen.getByLabelText('Provider name'), { target: { value: 'local-test' } })
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'test-only-placeholder' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save provider' }))
+    await waitFor(() => expect(api.configureProvider).toHaveBeenCalledWith({ name: 'local-test', protocol: 'openai', baseUrl: '', apiKey: 'test-only-placeholder' }))
+    expect(vi.mocked(api.request).mock.calls.some(([call]) => JSON.stringify(call).includes('test-only-placeholder'))).toBe(false)
+    expect(localStorage.getItem('rei.drafts.v1') ?? '').not.toContain('test-only-placeholder')
+  })
+})
+
+describe('interaction safety', () => {
+  it('never offers a credential field for journaled paste login', () => {
+    const respond = vi.fn()
+    render(<InteractionPanel interaction={{ id: 'login', session: 's', openedAt: time, kind: { kind: 'login', provider: 'custom', flow: { kind: 'paste' } }, answers: ['text', 'cancel'] }} respond={respond} openLink={vi.fn()} />)
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.queryByText('Send answer')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(respond).toHaveBeenCalledWith({ kind: 'cancel' }, 'keyboard')
+  })
+  it('isolates simultaneous question radio groups', () => {
+    const question = { kind: 'question' as const, question: 'Choose one', options: [{ id: 'a', label: 'Option A' }, { id: 'b', label: 'Option B' }], multi: false }
+    const respond = vi.fn(async () => {})
+    render(<>{['one', 'two'].map((id) => <InteractionPanel key={id} interaction={{ id, session: 's', openedAt: time, kind: question, answers: ['choice', 'cancel'] }} respond={respond} openLink={vi.fn()} />)}</>)
+    const radios = screen.getAllByRole('radio', { name: 'Option A' })
+    fireEvent.click(radios[0]); fireEvent.click(radios[1])
+    expect((radios[0] as HTMLInputElement).checked).toBe(true)
+    expect((radios[1] as HTMLInputElement).checked).toBe(true)
+    expect(radios[0].getAttribute('name')).not.toBe(radios[1].getAttribute('name'))
   })
 })

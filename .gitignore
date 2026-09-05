@@ -5,6 +5,8 @@ node_modules/
 dist/
 out/
 release/
+test-results/
+playwright-report/
 *.tsbuildinfo
 
 # Electron
@@ -16,6 +18,7 @@ screenshots/
 !docs/screenshots/
 !docs/screenshots/*.png
 *.png
+!build/icon.png
 !docs/screenshots/*.png
 
 # OS

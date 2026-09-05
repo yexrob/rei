@@ -1,0 +1,52 @@
+import { useEffect, useState } from 'react'
+import { ArrowUpRight, Check, FolderOpen, Keyboard, Laptop, Moon, Sun } from 'lucide-react'
+import type { CatalogKind, View } from '../../../shared/rpc'
+import { type useWorkspace, unwrap } from '../state/useWorkspace'
+import { CodeBlock, StructuredView, type OpenLink } from './Content'
+import { basename, ErrorBanner, Modal, object } from './primitives'
+import { ProviderSetup } from './ProviderSetup'
+import { Picker } from './Picker'
+import { useI18n, type LocalePreference } from '../i18n'
+
+type Workspace = ReturnType<typeof useWorkspace>
+export function Settings({ workspace: w, onClose, openLink, clearDrafts, initialPage = 'general' }: { workspace: Workspace; onClose: () => void; openLink: OpenLink; clearDrafts: () => void; initialPage?: string }): React.JSX.Element {
+  const { t, preference, setLocale } = useI18n()
+  const [page, setPage] = useState(initialPage)
+  const [addingProvider, setAddingProvider] = useState(false)
+  const [model, setModel] = useState(w.active?.snapshot.summary.model ?? '')
+  const [provider, setProvider] = useState(w.active?.snapshot.summary.provider ?? '')
+  const [catalogKind, setCatalogKind] = useState<CatalogKind>('tools')
+  const [filter, setFilter] = useState('')
+  const [busy, setBusy] = useState(false)
+  const perform = (action: () => Promise<unknown>) => { setBusy(true); void action().catch(w.report).finally(() => setBusy(false)) }
+  useEffect(() => { if (page === 'extensions' && w.connection.status === 'ready') void w.readCatalog(catalogKind).catch(w.report) }, [page, catalogKind, w.readCatalog, w.report, w.connection.status])
+  return <Modal title={t('Settings')} wide onClose={onClose}><div className="settings-layout"><nav className="settings-nav" aria-label={t('Settings sections')}>{[['general', 'General'], ['models', 'Models & providers'], ['extensions', 'Tools & skills'], ['shortcuts', 'Keyboard shortcuts']].map(([id, label]) => <button key={id} className={page === id ? 'selected' : ''} aria-current={page === id ? 'page' : undefined} onClick={() => { setPage(id); setFilter('') }}>{t(label)}</button>)}</nav><div className="settings-content">
+    {w.error && <ErrorBanner message={w.error} onDismiss={() => w.setError('')} />}
+    {page === 'general' && <><h3>{t('Appearance')}</h3><div className="theme-options" role="group" aria-label={t('Appearance')}>{([['system', Laptop], ['light', Sun], ['dark', Moon]] as const).map(([theme, Icon]) => <button key={theme} aria-pressed={w.preferences?.theme === theme} className={w.preferences?.theme === theme ? 'selected' : ''} onClick={() => perform(() => w.savePreferences({ theme }))}><Icon size={20} /><span>{t(theme.charAt(0).toUpperCase() + theme.slice(1))}</span>{w.preferences?.theme === theme && <Check size={14} />}</button>)}</div>
+      <section className="setting-section"><h3>{t('Language')}</h3><Picker label={t('Language')} value={preference} onValueChange={(value) => setLocale(value as LocalePreference)} options={[{ value: 'system', label: t('System default') }, { value: 'en', label: 'English' }, { value: 'zh-CN', label: '简体中文' }]} /></section>
+      <section className="setting-section"><h3>{t('Workspace')}</h3><p className="path-label">{w.connection.workspace || t('No folder selected')}</p><button onClick={() => perform(w.chooseWorkspace)} disabled={busy}><FolderOpen size={15} /> {t('Open another folder')}</button></section>
+      <section className="setting-section"><h3>{t('bingo runtime')}</h3><p className="path-label">{w.connection.binary || w.bootstrap?.binary.path || t('Not found')}</p><p className="secondary">{w.connection.server ? t('Connected · bingo {version} · protocol {protocol}', { version: w.connection.server.version, protocol: w.connection.server.protocol }) : t('Select a bingo-improve executable that supports serve --stdio.')}</p><button disabled={busy} onClick={() => perform(async () => { const binary = unwrap(await window.bingoDesktop.chooseBinary()); if (binary) { await w.savePreferences({ binaryPath: binary }); if (w.connection.workspace) await w.connect(w.connection.workspace, binary) } })}>{t('Choose executable…')}</button></section>
+      <section className="setting-section"><h3>{t('Your data stays yours')}</h3><p className="secondary">{t('bingo owns your sessions, settings and permissions. Rei stores only desktop preferences and local text drafts. Prompts and files are sent to the provider you choose. External images are not loaded automatically.')}</p><button disabled={busy} onClick={() => { if (window.confirm(t('Clear all saved text drafts? Sent messages and bingo sessions will not be changed.'))) { clearDrafts(); w.setNotice(t('Saved text drafts cleared.')); onClose() } }}>{t('Clear saved drafts')}</button></section>
+    </>}
+    {page === 'models' && addingProvider && <ProviderSetup workspace={w} onDone={() => setAddingProvider(false)} />}
+    {page === 'models' && !addingProvider && <><h3>{t('Model & provider')}</h3><p className="secondary">{t('New-conversation choices apply when you send. Changes to an existing session are saved by bingo. Credentials stay in bingo’s credential store.')}</p><div className="field-label"><span>{t('Provider')}</span><Picker label={t('Provider')} value={provider} onValueChange={setProvider} options={[{ value: '', label: t('Use configured provider') }, ...(w.catalogs.providers?.entries ?? []).map((entry) => ({ value: entry.id, label: entry.label }))]} /></div><label className="field-label">{t('Model')}<input value={model} onChange={(event) => setModel(event.target.value)} placeholder={t('Provider model ID')} /></label><button className="primary" disabled={busy || !model.trim() || w.connection.status !== 'ready'} onClick={() => perform(() => w.runAction('model', provider && !model.startsWith(`${provider}/`) ? `${provider}/${model.trim()}` : model.trim()))}>{t('Use this model')}</button>
+      <section className="setting-section"><h3>{t('Connected providers')}</h3>{w.catalogs.providers?.entries.length ? w.catalogs.providers.entries.map((entry) => { const auth = object(object(entry.meta).auth); return <div className="provider-row" key={entry.id}><div><strong>{entry.label}</strong><small>{t(auth.kind === 'ready' ? 'Ready' : auth.kind === 'notApplicable' ? 'No sign-in required' : auth.kind === 'expired' ? 'Sign-in expired' : auth.kind === 'missing' ? 'Not connected' : 'Status unavailable')}{typeof auth.hint === 'string' ? ` · ${auth.hint}` : ''}</small></div>{auth.kind !== 'notApplicable' && <button disabled={busy} onClick={() => { onClose(); void w.signIn(entry.id).catch(w.report) }}>{t(auth.kind === 'ready' ? 'Sign in again' : 'Sign in')}<ArrowUpRight size={13} /></button>}</div> }) : <p className="secondary">{t('Connect to bingo to discover available providers.')}</p>}<div className="button-row"><button disabled={busy || !w.connection.workspace} onClick={() => setAddingProvider(true)}>{t('Add API provider')}</button><button disabled={busy} onClick={() => perform(() => w.readCatalog('providers'))}>{t('Refresh status')}</button></div></section>
+    </>}
+    {page === 'extensions' && <><h3>{t('Available capabilities')}</h3><p className="secondary">{t('Discovered from the connected runtime, including project and user configuration.')}</p><div className="catalog-toolbar"><Picker label={t('Capability type')} value={catalogKind} onValueChange={(value) => setCatalogKind(value as CatalogKind)} options={[{ value: 'tools', label: t('Tools') }, { value: 'skills', label: t('Skills') }, { value: 'commands', label: t('Commands') }, { value: 'plugins', label: t('Plugins') }]} /><input aria-label={t('Filter capabilities')} value={filter} onChange={(event) => setFilter(event.target.value)} placeholder={t('Filter…')} /></div><div className="catalog-list">{w.catalogs[catalogKind]?.entries.filter((entry) => `${entry.label} ${entry.id}`.toLowerCase().includes(filter.toLowerCase())).map((entry) => <details key={entry.id}><summary>{entry.label}<span>{entry.id}</span></summary><p>{String(object(entry.meta).description ?? object(entry.meta).hint ?? t('Provided by the bingo runtime.'))}</p></details>)}{!w.catalogs[catalogKind]?.entries.length && <p className="secondary">{t(`No ${catalogKind} are available.`)}</p>}</div></>}
+    {page === 'shortcuts' && <><h3>{t('Keep your hands on the keyboard')}</h3><dl className="shortcuts">{[['New session', '⌘ / Ctrl N'], ['Search & commands', '⌘ / Ctrl K'], ['Settings', '⌘ / Ctrl ,'], ['Toggle sidebar', '⌘ / Ctrl B'], ['Focus message', '⌘ / Ctrl L'], ['Send message', 'Enter'], ['New line', 'Shift Enter'], ['Close dialog', 'Escape']].map(([label, key]) => <div key={label}><dt>{t(label)}</dt><dd><kbd>{key}</kbd></dd></div>)}</dl><p className="secondary"><Keyboard size={14} /> {t('Native edit, select-all, copy, paste and window shortcuts work as expected.')}</p></>}
+    {w.commandView && <section className="settings-result"><StructuredView view={w.commandView} openLink={openLink} runAction={(action) => perform(() => w.runAction(action.name, action.args))} /></section>}
+  </div></div></Modal>
+}
+
+export function Onboarding({ workspace: w, openLink }: { workspace: Workspace; openLink: OpenLink }): React.JSX.Element {
+  const { t } = useI18n()
+  const hasBinary = Boolean(w.connection.binary || w.bootstrap?.binary.path)
+  const connecting = w.connection.status === 'connecting' || w.loading
+  const chooseRuntime = async () => {
+    const binary = unwrap(await window.bingoDesktop.chooseBinary())
+    if (!binary) return
+    await w.savePreferences({ binaryPath: binary })
+    await w.connect(w.preferences?.workspace ?? undefined, binary)
+  }
+  return <div className="onboarding"><h1>{t(connecting ? 'Opening your space' : 'Connect bingo')}</h1><p className="onboarding-description">{t('Choose the bingo runtime on this computer. Then start a conversation — no project folder required.')}</p><div className="button-row onboarding-actions"><button className="primary" disabled={connecting} onClick={() => { void chooseRuntime().catch(w.report) }}>{t('Choose executable')}</button>{hasBinary && <button disabled={connecting} onClick={() => void w.connect(w.preferences?.workspace ?? undefined)}>{t(connecting ? 'Connecting…' : 'Reconnect')}</button>}</div><p className="onboarding-note">{t('Conversations use a private temporary folder until you attach a project.')}</p><button className="text-button" onClick={() => openLink('https://github.com/yexrob/bingo')}>{t('Runtime setup help')} <ArrowUpRight size={13} /></button></div>
+}
