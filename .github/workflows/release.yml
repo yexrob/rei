@@ -85,7 +85,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - name: Check canonical protocol
-        run: SCHEMA_FILE="$GITHUB_WORKSPACE/_runtime/schema/rpc.json" node scripts/generate-rpc.mjs --check
+        run: node scripts/generate-rpc.mjs "$GITHUB_WORKSPACE/_runtime/schema/rpc.json" --check
       - run: npm test
       - run: npm run build
       - name: Verify native desktop and runtime workflows
