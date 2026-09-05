@@ -1,8 +1,14 @@
 import { chmod, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { BingoInspector } from './bingoInspector'
+
+// Run the real script child through Node; Windows cannot execute Unix shebang fixtures.
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  return { ...actual, spawn: (file: string, args: string[], options: import('node:child_process').SpawnOptions) => actual.spawn(process.execPath, [file, ...args], options) }
+})
 
 async function fixture(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), 'bingo-gui-inspect-'))

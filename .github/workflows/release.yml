@@ -1,0 +1,147 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Preview release tag (must match package.json)
+        required: true
+        default: v0.1.0
+      runtime_ref:
+        description: Full bingo commit SHA to bundle
+        required: true
+        default: fb1eaa5be1b48be45dc13d6be998c86cb57406f3
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rei-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macos-arm64
+            args: --mac --arm64
+          - os: macos-15-intel
+            name: macos-x64
+            args: --mac --x64
+          - os: windows-latest
+            name: windows-x64
+            args: --win --x64
+          - os: ubuntu-22.04
+            name: linux-x64
+            args: --linux --x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      RUNTIME_REF: ${{ inputs.runtime_ref }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Validate release identity
+        run: |
+          node -e 'const p=require("./package.json"); if(process.env.RELEASE_TAG!==`v${p.version}` || !/^[0-9a-f]{40}$/.test(process.env.RUNTIME_REF)) process.exit(1)'
+      - uses: actions/checkout@v4
+        with:
+          repository: yexrob/bingo
+          ref: ${{ inputs.runtime_ref }}
+          path: _runtime
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: _runtime -> target
+      - name: Build matching runtime
+        working-directory: _runtime
+        run: cargo build --release --locked -p bingo
+      - name: Locate and verify bundled runtime
+        run: |
+          binary="$GITHUB_WORKSPACE/_runtime/target/release/bingo"
+          if [[ "$RUNNER_OS" == 'Windows' ]]; then binary="$binary.exe"; fi
+          "$binary" --version
+          echo "BINGO_BUNDLE_BINARY=$binary" >> "$GITHUB_ENV"
+          echo "BINGO_E2E_BINARY=$binary" >> "$GITHUB_ENV"
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Check canonical protocol
+        run: SCHEMA_FILE="$GITHUB_WORKSPACE/_runtime/schema/rpc.json" node scripts/generate-rpc.mjs --check
+      - run: npm test
+      - run: npm run build
+      - name: Verify native desktop and runtime workflows
+        run: |
+          if [[ "$RUNNER_OS" == 'Linux' ]]; then
+            xvfb-run -a npx playwright test
+          else
+            npx playwright test
+          fi
+      - name: Package native installers
+        run: npx electron-builder --config electron-builder.cjs ${{ matrix.args }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rei-${{ matrix.name }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
+      - name: Preserve failed native verification evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-${{ matrix.name }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      RUNTIME_REF: ${{ inputs.runtime_ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: rei-*
+          path: release-assets
+          merge-multiple: true
+      - name: Publish verified preview assets
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite it.' >&2
+            exit 1
+          fi
+          (cd release-assets && sha256sum * > SHA256SUMS.txt)
+          cp .github/release-notes/v0.1.0.md "$RUNNER_TEMP/release-notes.md"
+          printf '\nGUI source: `%s`\n\nBundled bingo source: `%s`\n' "$GITHUB_SHA" "$RUNTIME_REF" >> "$RUNNER_TEMP/release-notes.md"
+          gh release create "$RELEASE_TAG" release-assets/* --title "Rei $RELEASE_TAG — Preview" --prerelease --target "$GITHUB_SHA" --notes-file "$RUNNER_TEMP/release-notes.md"

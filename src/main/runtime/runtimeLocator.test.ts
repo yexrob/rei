@@ -1,8 +1,14 @@
 import { chmod, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { RuntimeLocator } from './runtimeLocator'
+
+// Run the real script child through Node; Windows cannot execute Unix shebang fixtures.
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  return { ...actual, spawn: (file: string, args: string[], options: import('node:child_process').SpawnOptions) => actual.spawn(process.execPath, [file, ...args], options) }
+})
 
 async function fixture(body: string): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), 'bingo-gui-probe-'))
@@ -20,7 +26,7 @@ console.log(JSON.stringify({protocolVersion:1,seq:1,sessionId:null,type:'protoco
 `)
     const result = await new RuntimeLocator({ env: { ...process.env, BINGO_GUI_BINARY: binary } }).probe(process.cwd())
     expect(result).toMatchObject({ ok: true, value: { bingoVersion: '0.4.0', protocolVersion: 1, workspacePath: process.cwd() } })
-    if (result.ok) expect(result.value.binaryPath).toMatch(/bingo-gui-probe-.+\/bingo$/)
+    if (result.ok) expect(result.value.binaryPath).toMatch(/bingo-gui-probe-.+[\\/]bingo$/)
   })
 
   it('rejects extra probe events', async () => {

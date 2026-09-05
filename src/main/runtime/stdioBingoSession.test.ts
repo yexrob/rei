@@ -4,6 +4,12 @@ import { tmpdir } from 'node:os'
 import { describe, expect, it, vi } from 'vitest'
 import { StdioBingoSession } from './stdioBingoSession'
 
+// Run the real script child through Node; Windows cannot execute Unix shebang fixtures.
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  return { ...actual, spawn: (file: string, args: string[], options: import('node:child_process').SpawnOptions) => actual.spawn(process.execPath, [file, ...args], options) }
+})
+
 const sessionId = 'session-1'
 const turnId = '123e4567-e89b-42d3-a456-426614174000'
 

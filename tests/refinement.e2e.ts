@@ -103,7 +103,7 @@ test('real native right browser and bottom terminal, including agent ShowPage an
     await expect.poll(async () => { const state = await page.evaluate(() => window.bingoPanels.snapshot()); return state.ok ? state.value.terminal.status : 'error' }).toBe('running')
     const before = await page.evaluate(() => window.bingoPanels.snapshot())
     await page.locator('.terminal-host').click()
-    await page.keyboard.type("printf 'REI_TERMINAL_%s\\n' OK")
+    await page.keyboard.type(process.platform === 'win32' ? "Write-Output ('REI_TERMINAL_' + 'OK')" : "printf 'REI_TERMINAL_%s\\n' OK")
     await page.keyboard.press('Enter')
     await expect(page.locator('.terminal-panel')).toContainText('REI_TERMINAL_OK')
     await page.getByRole('button', { name: 'Close terminal' }).click()

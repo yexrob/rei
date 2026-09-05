@@ -103,7 +103,9 @@ describe('PTY lifecycle and flow control', () => {
   })
   it('waits for exit and escalates an ignored graceful stop without discarding the PTY', async () => {
     const h = harness(), { id } = await h.terminal.start()
-    h.pty.kill.mockImplementation((signal?: string) => { if (signal === 'SIGKILL') h.exit(137) })
+    h.pty.kill.mockImplementation((signal?: string) => {
+      if (process.platform === 'win32' ? h.pty.kill.mock.calls.length === 2 : signal === 'SIGKILL') h.exit(137)
+    })
     const stopping = h.terminal.stop(id!)
     expect(h.terminal.snapshot().status).toBe('stopping')
     expect(h.subscriptions[1]).not.toHaveBeenCalled()
@@ -111,7 +113,7 @@ describe('PTY lifecycle and flow control', () => {
     expect(h.pty.kill).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(1)
     await stopping
-    expect(h.pty.kill).toHaveBeenLastCalledWith('SIGKILL')
+    expect(h.pty.kill.mock.calls).toEqual([[], process.platform === 'win32' ? [] : ['SIGKILL']])
     expect(h.terminal.snapshot()).toMatchObject({ status: 'exited', exitCode: 137 })
     expect(h.subscriptions[1]).toHaveBeenCalledOnce()
   })
