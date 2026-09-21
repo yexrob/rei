@@ -5,10 +5,14 @@
   "description": "A focused desktop workspace for bingo",
   "author": "bingo",
   "main": "out/main/index.js",
+  "engines": {
+    "node": "^24.15.0 || >=26.0.0"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "postinstall": "node scripts/prepare-native.cjs",
     "build": "electron-vite build",
+    "bundle:prepare": "node scripts/prepare-bundle.cjs",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "package": "npm run build && electron-builder --config electron-builder.cjs",
@@ -22,31 +26,36 @@
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "cmdk": "^1.1.1",
-    "lucide-react": "^1.41.0",
+    "katex": "^0.18.7",
+    "lucide-react": "^1.47.0",
+    "markstream-react": "^2.0.12",
+    "mermaid": "^12.0.0",
     "node-pty": "^1.1.0",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
-    "write-file-atomic": "^6.0.0",
-    "zod": "^4.4.3"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "write-file-atomic": "^8.0.0",
+    "zod": "^4.6.5"
+  },
+  "overrides": {
+    "lodash-es": "^4.18.1"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
-    "@testing-library/react": "^16.3.2",
-    "@types/node": "^22.15.3",
-    "@types/react": "^19.1.2",
-    "@types/react-dom": "^19.1.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/katex": "^0.16.8",
+    "@types/node": "^24.13.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@types/write-file-atomic": "^4.0.3",
-    "@vitejs/plugin-react": "^4.7.0",
-    "electron": "^44.2.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.4.1",
     "electron-builder": "^26.15.3",
-    "electron-vite": "^3.1.0",
-    "jsdom": "^30.0.1",
-    "typescript": "^5.8.3",
-    "vite": "^6.3.4",
-    "vitest": "^4.1.10"
+    "electron-vite": "^5.0.0",
+    "jsdom": "^30.1.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.6",
+    "vitest": "^5.0.1"
   }
 }

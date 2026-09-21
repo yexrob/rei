@@ -65,14 +65,38 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 async function ready() { await screen.findByText('Connected locally'); await waitFor(() => expect(screen.getByRole('button', { name: 'Send message' }).hasAttribute('disabled')).toBe(true)) }
 
 describe('desktop user journeys', () => {
+  it('keeps sidebar rows in creation order when an older thread is opened or updated', async () => {
+    const { api, state, emit } = desktop()
+    const oldest = { ...state.summary, createdAt: '2026-09-01T10:00:00Z', updatedAt: '2026-09-01T10:00:00Z' }
+    const newest = { ...state.summary, id: 'session-two', title: 'Newer thread', createdAt: time, updatedAt: time }
+    const request = vi.mocked(api.request).getMockImplementation()!
+    vi.mocked(api.request).mockImplementation(async (input) => {
+      if (input.method === 'session/list') return { ok: true, value: { sessions: [newest, oldest] } }
+      if (input.method === 'session/open') return { ok: true, value: { session: oldest.id, snapshot: { ...state, summary: { ...oldest, updatedAt: '2026-09-17T11:00:00Z' } } } }
+      return request(input)
+    })
+    render(<App />); await ready()
+    const rows = () => [...document.querySelectorAll('.session-row-title')].map((row) => row.textContent)
+    const order = [newest.title, oldest.title]
+    expect(rows()).toEqual(order)
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /Review the workspace/ }))
+    await screen.findByRole('heading', { name: 'Review the workspace' })
+    expect(rows()).toEqual(order)
+    await act(async () => emit({ type: 'sessionUpdated', summary: { ...oldest, updatedAt: '2026-09-17T12:00:00Z', busy: true } }))
+    expect(rows()).toEqual(order)
+    expect(document.querySelector('.session-row[aria-current="page"] .session-row-title')?.textContent).toBe(oldest.title)
+  })
+
   it('starts in personal space without requiring a folder or creating an empty session', async () => {
     const { api } = desktop({ welcome: true }); render(<App />)
     await screen.findByText('Connected locally')
-    expect(screen.getByRole('heading', { name: 'What’s on your mind?' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: "Let's build" })).toBeNull()
+    expect(document.querySelector('.welcome-project, .empty-state')).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Message bingo' }).closest('.empty-conversation')).toBeTruthy()
     expect(api.chooseWorkspace).not.toHaveBeenCalled()
     expect(api.connect).toHaveBeenCalledWith({ binary: '/bin/bingo' })
     expect(vi.mocked(api.request).mock.calls.some(([call]) => call.method === 'session/open')).toBe(false)
-    expect(screen.getByRole('button', { name: 'Attach a project' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Personal space' })).toBeTruthy()
   })
   it('submits through the real protocol contract, renders response, and clears only accepted drafts', async () => {
     desktop(); render(<App />); await ready()
@@ -103,7 +127,7 @@ describe('desktop user journeys', () => {
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button'))
     await screen.findByRole('heading', { name: 'Review the workspace' })
     expect((screen.getByRole('textbox', { name: 'Message bingo' }) as HTMLTextAreaElement).value).toBe('')
-    fireEvent.click(screen.getByRole('button', { name: 'New session' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New thread' }))
     expect((screen.getByRole('textbox', { name: 'Message bingo' }) as HTMLTextAreaElement).value).toBe('Unsent new draft')
   })
   it('shows provider-qualified model identity and authoritative live permission mode', async () => {
@@ -115,9 +139,13 @@ describe('desktop user journeys', () => {
   })
   it('requires explicit confirmation before enabling permission bypass', async () => {
     const { api } = desktop(); render(<App />); await ready()
-    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Permission mode' }), { key: 'ArrowDown' })
-    fireEvent.click(await screen.findByRole('option', { name: /^Bypass permissions/ }))
-    expect(screen.getByRole('dialog', { name: 'Bypass permission prompts?' })).toBeTruthy()
+    const trigger = screen.getByRole('combobox', { name: 'Permission mode' })
+    act(() => trigger.focus())
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' })
+    const bypass = await screen.findByRole('option', { name: /^Bypass permissions/ })
+    act(() => bypass.focus())
+    fireEvent.keyDown(bypass, { key: 'Enter' })
+    expect(await screen.findByRole('dialog', { name: 'Bypass permission prompts?' })).toBeTruthy()
     expect(vi.mocked(api.request).mock.calls.some(([call]) => call.method === 'session/submit')).toBe(false)
     fireEvent.click(screen.getByRole('button', { name: 'Keep asking' }))
   })

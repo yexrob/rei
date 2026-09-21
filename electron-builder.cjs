@@ -1,17 +1,17 @@
-const path = require('node:path')
-
-// Release builders can supply a matching platform binary; installed runtimes remain supported.
-const runtime = process.env.BINGO_BUNDLE_BINARY
+const { beforePack } = require('./scripts/prepare-bundle.cjs')
+const { validateBundle } = require('./scripts/validate-bundle.cjs')
 module.exports = {
   appId: 'dev.bingo.rei',
   productName: 'Rei',
   directories: { output: 'dist' },
-  files: ['out/**/*', 'package.json'],
+  files: ['out/**/*', '!out/bundled-runtime/**/*', 'package.json'],
   asar: true,
   asarUnpack: ['node_modules/node-pty/**/*'],
-  ...(runtime ? { extraResources: [{ from: runtime, to: path.join('bin', process.platform === 'win32' ? 'bingo.exe' : 'bingo') }] } : {}),
+  beforePack,
+  afterPack: validateBundle,
+  extraResources: [{ from: 'out/bundled-runtime/${os}-${arch}', to: 'bin' }],
   mac: { target: ['dmg', 'zip'], category: 'public.app-category.developer-tools', hardenedRuntime: true },
-  win: { target: [{ target: 'nsis', arch: ['x64', 'arm64'] }] },
+  win: { target: ['nsis'] },
   nsis: { oneClick: false, allowToChangeInstallationDirectory: true, perMachine: false },
   linux: { target: ['AppImage', 'deb'], category: 'Development', maintainer: 'bingo' },
   artifactName: 'Rei-${version}-${os}-${arch}.${ext}'

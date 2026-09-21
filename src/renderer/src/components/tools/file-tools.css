@@ -1,0 +1,29 @@
+.file-preview-target { min-width: 0; max-width: 100%; min-height: 28px; padding: 3px 7px; background: transparent; border-color: transparent; color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.file-preview-target > span, .file-preview-unavailable { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-preview-target:hover { background: var(--hover); border-color: var(--line); text-decoration: underline; text-underline-offset: 3px; }
+.file-preview-unavailable { color: var(--secondary); font-size: 12px; }
+.file-change-counts { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.file-additions { color: var(--success); }
+.file-deletions { color: var(--danger); }
+.file-record-detail { min-width: 0; padding: 2px 0; }
+.file-record-path, .recorded-file-path { margin: 0 0 8px; color: var(--secondary); overflow-wrap: anywhere; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.file-receipt { max-height: 180px; margin: 6px 0; white-space: pre-wrap; overflow: auto; overflow-wrap: anywhere; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.recorded-file-preview { min-width: 0; }
+.recorded-notice, .recorded-limit { margin: 7px 0 12px; color: var(--secondary); font-size: 12px; line-height: 1.6; }
+.recorded-limit { color: var(--warning); }
+.recorded-toolbar { display: flex; align-items: center; gap: 12px; justify-content: space-between; margin: 14px 0 10px; }
+.recorded-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.recorded-tabs button { min-height: 30px; padding: 5px 9px; background: transparent; border-color: transparent; font-size: 12px; color: var(--secondary); }
+.recorded-tabs button[aria-pressed="true"] { background: var(--selected); border-color: var(--line); color: var(--text); }
+.recorded-source { max-height: 58vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--code); padding-block: 8px; font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 4; }
+.recorded-line { display: flex; width: max-content; min-width: 100%; }
+.recorded-line code { display: block; padding-inline: 12px; white-space: pre; font: inherit; }
+.recorded-line-number { width: 5ch; flex: 0 0 5ch; padding-inline: 6px; text-align: end; color: var(--quiet); user-select: none; font-variant-numeric: tabular-nums; }
+.recorded-diff .addition { background: var(--addition-bg); color: var(--success); }
+.recorded-diff .deletion { background: var(--danger-bg); color: var(--danger); }
+.recorded-diff .meta { color: var(--secondary); }
+.recorded-image { display: flex; justify-content: center; max-height: 58vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: var(--code); }
+.recorded-image img { display: block; max-width: 100%; object-fit: contain; }
+.file-image-thumbnail { display: block; max-width: 100%; margin: 8px 0 14px 28px; padding: 0; border: 0; background: transparent; border-radius: 8px; overflow: hidden; cursor: zoom-in; }
+.file-image-thumbnail img { display: block; max-width: min(440px, 100%); max-height: 260px; object-fit: contain; }
+@media (max-width: 600px) { .recorded-toolbar { align-items: flex-start; } .recorded-line-number { width: 4ch; flex-basis: 4ch; } }

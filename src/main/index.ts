@@ -7,6 +7,7 @@ import { EventDelivery } from './desktop/event-delivery'
 import { PreferencesStore, restoreBounds } from './desktop/preferences'
 import { DesktopRuntime } from './desktop/runtime'
 import { Panels } from './desktop/panels'
+import { Review } from './desktop/review'
 import { AgentBrowser } from './desktop/agent-browser'
 import { allowsClipboardWrite, externalUrl, sameDocument } from './desktop/security'
 import type { DesktopEvent } from '../shared/desktop'
@@ -17,6 +18,7 @@ let runtime: DesktopRuntime | null = null
 let delivery: EventDelivery | null = null
 let desktopIpc: DesktopIpc | null = null
 let panels: Panels | null = null
+let review: Review | null = null
 const agentBrowser = new AgentBrowser()
 let quitting = false
 let quitPending = false
@@ -31,11 +33,12 @@ function emit(event: DesktopEvent): void {
 
 function createWindow(): void {
   const bounds = restoreBounds(preferences?.bounds, screen.getAllDisplays().map((display) => display.workArea))
+  const area = screen.getPrimaryDisplay().workArea
   window = new BrowserWindow({
-    width: bounds?.width ?? 1220, height: bounds?.height ?? 820,
+    width: bounds?.width ?? Math.min(1440, area.width), height: bounds?.height ?? Math.min(960, area.height),
     ...(bounds ? { x: bounds.x, y: bounds.y } : {}),
-    minWidth: 640, minHeight: 480, show: false, title: 'Rei',
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#20221f' : '#fbfaf8',
+    minWidth: Math.min(640, area.width), minHeight: Math.min(480, area.height), show: false, title: 'Bingo',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#202020' : '#FAFAF9',
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 14 } } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'), contextIsolation: true,
@@ -116,6 +119,7 @@ async function quit(): Promise<void> {
     await desktopIpc?.shutdown()
     await runtime?.close()
     await preferences?.flush()
+    review?.close()
     app.quit()
   } catch {
     quitting = false
@@ -144,6 +148,7 @@ else {
     desktopIpc = new DesktopIpc({ window: () => window, documentUrl, preferences, runtime, onDialogChange: (open) => panels?.setBrowserOccluded(open) })
     await desktopIpc.initialize()
     panels = new Panels({ window: () => window, documentUrl, workspace: () => desktopIpc?.currentWorkspace ?? null })
+    review = new Review({ window: () => window, documentUrl, workspace: () => desktopIpc?.currentWorkspace ?? null })
     appMenu()
     createWindow()
   }).catch(() => { dialog.showErrorBox('Rei could not start', 'The desktop runtime could not be initialized.'); quitting = true; app.quit() })

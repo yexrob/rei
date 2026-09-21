@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserWindow } from 'electron'
-const mocks = vi.hoisted(() => ({ handlers: new Map<string, (...args: any[]) => Promise<any>>(), views: [] as any[], session: null as any, partition: vi.fn(), external: vi.fn(), spawn: vi.fn() }))
+const mocks = vi.hoisted(() => ({ handlers: new Map<string, (...args: any[]) => Promise<any>>(), views: [] as any[], session: null as any, partition: vi.fn(), external: vi.fn(), spawn: vi.fn(), workspace: vi.fn(async (path: string) => path) }))
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events')
   return {
@@ -29,7 +29,7 @@ vi.mock('electron', async () => {
   }
 })
 vi.mock('node-pty', () => ({ spawn: mocks.spawn }))
-vi.mock('../binary', () => ({ workspaceDirectory: async (path: string) => path }))
+vi.mock('../binary', () => ({ workspaceDirectory: mocks.workspace }))
 import { Panels } from './index'
 import { PANELS_IPC } from '../../../shared/panels'
 
@@ -48,8 +48,11 @@ beforeEach(() => {
   vi.useFakeTimers()
   mocks.handlers.clear(); mocks.views.length = 0; mocks.partition.mockClear(); mocks.external.mockReset().mockResolvedValue(undefined)
   mocks.session = Object.assign(new EventEmitter(), { setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn(), setDevicePermissionHandler: vi.fn(), webRequest: { onBeforeRequest: vi.fn() } })
-  let exit: ((event: { exitCode: number }) => void) | null = null
-  mocks.spawn.mockReset().mockReturnValue({ write: vi.fn(), resize: vi.fn(), kill: vi.fn(() => exit?.({ exitCode: 0 })), pause: vi.fn(), resume: vi.fn(), onData: vi.fn(() => ({ dispose: vi.fn() })), onExit: vi.fn((callback) => { exit = callback; return { dispose: vi.fn() } }) })
+  mocks.workspace.mockReset().mockImplementation(async (path) => path)
+  mocks.spawn.mockReset().mockImplementation(() => {
+    let exit: ((event: { exitCode: number }) => void) | null = null
+    return { write: vi.fn(), resize: vi.fn(), kill: vi.fn(() => exit?.({ exitCode: 0 })), pause: vi.fn(), resume: vi.fn(), onData: vi.fn(() => ({ dispose: vi.fn() })), onExit: vi.fn((callback) => { exit = callback; return { dispose: vi.fn() } }) }
+  })
 })
 afterEach(async () => { for (const owner of owners.splice(0)) await owner.close(); vi.useRealTimers() })
 describe('production Panels registration with mocked Electron/PTY natives', () => {
@@ -157,11 +160,36 @@ describe('production Panels registration with mocked Electron/PTY natives', () =
     await h.invoke(PANELS_IPC.browserNavigate, 'https://example.test/next')
     expect((await h.invoke(PANELS_IPC.snapshot)).value.browser.error).toBeNull()
   })
-  it('kills the terminal when renderer dies, destroys native contents on quit and unregisters exactly once', async () => {
+  it('publishes one list-only registry and closes only the addressed terminal', async () => {
+    const h = harness()
+    expect((await h.invoke(PANELS_IPC.snapshot)).value).toMatchObject({ terminals: [] })
+    expect((await h.invoke(PANELS_IPC.snapshot)).value).not.toHaveProperty('terminal')
+    const a = (await h.invoke(PANELS_IPC.terminalStart)).value, b = (await h.invoke(PANELS_IPC.terminalStart)).value
+    expect((await h.invoke(PANELS_IPC.snapshot)).value.terminals).toEqual([a, b])
+    expect(h.contents.send).toHaveBeenLastCalledWith(PANELS_IPC.event, { type: 'terminals', states: [a, b] })
+    await h.invoke(PANELS_IPC.terminalStop, a.id)
+    expect((await h.invoke(PANELS_IPC.snapshot)).value.terminals).toEqual([b])
+    expect(mocks.spawn.mock.results[1].value.kill).not.toHaveBeenCalled()
+  })
+  it.each(['navigation', 'render-process-gone', 'destroyed', 'close'])('cancels pending terminal launches on %s', async (reason) => {
+    const h = harness(), resolve: ((path: string) => void)[] = []
+    mocks.workspace.mockImplementation(() => new Promise((done) => resolve.push(done)))
+    const pending = [h.invoke(PANELS_IPC.terminalStart), h.invoke(PANELS_IPC.terminalStart)]
+    expect(h.panels.busy).toBe(true)
+    if (reason === 'navigation') h.contents.emit('did-start-navigation', {}, h.frame.url, false, true)
+    else if (reason === 'close') await h.panels.close()
+    else h.contents.emit(reason)
+    resolve.forEach((done) => done('/approved'))
+    for (const result of await Promise.all(pending)) expect(result).toMatchObject({ ok: false, error: { code: 'WORKSPACE_CHANGED' } })
+    expect(mocks.spawn).not.toHaveBeenCalled()
+    expect(h.panels.busy).toBe(false)
+  })
+  it('kills every terminal when renderer dies, destroys native contents on quit and unregisters exactly once', async () => {
     const h = harness(); await h.invoke(PANELS_IPC.browserNavigate, 'https://example.test/')
-    await h.invoke(PANELS_IPC.terminalStart)
+    await h.invoke(PANELS_IPC.terminalStart); await h.invoke(PANELS_IPC.terminalStart)
     h.contents.emit('render-process-gone')
     expect(mocks.spawn.mock.results[0].value.kill).toHaveBeenCalledOnce()
+    expect(mocks.spawn.mock.results[1].value.kill).toHaveBeenCalledOnce()
     await h.panels.close(); await h.panels.close()
     expect(mocks.views[0].webContents.close).toHaveBeenCalledOnce()
     expect(h.window.contentView.removeChildView).toHaveBeenCalledOnce()

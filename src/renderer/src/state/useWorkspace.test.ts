@@ -55,7 +55,12 @@ function desktop() {
   const api: BingoDesktopApi = {
     bootstrap: vi.fn(async () => ok({ version: '0.1.0', platform: 'darwin', preferences, scratchWorkspace: '/scratch', binary: { path: null, source: 'missing' }, connection: disconnected })),
     connect: vi.fn(async ({ workspace }) => {
-      connection = { status: 'ready', connectionId: `connection-${++generation}`, workspace: workspace ?? '/scratch', binary: '/bin/bingo' }
+      // DesktopRuntime.connect closes even an initially empty transport.
+      emit({ type: 'connection', connection: disconnected })
+      connection = { status: 'connecting', connectionId: `connection-${++generation}`, workspace: workspace ?? '/scratch', binary: '/bin/bingo' }
+      emit({ type: 'connection', connection })
+      connection = { ...connection, status: 'ready' }
+      emit({ type: 'connection', connection })
       return ok(connection)
     }),
     request: request as BingoDesktopApi['request'],
@@ -97,6 +102,76 @@ function assistantText(state: ReturnType<typeof useWorkspace>['active']): string
 }
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
+
+describe('correlated action views', () => {
+  it('uses a reusable background log session without selecting or abandoning the unsent thread', async () => {
+    const { bridge, result } = await connected()
+    let seq = 11
+    bridge.handlers.set('session/submit', async (input) => {
+      bridge.ack(input, seq++, { kind: 'applied', result: { view: { kind: 'text', text: 'no schedules yet' } } })
+      return ok({})
+    })
+    await act(async () => { await result.current.runAction('model', 'fake/draft-model') })
+    await act(async () => {
+      expect(await result.current.runActionView('schedule')).toEqual({ kind: 'text', text: 'no schedules yet' })
+      await result.current.runActionView('schedule')
+    })
+    expect(result.current.activeId).toBeNull()
+    expect(result.current.active).toBeNull()
+    expect(result.current.runtimeSelection.model).toBe('fake/draft-model')
+    expect(result.current.loading).toBe(false)
+    expect(result.current.commandView).toBeNull()
+    const opened = bridge.request.mock.calls.filter(([input]) => input.method === 'session/open')
+    expect(opened).toHaveLength(1)
+    expect(opened[0][0].params).toMatchObject({ selector: { kind: 'create', spec: { driver: 'log', title: 'Runtime commands' } } })
+  })
+
+  it('matches overlapping action outcomes without presenting the page result in the thread', async () => {
+    const { bridge, result } = await opened()
+    const calls: DesktopRequest[] = []
+    bridge.handlers.set('session/submit', async (input) => { calls.push(input); return ok({}) })
+    let schedule!: ReturnType<typeof result.current.runActionView>
+    let ordinary!: ReturnType<typeof result.current.runAction>
+    await act(async () => {
+      schedule = result.current.runActionView('schedule')
+      ordinary = result.current.runAction('status')
+    })
+    await act(async () => {
+      bridge.ack(calls[1], 11, { kind: 'applied', result: { view: { kind: 'text', text: 'status result' } } })
+      bridge.ack(calls[0], 12, { kind: 'applied', result: { view: { kind: 'text', text: 'schedule result' } } })
+      await Promise.all([schedule, ordinary])
+    })
+    expect(await schedule).toEqual({ kind: 'text', text: 'schedule result' })
+    expect(await ordinary).toBe('ses_1')
+    expect(result.current.commandView).toEqual({ kind: 'text', text: 'status result' })
+    expect(calls).toHaveLength(2)
+    await act(async () => { bridge.ack(calls[0], 13, { kind: 'applied', result: { view: { kind: 'text', text: 'duplicate schedule result' } } }) })
+    expect(result.current.commandView).toEqual({ kind: 'text', text: 'status result' })
+  })
+
+  it('does not present a late page result after its request timed out', async () => {
+    const { bridge, result } = await opened()
+    vi.useFakeTimers()
+    let call!: DesktopRequest
+    bridge.handlers.set('session/submit', async (input) => { call = input; return ok({}) })
+    let request!: Promise<unknown>
+    await act(async () => { request = result.current.runActionView('schedule').catch((error: unknown) => error) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(30001); await request })
+    expect(await request).toBeInstanceOf(Error)
+    await act(async () => { bridge.ack(call, 11, { kind: 'applied', result: { view: { kind: 'text', text: 'late schedule result' } } }) })
+    expect(result.current.commandView).toBeNull()
+  })
+
+  it('rejects the matched failed action instead of reusing an earlier view', async () => {
+    const { bridge, result } = await opened()
+    bridge.handlers.set('session/submit', async (input) => {
+      bridge.ack(input, 11, { kind: 'rejected', error: { code: 'NOT_FOUND', message: 'schedule unavailable' } })
+      return ok({})
+    })
+    await act(async () => { await expect(result.current.runActionView('schedule')).rejects.toThrow('schedule unavailable') })
+    expect(result.current.commandView).toBeNull()
+  })
+})
 
 describe('new conversation runtime selection', () => {
   it('lets a mixed-case model choice repair an invalid default without opening an empty session', async () => {
@@ -148,7 +223,7 @@ describe('new conversation runtime selection', () => {
     })
     let sent!: Promise<string>
     await act(async () => { sent = result.current.send('Keep this draft', []) })
-    expect(bridge.request).toHaveBeenCalledWith(expect.objectContaining({ method: 'session/open', params: { selector: { kind: 'create', spec: { cwd: '/work', driver: 'model', provider: 'Road-anti', model: 'family/Model' } }, options: { children: false } } }))
+    expect(bridge.request).toHaveBeenCalledWith(expect.objectContaining({ method: 'session/open', params: { selector: { kind: 'create', spec: { cwd: '/work', driver: 'model', provider: 'Road-anti', model: 'family/Model' } }, options: { children: true } } }))
     expect(think.params).toMatchObject({ session: 'ses_new', input: { kind: 'action', action: { name: 'think', args: 'xhigh' } } })
     expect(bridge.request.mock.calls.filter(([input]) => input.method === 'session/submit')).toHaveLength(1)
     expect(result.current.runtimeSelection).toEqual({ model: 'Road-anti/family/Model', thinking: 'off' })
@@ -250,6 +325,8 @@ describe('workspace runtime bootstrap', () => {
     expect(bridge.api.connect).toHaveBeenCalledWith({ workspace: undefined, binary: '/bin/bingo' })
     expect(bridge.api.chooseWorkspace).not.toHaveBeenCalled()
     expect(result.current.connection.workspace).toBe('/scratch')
+    expect(result.current.connection.status).toBe('ready')
+    expect(result.current.error).toBe('')
     expect(bridge.api.savePreferences).toHaveBeenCalledWith({ workspace: null })
     expect(bridge.request).toHaveBeenCalledWith(expect.objectContaining({ method: 'session/list', params: { filter: { cwd: '/scratch', limit: 500 } } }))
   })
@@ -257,10 +334,12 @@ describe('workspace runtime bootstrap', () => {
   it('uses a saved project at startup rather than personal space', async () => {
     const bridge = desktop()
     vi.mocked(bridge.api.bootstrap).mockResolvedValue(ok({ version: '0.1.0', platform: 'darwin', preferences: { ...preferences, workspace: '/saved' }, scratchWorkspace: '/scratch', binary: { path: '/bin/bingo', source: 'bundled' }, connection: disconnected }))
-    renderHook(() => useWorkspace())
+    const { result } = renderHook(() => useWorkspace())
     await act(async () => { await Promise.resolve() })
     expect(bridge.api.connect).toHaveBeenCalledWith({ workspace: '/saved', binary: '/bin/bingo' })
     expect(bridge.api.chooseWorkspace).not.toHaveBeenCalled()
+    expect(result.current.connection.status).toBe('ready')
+    expect(result.current.error).toBe('')
   })
 
   it('does not attempt to connect or force a folder picker when no binary was found', async () => {
@@ -269,6 +348,86 @@ describe('workspace runtime bootstrap', () => {
     await act(async () => { await Promise.resolve() })
     expect(bridge.api.connect).not.toHaveBeenCalled()
     expect(bridge.api.chooseWorkspace).not.toHaveBeenCalled()
+  })
+})
+
+describe('workspace connection errors', () => {
+  it('rejects pending intents during an intentional reconnect without a sticky transport banner', async () => {
+    const { bridge, result } = await opened()
+    let submitted!: DesktopRequest
+    bridge.handlers.set('session/submit', async (input) => { submitted = input; return ok({}) })
+    let rejected!: Promise<unknown>
+    await act(async () => { rejected = result.current.send('hello', [], 'ses_1').catch((error: unknown) => error) })
+    await act(async () => { await result.current.connect('/work'); await rejected })
+    expect(await rejected).toEqual(expect.objectContaining({ message: expect.stringContaining('request may have been accepted') }))
+    expect(result.current.error).toBe('')
+    expect(result.current.connection.status).toBe('ready')
+    await act(async () => {
+      bridge.ack(submitted, 11, { kind: 'turnStarted', turn: 'old-turn' })
+      bridge.emitFrame(frame(12, { type: 'notice', level: 'error', code: 'OLD', text: 'Old transport notice' }), submitted.connectionId)
+    })
+    expect(result.current.active?.snapshot.seq).toBe(10)
+    expect(result.current.error).toBe('')
+  })
+
+  it.each(['failed', 'disconnected'] as const)('reports a real %s event after the connect reset while the IPC reply is pending', async (status) => {
+    const { bridge, result } = await connected()
+    const reply = deferred<Result<ConnectionState>>()
+    const next = { ...result.current.connection, status: 'connecting' as const, connectionId: 'replacement' }
+    vi.mocked(bridge.api.connect).mockImplementationOnce(() => {
+      bridge.emit({ type: 'connection', connection: disconnected })
+      bridge.emit({ type: 'connection', connection: next })
+      return reply.promise
+    })
+    let connecting!: Promise<void>
+    await act(async () => { connecting = result.current.connect('/work') })
+    expect(result.current.error).toBe('')
+    const failure: ConnectionState = status === 'failed'
+      ? { ...next, status, error: { code: 'PROCESS_EXITED', message: 'Runtime process exited' } }
+      : disconnected
+    await act(async () => { bridge.emit({ type: 'connection', connection: failure }) })
+    expect(result.current.error).toBe(status === 'failed' ? 'Runtime process exited' : 'bingo is not connected. Reconnect to continue.')
+    await act(async () => { reply.resolve({ ok: false, error: { code: 'CONNECT_FAILED', message: 'Cannot start runtime' } }); await connecting })
+    expect(result.current.error).toBe('Cannot start runtime')
+  })
+
+  it('does not suppress an error-bearing first disconnect during connect', async () => {
+    const { bridge, result } = await connected()
+    const reply = deferred<Result<ConnectionState>>()
+    vi.mocked(bridge.api.connect).mockImplementationOnce(() => {
+      bridge.emit({ type: 'connection', connection: { ...disconnected, error: { code: 'CONNECTION', message: 'Transport lost' } } })
+      return reply.promise
+    })
+    let connecting!: Promise<void>
+    await act(async () => { connecting = result.current.connect('/work') })
+    expect(result.current.error).toBe('Transport lost')
+    await act(async () => { reply.resolve({ ok: false, error: { code: 'CONNECT_FAILED', message: 'Cannot connect' } }); await connecting })
+  })
+
+  it('reports unsolicited disconnects after a successful connect and after a rejected connect without lifecycle events', async () => {
+    const { bridge, result } = await connected()
+    await act(async () => { bridge.emit({ type: 'connection', connection: disconnected }) })
+    expect(result.current.error).toBe('bingo is not connected. Reconnect to continue.')
+    vi.mocked(bridge.api.connect).mockResolvedValueOnce({ ok: false, error: { code: 'CANCELLED', message: 'Reconnect cancelled' } })
+    await act(async () => { await result.current.connect('/work') })
+    expect(result.current.error).toBe('Reconnect cancelled')
+    await act(async () => { bridge.emit({ type: 'connection', connection: disconnected }) })
+    expect(result.current.error).toBe('bingo is not connected. Reconnect to continue.')
+  })
+
+  it('preserves application notices and reported errors across ready events', async () => {
+    const { bridge, result } = await opened()
+    const ready = result.current.connection
+    await act(async () => {
+      bridge.emitFrame(frame(11, { type: 'notice', level: 'error', code: 'AUTH', text: 'Provider sign-in failed' }))
+      bridge.emit({ type: 'connection', connection: ready })
+    })
+    expect(result.current.error).toBe('Provider sign-in failed')
+    await act(async () => {
+      result.current.report(new Error('Cannot save preferences'))
+      bridge.emit({ type: 'connection', connection: ready })
+    })
+    expect(result.current.error).toBe('Cannot save preferences')
   })
 })
 
@@ -403,7 +562,7 @@ describe('workspace snapshots and stream races', () => {
     bridge.request.mockClear()
     await act(async () => { bridge.emitFrame(delta(12, 'gap')) })
     expect(result.current.active?.resync).toEqual({ reason: 'gap', since: 10 })
-    expect(bridge.request).toHaveBeenCalledWith(expect.objectContaining({ method: 'session/open', params: { selector: { kind: 'byId', id: 'ses_1' }, options: { children: false } } }))
+    expect(bridge.request).toHaveBeenCalledWith(expect.objectContaining({ method: 'session/open', params: { selector: { kind: 'byId', id: 'ses_1' }, options: { children: true } } }))
     await act(async () => { bridge.emitFrame(delta(13, ' + live')); reply.resolve(openReply(snapshot('ses_1', 12, 'Repaired'))) })
     expect(result.current.active?.resync).toBeNull()
     expect(result.current.active?.snapshot.seq).toBe(13)
@@ -534,5 +693,137 @@ describe('workspace history and gateway synchronization', () => {
     expect(bridge.listeners.size).toBe(1)
     unmount()
     expect(bridge.listeners.size).toBe(0)
+  })
+})
+
+const childSnapshot = (id = 'child'): SessionState => ({ ...snapshot(id), summary: { ...snapshot(id).summary, key: `agent/ses_1/${id}`, parent: { session: 'ses_1' } } })
+const treeFrame = (seq: number, event: Event, session = 'child'): Frame => ({ ...frame(seq, event, session), root: 'ses_1' })
+
+describe('journal-driven collaboration subscriptions', () => {
+  it('opens the main tree and hydrates sparse child replay without opening or selecting children', async () => {
+    const { bridge, result } = await opened()
+    expect(bridge.request).toHaveBeenCalledWith(expect.objectContaining({ method: 'session/open', params: { selector: { kind: 'byId', id: 'ses_1' }, options: { children: true } } }))
+    bridge.request.mockClear()
+    const child = childSnapshot()
+    await act(async () => {
+      bridge.emitFrame(treeFrame(1, { type: 'sessionUpdated', summary: child.summary }))
+      bridge.emitFrame(treeFrame(4, { type: 'itemCompleted', item: { ...child.items[0], status: 'completed' } }))
+      bridge.emitFrame(treeFrame(8, { type: 'extension', plugin: 'bingo.rooms', kind: 'members', payload: { members: ['parent', 'child'] } }, 'room'))
+      bridge.emitFrame(treeFrame(1, { type: 'sessionUpdated', summary: { ...child.summary, id: 'room', driver: 'log', title: 'review', key: 'rooms/ses_1/review' } }, 'room'))
+    })
+    expect(result.current.activeId).toBe('ses_1')
+    expect(result.current.projections.child.snapshot.seq).toBe(4)
+    expect(result.current.projections.child.resync).toBeNull()
+    expect(result.current.projections.room.snapshot.extensions?.['bingo.rooms'].members).toEqual({ members: ['parent', 'child'] })
+    expect(result.current.collaboration.entries.map((entry) => entry.id)).toEqual(['ses_1', 'child', 'room'])
+    expect(bridge.request.mock.calls.filter(([input]) => input.method === 'session/open')).toHaveLength(0)
+  })
+
+  it('discovers gateway descendants, isolates background notices, and routes child actions by session', async () => {
+    const { bridge, result } = await opened()
+    const child = childSnapshot()
+    await act(async () => {
+      result.current.report(new Error('Parent error'))
+      bridge.emit({ type: 'rpc', connectionId: 'connection-1', method: 'gateway/event', params: { type: 'sessionCreated', summary: child.summary } })
+      bridge.emitFrame(treeFrame(1, { type: 'sessionUpdated', summary: child.summary }))
+      bridge.emitFrame(treeFrame(2, { type: 'notice', level: 'error', code: 'CHILD', text: 'Child failure' }))
+    })
+    expect(result.current.error).toBe('Parent error')
+    bridge.handlers.set('session/open', async () => openReply(child))
+    await act(async () => { await result.current.openSession('child') })
+    expect(result.current.error).toBe('')
+    let seq = 10
+    bridge.handlers.set('session/submit', async (input) => { bridge.ack(input, ++seq, { kind: 'applied', result: {} }); return ok({}) })
+    bridge.handlers.set('session/interrupt', async (input) => { bridge.ack(input, ++seq, { kind: 'applied', result: {} }); return ok({}) })
+    await act(async () => { await result.current.runAction('model', 'fake/new'); await result.current.runAction('think', 'high'); await result.current.interrupt() })
+    const writes = bridge.request.mock.calls.filter(([input]) => input.method === 'session/submit' || input.method === 'session/interrupt')
+    expect(writes.map(([input]) => (input.params as { session: string }).session)).toEqual(['child', 'child', 'child'])
+    expect(result.current.collaboration.rootId).toBe('ses_1')
+  })
+
+  it('keeps a selected child direct stream authoritative over duplicate ancestor replay', async () => {
+    const { bridge, result } = await opened()
+    bridge.handlers.set('session/open', async () => openReply(childSnapshot()))
+    await act(async () => { await result.current.openSession('child') })
+    await act(async () => {
+      bridge.emitFrame({ ...delta(12, 'duplicate tree'), root: 'ses_1', session: 'child', event: { type: 'itemDelta', item: 'child-assistant', kind: 'text', n: 0, data: 'duplicate tree' } })
+      bridge.emitFrame(delta(11, ' direct', 'child'))
+    })
+    expect(assistantText(result.current.active)).toBe('Before direct')
+    expect(result.current.active?.resync).toBeNull()
+  })
+
+  it('attaches a missing main ancestor once when navigation starts at a child', async () => {
+    const { bridge, result } = await connected()
+    bridge.handlers.set('session/open', async (input) => {
+      const { selector } = input.params as RpcMethods['session/open']['params']
+      return openReply(selector.kind === 'byId' && selector.id === 'child' ? childSnapshot() : snapshot())
+    })
+    await act(async () => { await result.current.openSession('child') })
+    expect(result.current.activeId).toBe('child')
+    expect(result.current.collaboration.rootId).toBe('ses_1')
+    const opens = bridge.request.mock.calls.filter(([input]) => input.method === 'session/open')
+    expect(opens).toHaveLength(2)
+    expect(opens[1][0].params).toMatchObject({ selector: { id: 'ses_1' }, options: { children: true } })
+    await act(async () => { bridge.emitFrame(delta(11, ' root')) })
+    expect(result.current.activeId).toBe('child')
+    expect(bridge.request.mock.calls.filter(([input]) => input.method === 'session/open')).toHaveLength(2)
+  })
+
+  it('reconnects the selected child and its root tree using a fresh connection epoch', async () => {
+    const { bridge, result } = await connected()
+    bridge.handlers.set('session/open', async (input) => {
+      const { selector } = input.params as RpcMethods['session/open']['params']
+      return openReply(selector.kind === 'byId' && selector.id === 'child' ? childSnapshot() : snapshot())
+    })
+    await act(async () => { await result.current.openSession('child') })
+    bridge.request.mockClear()
+    await act(async () => { await result.current.connect('/work') })
+    expect(result.current.activeId).toBe('child')
+    expect(result.current.collaboration.rootId).toBe('ses_1')
+    const opens = bridge.request.mock.calls.filter(([input]) => input.method === 'session/open')
+    expect(opens).toHaveLength(2)
+    expect(opens.every(([input]) => input.connectionId === 'connection-2')).toBe(true)
+    await act(async () => { bridge.emitFrame(delta(11, ' old epoch', 'child'), 'connection-1') })
+    expect(assistantText(result.current.active)).toBe('Before')
+  })
+
+  it('keeps gateway creations arriving during session/list and tombstones removed replay', async () => {
+    const { bridge, result } = await connected()
+    const list = deferred<Result<unknown>>()
+    bridge.handlers.set('session/list', () => list.promise)
+    let reconnect!: Promise<void>
+    await act(async () => { reconnect = result.current.connect('/other') })
+    const child = childSnapshot()
+    await act(async () => {
+      bridge.emit({ type: 'rpc', connectionId: 'connection-2', method: 'gateway/event', params: { type: 'sessionCreated', summary: child.summary } })
+      list.resolve(ok({ sessions: [snapshot().summary] }))
+      await reconnect
+    })
+    expect(result.current.sessions.map((summary) => summary.id)).toContain('child')
+    await act(async () => {
+      bridge.emit({ type: 'rpc', connectionId: 'connection-2', method: 'gateway/event', params: { type: 'sessionRemoved', session: 'child' } })
+      bridge.emitFrame(treeFrame(1, { type: 'sessionUpdated', summary: child.summary }))
+    })
+    expect(result.current.sessions.map((summary) => summary.id)).not.toContain('child')
+    expect(result.current.projections.child).toBeUndefined()
+  })
+
+  it('marks an explicit tree lag unavailable without waking a stored child', async () => {
+    const { bridge, result } = await opened()
+    await act(async () => { bridge.emitFrame(treeFrame(1, { type: 'sessionUpdated', summary: childSnapshot().summary })) })
+    bridge.request.mockClear()
+    await act(async () => { bridge.emitFrame(treeFrame(20, { type: 'lagged', from: 2, to: 20 })) })
+    expect(result.current.projections.child.resync?.reason).toBe('lagged')
+    expect(result.current.collaboration.entries.find((entry) => entry.id === 'child')?.activity).toBeNull()
+    expect(bridge.request.mock.calls.filter(([input]) => input.method === 'session/open')).toHaveLength(0)
+  })
+
+  it('clears context errors on a new draft but preserves ongoing transport failure', async () => {
+    const { bridge, result } = await opened()
+    await act(async () => { result.current.report('Old creation error'); result.current.newSession() })
+    expect(result.current.error).toBe('')
+    await act(async () => { bridge.emit({ type: 'connection', connection: { ...result.current.connection, status: 'failed', error: { code: 'CONNECTION', message: 'Transport lost' } } }); result.current.newSession() })
+    expect(result.current.error).toBe('Transport lost')
   })
 })

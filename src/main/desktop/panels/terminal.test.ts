@@ -3,14 +3,14 @@ const mocks = vi.hoisted(() => ({ spawn: vi.fn(), workspace: vi.fn(async (path: 
 vi.mock('node-pty', () => ({ spawn: mocks.spawn }))
 vi.mock('../binary', () => ({ workspaceDirectory: mocks.workspace }))
 import { PanelTerminal } from './terminal'
-import type { PanelsEvent } from '../../../shared/panels'
+import type { TerminalEvent } from './terminal'
 
 function harness() {
   let onData: (data: string) => void = () => {}, onExit: (event: { exitCode: number }) => void = () => {}
   const subscriptions = [vi.fn(), vi.fn()]
   const pty = { write: vi.fn(), resize: vi.fn(), pause: vi.fn(), resume: vi.fn(), kill: vi.fn((_signal?: string) => onExit({ exitCode: 0 })), onData: vi.fn((callback) => { onData = callback; return { dispose: subscriptions[0] } }), onExit: vi.fn((callback) => { onExit = callback; return { dispose: subscriptions[1] } }) }
   mocks.spawn.mockReturnValue(pty)
-  const events: PanelsEvent[] = []
+  const events: TerminalEvent[] = []
   let workspace: string | null = '/approved/workspace'
   const terminal = new PanelTerminal({ workspace: () => workspace, emit: (event) => events.push(event) })
   return { terminal, pty, events, subscriptions, data: (value: string) => onData(value), exit: (code: number) => onExit({ exitCode: code }), setWorkspace: (value: string | null) => { workspace = value } }

@@ -4,7 +4,7 @@ import { rustFrames, rustInitial, rustSnapshots } from './fixtures'
 import {
   contentText, createSessionProjection, foldSessionFrame, isDurableEvent, itemText,
   projectFrame, projectHistory, selectConfig, selectMessages, selectPendingInteractions,
-  selectSessionTitle, selectStatus, selectToolRuns, selectUsage, viewText
+  selectSessionTitle, selectStatus, selectToolRuns, selectUsage, selectWorkspaceThreads, viewText
 } from './session'
 
 const ts = '2023-11-14T22:13:20Z'
@@ -30,6 +30,27 @@ function deepFreeze<T>(value: T): T {
 }
 
 describe('SDK reducer parity', () => {
+  it('preserves the canonical completed-turn clocks, status and final usage across resume', () => {
+    const startedAt = '2026-09-17T08:00:00Z', endedAt = '2026-09-17T08:01:02Z'
+    const started = { ...frame(1, { type: 'turnStarted', turn: 'trn_1', inputs: [], origin: 'submit' }), ts: startedAt }
+    const usage = { ...zeroUsage, inputTokens: 12, outputTokens: 4 }
+    const completed = { ...frame(2, { type: 'turnCompleted', turn: 'trn_1', status: { kind: 'failed', error: { code: 'TIMEOUT', message: 'Timed out' } }, usage }), ts: endedAt }
+    const state = projectFrame(projectFrame(base(), started), completed)
+    expect(state.snapshot.lastTurn).toEqual({ id: 'trn_1', status: { kind: 'failed', error: { code: 'TIMEOUT', message: 'Timed out' } }, startedAt, endedAt, usage })
+    expect(selectStatus(createSessionProjection(state.snapshot))).toBe('failed')
+    expect(state.snapshot.turn).toBeUndefined()
+  })
+
+  it('uses the completion timestamp when the matching start is absent, matching the SDK fold', () => {
+    const endedAt = '2026-09-17T08:01:02Z'
+    const completed = { ...frame(2, { type: 'turnCompleted', turn: 'trn_1', status: { kind: 'interrupted', reason: 'userCancel' }, usage: zeroUsage }), ts: endedAt }
+    for (const turn of [undefined, { id: 'another', startedAt: ts, origin: 'submit' as const }]) {
+      const state = projectFrame(base({ seq: 1, turn }), completed)
+      expect(state.snapshot.lastTurn).toEqual({ id: 'trn_1', status: { kind: 'interrupted', reason: 'userCancel' }, startedAt: endedAt, endedAt, usage: zeroUsage })
+      expect(selectStatus(state)).toBe('interrupted')
+    }
+  })
+
   it('matches actual Rust SessionState::apply snapshots after every pinned frame, without mutating inputs', () => {
     let snapshot = deepFreeze(rustInitial)
     for (const [index, current] of rustFrames.entries()) {
@@ -150,7 +171,7 @@ describe('turn, queue, interactions and plugin state', () => {
     state = run([{ type: 'turnCompleted', turn: 'trn_1', usage: total, status: { kind: 'completed' } }], state)
     expect(selectUsage(state)).toEqual(total)
     expect(state.snapshot.context).toEqual({ used: 40, window: 100, trigger: 80 })
-    expect(state.snapshot).toMatchObject({ unread: true, lastTurn: { kind: 'completed' }, summary: { busy: false } })
+    expect(state.snapshot).toMatchObject({ unread: true, lastTurn: { id: 'trn_1', status: { kind: 'completed' }, startedAt: ts, endedAt: ts, usage: total }, summary: { busy: false } })
     expect(state.snapshot.turn).toBeUndefined()
   })
 
@@ -320,6 +341,23 @@ describe('history backfill', () => {
 })
 
 describe('derived presentation', () => {
+  it('orders workspace threads by creation rather than mutable activity or insertion order', () => {
+    const older = { ...rustInitial.summary, id: 'older', cwd: '/work', createdAt: '2026-09-17T10:00:00Z', updatedAt: '2026-09-18T10:00:00Z' }
+    const newer = { ...older, id: 'newer', createdAt: '2026-09-17T10:00:00.500Z', updatedAt: '2026-09-17T10:00:00.500Z' }
+    const input = deepFreeze([older, newer])
+    expect(selectWorkspaceThreads(input, '/work').map((thread) => thread.id)).toEqual(['newer', 'older'])
+    expect(selectWorkspaceThreads([...input].reverse(), '/work').map((thread) => thread.id)).toEqual(['newer', 'older'])
+    expect(input[0].updatedAt).toBe('2026-09-18T10:00:00Z')
+  })
+
+  it('uses a deterministic tiebreaker and excludes other workspaces, children and log sessions', () => {
+    const first = { ...rustInitial.summary, id: 'a', cwd: '/work' }
+    const second = { ...first, id: 'b' }
+    const hidden = [{ ...first, id: 'child', parent: { session: 'a' } }, { ...first, id: 'log', driver: 'log' as const }, { ...first, id: 'elsewhere', cwd: '/other' }]
+    expect(selectWorkspaceThreads([second, ...hidden, first], '/work').map((thread) => thread.id)).toEqual(['a', 'b'])
+    expect(selectWorkspaceThreads([first, second], null)).toEqual([])
+  })
+
   it('uses canonical titles before a first-user fallback without mutating the summary', () => {
     expect(selectSessionTitle(base())).toBe('hello')
     const state = base({ summary: { ...rustInitial.summary, title: null }, items: [item('u', { kind: 'user', parts: [{ type: 'text', text: '  Fix\n the parser ' }], origin: { surface: 'desktop' } })] })

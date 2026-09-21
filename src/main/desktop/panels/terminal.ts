@@ -7,11 +7,14 @@ import { workspaceDirectory } from '../binary'
 import { DesktopFailure } from '../rpc-client'
 import { terminalEnvironment } from './validation'
 
+export type TerminalEvent = { type: 'terminal'; state: TerminalState } | Extract<PanelsEvent, { type: 'terminal-data' }>
+
 const CHUNK = 16 * 1024
 const HIGH_WATER = 64 * 1024
 const MAX_QUEUE = 1024 * 1024
 const STOP_GRACE_MS = 200
 const STOP_DEADLINE_MS = 2000
+const STOP_FAILED = 'The terminal did not stop. Try Stop again.'
 export class PanelTerminal {
   private pty: IPty | null = null
   private subscriptions: IDisposable[] = []
@@ -29,7 +32,7 @@ export class PanelTerminal {
   private paused = false
   private pendingExit: { exitCode: number } | null = null
   private state: TerminalState = { id: null, status: 'idle', cwd: null, exitCode: null, error: null }
-  constructor(private readonly options: { workspace(): string | null; emit(event: PanelsEvent): void }) {}
+  constructor(private readonly options: { workspace(): string | null; emit(event: TerminalEvent): void }) {}
 
   snapshot(): TerminalState { return { ...this.state } }
   start(): Promise<TerminalState> {
@@ -137,7 +140,9 @@ export class PanelTerminal {
     this.subscriptions = []
     this.pty = null
     this.clearDelivery()
-    this.state = { ...this.state, status: 'exited', exitCode }
+    // A confirmed exit resolves a stop warning, but not a fatal output failure.
+    const error = this.state.error === STOP_FAILED ? null : this.state.error
+    this.state = { ...this.state, status: 'exited', exitCode, error }
     this.emitState()
     resolve?.()
   }
@@ -168,9 +173,9 @@ export class PanelTerminal {
       const reject = this.rejectStop
       this.clearStop()
       // Keep the handle and exit listener: a failed stop must remain retryable.
-      this.state = { ...this.state, status: 'running', error: 'The terminal did not stop. Try Stop again.' }
+      this.state = { ...this.state, status: 'running', error: this.state.error || STOP_FAILED }
       this.emitState()
-      reject?.(new DesktopFailure('TERMINAL_STOP_FAILED', 'The terminal did not stop. Try Stop again.'))
+      reject?.(new DesktopFailure('TERMINAL_STOP_FAILED', STOP_FAILED))
     }, STOP_DEADLINE_MS))
     try { if (paused) pty.resume(); pty.kill() } catch { /* Escalate after the grace period. */ }
     return task

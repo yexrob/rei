@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { installPanelsBridge } from './panels'
+import { installReviewBridge } from './review'
 import { DESKTOP_IPC, type BingoDesktopApi, type DesktopEvent } from '../shared/desktop'
 
 const listeners = new Set<(event: DesktopEvent) => void>()
@@ -30,3 +31,4 @@ const api: BingoDesktopApi = {
 }
 contextBridge.exposeInMainWorld('bingoDesktop', Object.freeze(api))
 installPanelsBridge()
+installReviewBridge()

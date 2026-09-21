@@ -5,12 +5,12 @@ export type PanelBounds = { x: number; y: number; width: number; height: number 
 export type BrowserLayout = { visible: boolean; bounds: PanelBounds }
 export type BrowserAction = 'back' | 'forward' | 'reload' | 'stop' | 'open-external' | 'focus'
 export type TerminalState = { id: string | null; status: 'idle' | 'running' | 'stopping' | 'exited'; cwd: string | null; exitCode: number | null; error: string | null }
-export type PanelsSnapshot = { browser: BrowserState; terminal: TerminalState }
+export type PanelsSnapshot = { browser: BrowserState; terminals: TerminalState[] }
 export type PanelsEvent =
   | { type: 'browser'; state: BrowserState }
   | { type: 'browser-open'; url: string }
   | { type: 'browser-focus-address' }
-  | { type: 'terminal'; state: TerminalState }
+  | { type: 'terminals'; states: TerminalState[] }
   | { type: 'terminal-data'; id: string; sequence: number; data: string }
 export interface BingoPanelsApi {
   snapshot(): Promise<Result<PanelsSnapshot>>

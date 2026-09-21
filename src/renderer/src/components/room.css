@@ -1,0 +1,69 @@
+.room-conversation { display: flex; flex: 1; min-height: 0; min-width: 0; position: relative; container: bingo-room / inline-size; }
+.room-message-column { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.room-purpose { display: flex; align-items: center; gap: 9px; min-height: 40px; margin-inline: 32px; padding-block: 2px 10px; color: var(--secondary); font-size: 12px; border-bottom: 1px solid var(--line); }
+.room-purpose > svg { flex-shrink: 0; }
+.room-purpose > span:first-of-type { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.room-purpose > button { flex-shrink: 0; border: 0; background: transparent; min-height: 28px; width: 28px; padding: 4px; color: var(--secondary); }
+.room-stream-wrap { position: relative; flex: 1; min-height: 0; display: flex; }
+.room-stream { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 12px 32px 30px; scrollbar-gutter: stable; }
+.room-date { display: flex; align-items: center; gap: 14px; margin-block: 10px 22px; color: var(--secondary); font-size: 11px; }
+.room-date::before, .room-date::after { content: ''; height: 1px; flex: 1; background: var(--line); }
+.room-post { display: flex; align-items: flex-start; gap: 12px; padding-block: 0 24px; }
+.room-post > .collaboration-avatar { flex-shrink: 0; }
+.room-post-content { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.room-attribution { display: flex; align-items: baseline; flex-wrap: wrap; gap: 9px; margin-bottom: 3px; line-height: 18px; }
+.room-author { font-size: 13px; font-weight: 600; }
+.room-attribution time, .room-time { color: var(--secondary); font-size: 11px; }
+.room-post .markdown { font-size: 13px; line-height: 1.65; }
+.room-post .markdown > :first-child { margin-top: 0; }
+.room-post .markdown > :last-child { margin-bottom: 0; }
+.room-post .system-note { margin-block: 0; }
+.room-post .attached-image { max-width: 100%; max-height: 320px; object-fit: contain; margin-top: 8px; }
+.room-empty { color: var(--secondary); text-align: center; margin-top: 60px; font-size: 13px; }
+.room-details { width: 264px; flex-shrink: 0; min-height: 0; overflow-y: auto; padding: 12px 22px 24px; border-left: 1px solid var(--line); background: var(--canvas); }
+.room-details h3 { display: flex; gap: 10px; align-items: baseline; margin: 0 0 20px; font-size: 13px; font-weight: 600; }
+.room-details h3 > span { color: var(--secondary); font-size: 11px; font-weight: 400; }
+.room-members { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.room-members button { width: 100%; min-width: 0; justify-content: flex-start; text-align: left; gap: 10px; padding: 5px 0; border: 0; background: transparent; }
+.room-members button > span:last-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.room-members strong { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-members small { color: var(--secondary); font-size: 11px; font-weight: 400; }
+.room-members button:disabled { opacity: 1; cursor: default; color: var(--secondary); }
+.room-about { padding-block: 24px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.room-about h3 { text-transform: uppercase; color: var(--secondary); font-size: 10px; letter-spacing: .05em; margin-bottom: 10px; }
+.room-about p { margin: 0; font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+.room-context-note { margin-block: 24px 0; color: var(--secondary); font-size: 12px; line-height: 1.6; }
+.room-context-note p { margin-top: 8px; }
+.room-composer-region { padding: 8px 32px 20px; flex-shrink: 0; min-width: 0; }
+.room-recipient { display: flex; align-items: center; gap: 6px; color: var(--secondary); font-size: 11px; margin-bottom: 9px; min-width: 0; }
+.room-recipient > svg { flex-shrink: 0; }
+.room-recipient > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-recipient small { margin-left: auto; font-size: 10px; text-align: right; }
+.room-composer { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 15px 9px; }
+.room-composer:focus-within { border-color: var(--control-line); }
+.room-composer textarea { width: 100%; display: block; min-height: 48px; max-height: 220px; resize: none; padding: 0; border: 0; border-radius: 0; background: transparent; font-size: 13px; line-height: 1.6; box-shadow: none; }
+.room-composer textarea:focus { outline: none; box-shadow: none; }
+.room-composer textarea::placeholder { color: var(--secondary); }
+.room-composer-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.room-composer-tools { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.room-composer-tools > span { color: var(--secondary); font-size: 11px; margin-left: 7px; }
+.room-composer-note { font-size: 10px; color: var(--secondary); margin: 8px 0 0; line-height: 1.5; }
+.room-mentions { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 6; max-height: 220px; overflow-y: auto; min-width: 180px; max-width: 100%; padding: 5px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); box-shadow: 0 8px 24px #0002; }
+.room-mentions button { display: flex; width: 100%; border: 0; justify-content: flex-start; background: transparent; overflow-wrap: anywhere; }
+.room-mentions button.selected { background: var(--sidebar); }
+@container bingo-room (max-width: 639px) {
+  .room-details { position: absolute; right: 0; top: 40px; bottom: 0; z-index: 5; box-shadow: -8px 8px 24px #0001; }
+}
+@media (max-width: 999px) {
+  .room-purpose { margin-inline: 20px; }
+  .room-stream { padding-inline: 20px; }
+  .room-composer-region { padding-inline: 20px; }
+}
+@media (max-width: 600px) {
+  .room-purpose { margin-inline: 14px; }
+  .room-stream { padding-inline: 14px; }
+  .room-composer-region { padding-inline: 14px; padding-bottom: 12px; }
+  .room-recipient small { display: none; }
+  .room-composer-tools > span { display: none; }
+  .room-post { gap: 9px; }
+}

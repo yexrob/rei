@@ -1,0 +1,13 @@
+.terminal-panel .terminal-heading { min-height: 36px; }
+.terminal-panel .terminal-tabs { display: flex; flex: 0 0 auto; align-items: stretch; gap: 1px; overflow-x: auto; scrollbar-width: thin; border-bottom: 1px solid var(--line); padding-inline: 8px; }
+.terminal-panel .terminal-tab-item { display: flex; align-items: center; flex: 0 0 auto; min-width: 0; border-bottom: 2px solid transparent; color: var(--secondary); }
+.terminal-panel .terminal-tab-item.is-active { color: var(--text); border-bottom-color: var(--accent); }
+.terminal-panel .terminal-tab-item > [role="tab"] { display: inline-flex; align-items: center; gap: 7px; min-height: 31px; border: 0; border-radius: 0; background: transparent; color: inherit; font-size: 11px; padding: 5px 6px 5px 9px; white-space: nowrap; }
+.terminal-panel .terminal-tab-item .icon-button { width: 24px; min-width: 24px; height: 24px; margin-inline-end: 3px; color: var(--secondary); }
+.terminal-panel .terminal-tab-error { color: var(--danger); }
+.terminal-panel .terminal-error { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.terminal-panel .terminal-error .text-button { flex: 0 0 auto; color: inherit; }
+.terminal-panel .terminal-views { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.terminal-panel .terminal-host { min-width: 0; width: 100%; }
+.terminal-panel .terminal-host[hidden] { display: none; }
+.terminal-panel [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }

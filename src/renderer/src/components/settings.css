@@ -1,0 +1,77 @@
+/* Native modal focus handling, presented as a full-window settings destination. */
+.modal.wide:has(> .settings-layout) {
+  inset: 0;
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--canvas);
+  box-shadow: none;
+  overflow: hidden;
+}
+.modal.wide:has(> .settings-layout) > .modal-heading {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 280px;
+  height: 62px;
+  padding: 0 22px;
+  border: 0;
+  background: var(--sidebar);
+}
+.app-shell[data-platform='darwin'] .modal.wide:has(> .settings-layout) > .modal-heading { padding-inline-start: 88px; }
+.modal.wide:has(> .settings-layout) > .modal-heading h2 { font-size: 14px; font-weight: 600; }
+.modal > .settings-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 0; height: 100%; min-height: 0; }
+.settings-layout > .settings-nav { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 86px 16px 24px; border: 0; background: var(--sidebar); }
+.settings-layout > .settings-nav button { min-height: 38px; justify-content: flex-start; padding: 9px 12px; border: 0; border-radius: 7px; color: var(--secondary); background: transparent; font-size: 13px; text-align: start; }
+.settings-layout > .settings-nav button.selected { background: var(--selected); color: var(--text); }
+.settings-layout > .settings-content { width: 100%; max-width: 880px; min-width: 0; margin: 0 auto; padding: 64px 40px 80px; overflow-y: auto; }
+.settings-page-heading { margin-bottom: 40px; }
+.settings-page-heading h1 { margin: 0 0 9px; font-size: 26px; letter-spacing: -.6px; font-weight: 600; }
+.settings-page-heading p { margin: 0; color: var(--secondary); font-size: 13px; line-height: 1.6; }
+.settings-content h3 { margin: 0 0 12px; font-size: 14px; font-weight: 600; }
+.settings-content .secondary { line-height: 1.7; }
+.settings-content .setting-section { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--line); }
+.settings-content .theme-options { display: flex; gap: 8px; }
+.settings-content .theme-options button { flex: 1; min-height: 66px; color: var(--secondary); background: var(--surface); }
+.settings-content .theme-options button.selected { color: var(--text); border-color: var(--text); background: var(--selected); }
+.settings-content .provider-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; min-height: 84px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.settings-content .provider-row strong { display: block; font-size: 14px; font-weight: 550; }
+.settings-content .provider-row small { display: block; margin-top: 7px; font-size: 12px; color: var(--secondary); }
+.settings-content .provider-row button { flex-shrink: 0; }
+.settings-content .setting-section > .button-row { margin-top: 18px; }
+.settings-content .settings-model-row, .settings-content .settings-reasoning { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.settings-content .settings-model-row { min-height: 70px; }
+.settings-content .settings-model-row h3 { margin-bottom: 6px; }
+.settings-content .settings-model-row p { margin: 0; }
+.settings-content .settings-model-row > button, .settings-content .settings-reasoning > button { flex: 0 0 auto; width: auto; max-width: 280px; }
+.settings-content .settings-custom-model { margin-top: 26px; padding: 18px 0; border-block: 1px solid var(--line); }
+.settings-content .settings-custom-model summary { color: var(--secondary); font-size: 13px; cursor: pointer; }
+.settings-content .settings-custom-model[open] summary { margin-bottom: 18px; color: var(--text); }
+.settings-content .settings-model-note { margin-top: 20px; font-size: 12px; }
+.settings-content .settings-reasoning h3 { margin-bottom: 6px; }
+.settings-content .settings-reasoning p { margin: 0; }
+.settings-content .path-label { overflow-wrap: anywhere; }
+.settings-content .catalog-toolbar { display: flex; gap: 12px; margin: 24px 0; }
+.settings-content .catalog-toolbar input { min-width: 0; flex: 1; }
+.settings-content .catalog-list details { padding: 15px 0; border-bottom: 1px solid var(--line); }
+.settings-content .catalog-list summary { cursor: pointer; font-size: 14px; }
+.settings-content .catalog-list summary span { margin-left: 12px; color: var(--secondary); font-size: 12px; }
+.settings-content .catalog-list p { color: var(--secondary); font-size: 13px; line-height: 1.6; }
+.settings-content .shortcuts > div { display: flex; justify-content: space-between; gap: 20px; padding: 17px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.settings-content .shortcuts dd { margin: 0; }
+@media (max-width: 800px) {
+  .modal > .settings-layout { grid-template-columns: 200px minmax(0, 1fr); }
+  .modal.wide:has(> .settings-layout) > .modal-heading { width: 200px; }
+  .settings-layout > .settings-content { padding: 42px 24px; }
+}
+@media (max-width: 560px) {
+  .modal > .settings-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .modal.wide:has(> .settings-layout) > .modal-heading { width: 100%; }
+  .settings-layout > .settings-nav { flex-direction: row; flex-wrap: wrap; padding: 70px 12px 12px; }
+  .settings-layout > .settings-content { padding: 24px; }
+  .settings-content .settings-model-row, .settings-content .settings-reasoning { align-items: flex-start; flex-direction: column; }
+}

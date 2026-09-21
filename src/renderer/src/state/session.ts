@@ -9,6 +9,8 @@ export interface SessionProjection {
   snapshot: SessionState
   history: { before?: string; complete: boolean }
   resync: { reason: 'gap' | 'lagged' | 'history-generation'; since: number } | null
+  /** Last accepted activity event; row text/status are derived from the snapshot. */
+  activityFrame?: Frame
 }
 
 export type MessageItem = Item & { body: Extract<ItemBody, { kind: 'user' | 'assistant' }> }
@@ -55,12 +57,20 @@ export function projectFrame(
   const snapshot = foldSessionFrame(state.snapshot, frame)
   if (snapshot === state.snapshot) return state
   const changedHistory = (snapshot.historyGeneration ?? 0) !== (state.snapshot.historyGeneration ?? 0)
+  const { activityFrame, ...rest } = state
+  const activity = changedHistory ? undefined : activityEvent(frame, snapshot.items !== state.snapshot.items) ? frame : activityFrame
   return {
-    ...state, snapshot,
+    ...rest, snapshot,
+    ...(activity ? { activityFrame: activity } : {}),
     history: changedHistory
       ? { before: snapshot.items[0]?.id, complete: snapshot.items.length === 0 }
       : state.history
   }
+}
+
+function activityEvent(frame: Frame, changedItems: boolean): boolean {
+  if (['itemStarted', 'itemUpdated', 'itemCompleted', 'itemDelta'].includes(frame.event.type)) return changedItems
+  return ['notice', 'interactionOpened', 'interactionResolved', 'interactionCancelled', 'turnRetrying', 'turnCompleted', 'sessionClosed'].includes(frame.event.type)
 }
 
 function requireSnapshot(state: SessionProjection, reason: NonNullable<SessionProjection['resync']>['reason']): SessionProjection {
@@ -194,8 +204,9 @@ function applyEvent(state: SessionState, event: Event, ts: string): SessionState
     }
     case 'turnUsage': return applyUsage(state, event)
     case 'turnCompleted': {
-      const { turn: _, ...rest } = state
-      return { ...rest, summary: { ...state.summary, busy: false }, lastTurn: event.status, unread: true }
+      const { turn, ...rest } = state
+      const lastTurn = { id: event.turn, status: event.status, startedAt: turn?.id === event.turn ? turn.startedAt : ts, endedAt: ts, usage: event.usage }
+      return { ...rest, summary: { ...state.summary, busy: false }, lastTurn, unread: true }
     }
     case 'itemStarted':
     case 'itemUpdated':
@@ -231,6 +242,12 @@ function unreachable(value: never): never {
   throw new Error(`Unsupported protocol variant: ${JSON.stringify(value)}`)
 }
 
+export function selectWorkspaceThreads(sessions: SessionSummary[], workspace: string | null): SessionSummary[] {
+  // Opening or streaming a thread must not move the row under the pointer.
+  return sessions.filter((session) => !session.parent && session.driver !== 'log' && session.cwd === workspace)
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || a.id.localeCompare(b.id))
+}
+
 export function selectMessages(state: SessionProjection): MessageItem[] {
   return state.snapshot.items.filter(isMessage)
 }
@@ -257,8 +274,8 @@ export function selectStatus(state: SessionProjection): SessionStatus {
   if (selectPendingInteractions(state).length > 0) return 'waiting'
   if (state.snapshot.turn?.retrying) return 'retrying'
   if (state.snapshot.turn) return 'working'
-  if (state.snapshot.lastTurn?.kind === 'failed') return 'failed'
-  if (state.snapshot.lastTurn?.kind === 'interrupted') return 'interrupted'
+  if (state.snapshot.lastTurn?.status.kind === 'failed') return 'failed'
+  if (state.snapshot.lastTurn?.status.kind === 'interrupted') return 'interrupted'
   return 'ready'
 }
 

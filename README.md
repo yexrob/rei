@@ -29,15 +29,20 @@ This application is that path in less dramatic terms: a local desktop interface 
 
 ## What Rei does
 
-- **Streams conversations** as bingo produces them, with Markdown rendering and cancellation.
-- **Makes tool execution visible** from `running` to `done`, `error`, or `interrupted`.
+- **Streams conversations** as bingo produces them, with incremental `markstream-react` Markdown rendering and cancellation.
+- **Reviews tracked Git changes** in a read-only side pane, with staged/unstaged scopes and feedback added to an unsent draft.
+- **Surfaces skills and automations** from the connected runtime. New automations are prepared as agent requests, not silently saved by the GUI.
+- **Presents tools by purpose**: clickable recorded file/source/diff previews, terminal output, search results, and agent/task/schedule receipts, with one consistent MCP/unknown-tool view. Raw diagnostics remain expandable; source previews never execute HTML or read the current file from disk.
+- **Keeps live progress beside the stream** with a reduced-motion-aware beam indicator, without pulling readers away from older messages.
+- **Keeps agents and rooms in view** through a compact Environment panel and stable hover list of journal activity. Switching an agent changes the conversation and composer target together; every conversation keeps its own draft. Rooms show signed messages, members, mentions, and closed-room state without model controls.
+- **Renders rich media safely**: captured journal images, Mermaid diagrams and KaTeX math, with click-to-load external images and inert raw HTML.
 - **Keeps sessions close** with history, resume, rename, and confirmed deletion.
 - **Switches runtime settings** for provider, model, and thinking level without restarting the app.
 - **Starts conversations without a project** in a private, app-owned temporary folder. Attach a project only when needed.
 - **Guides first-time setup** through runtime discovery, provider status, browser sign-in, and native API-provider configuration. Pasted keys never pass through session RPC or transcripts.
 - **Offers English and Simplified Chinese**, with system-language detection and an in-app language setting.
 - **Opens pages beside the conversation** in an isolated native browser. Agent `ShowPage` pages open there automatically; OAuth sign-in remains an explicit system-browser action.
-- **Provides a real local terminal below the workspace**. Titlebar buttons show or hide the browser and terminal without restarting the shell.
+- **Provides independent local terminal tabs below the workspace**. Hiding the area preserves shells and buffers; exiting a shell closes its tab.
 - **Follows your system, light, or dark theme**, supports keyboard navigation and zoom, and adapts to compact windows.
 - **Preserves unsent text drafts** across navigation and restarts, with explicit clearing controls.
 - **Keeps the trust boundary narrow**: the renderer is sandboxed; bingo remains the owner of agent execution and transcripts.
@@ -53,9 +58,11 @@ The browser/terminal image combines actual Electron chrome and native WebContent
 ## Requirements
 
 - macOS, Linux, or Windows with a desktop environment
-- [Node.js](https://nodejs.org/) 24 and npm
-- A `bingo-improve` binary supporting `bingo serve --stdio` (JSON-RPC protocol 1)
 - A provider configured in bingo for live model turns; setup is available in Settings
+
+[Preview installers](https://github.com/yexrob/rei/releases) include the matching bingo runtime. Installed users do not need Node.js, Rust or a separately installed CLI. These previews are unsigned and not notarized; verify the published checksums and read the release notes before installing.
+
+Running from source additionally requires [Node.js](https://nodejs.org/) 24.15 or newer on the 24.x line, or Node.js 26+, npm, and a `bingo-improve` binary supporting `bingo serve --stdio` (JSON-RPC protocol 1).
 
 > [!IMPORTANT]
 > The active desktop targets `bingo-improve/schema/rpc.json`, not the historical `--json-events` or `bingo app-server` adapters. Existing demo and milestone documents describe older implementations and are not the active protocol contract.
@@ -100,7 +107,23 @@ npm run package:dir # unpacked native app in dist/
 npm run package   # current-platform installers
 ```
 
-`BINGO_E2E_BINARY` overrides the binary used by end-to-end tests. Tests use deterministic fake/loopback providers and synthetic credentials, never live provider accounts. Agent-page tests require a current `bingo-improve` build supporting `BINGO_BROWSER_MODE=client`; Rei sets that mode on its child process. `BINGO_BUNDLE_BINARY` optionally supplies a platform-matching runtime to package; otherwise onboarding locates an installed one.
+`BINGO_E2E_BINARY` overrides the binary used by end-to-end tests. Tests use deterministic fake/loopback providers and synthetic credentials, never live provider accounts. Agent-page tests require a current `bingo-improve` build supporting `BINGO_BROWSER_MODE=client`; Rei sets that mode on its child process.
+
+### Packaging includes bingo
+
+Both `npm run package` and `npm run package:dir` **always include a native bingo runtime** in `resources/bin/bingo` (`bingo.exe` on Windows; `Contents/Resources/bin/bingo` on macOS). Direct `electron-builder` calls run the same required preparation and validation hooks. An installed CLI is not a prerequisite for packaged users: bundled discovery is the default. A user-selected external binary or `BINGO_GUI_BINARY` remains an optional override; clearing the saved selection returns to default discovery without ignoring an intentional environment override.
+
+By default, packaging builds the sibling `../bingo-improve` source with Rust: `cargo build --release --locked --package bingo`, an explicit native target triple, and that checkout's `target/` directory. This requires Rust and the sibling source; it never substitutes an arbitrary executable from `PATH` or downloads an unverified binary. To reuse an already built matching runtime (as release CI does), provide an absolute path:
+
+```bash
+BINGO_BUNDLE_BINARY=/absolute/path/to/bingo npm run package:dir
+# Optional preflight, also performed automatically by the packaging hook:
+BINGO_BUNDLE_BINARY=/absolute/path/to/bingo npm run bundle:prepare
+```
+
+To smoke-test the actual unpacked application with an isolated fake-provider profile and no external binary override, set `BINGO_TEST_PACKAGED_APP` to its native application executable and run `npx playwright test tests/bundled-runtime.e2e.ts`. On macOS the executable is typically `dist/mac-arm64/Rei.app/Contents/MacOS/Rei`. The test checks bundled discovery, connection, and a streamed response; it is skipped unless explicitly enabled.
+
+The hook rejects missing files, scripts, wrong operating systems/architectures, and unsupported targets before packaging. On a matching native host it also verifies `bingo serve --stdio` initialization (protocol 1 and desktop session methods) and clean shutdown in a temporary, isolated home directory. The unpacked application is checked again after copying, including executable permissions. Failure stops packaging rather than shipping a runtime-less app. Windows uses `bingo.exe`; each installer targets one architecture. Cross-target packaging requires an explicit matching binary and only validates its native header locally—run protocol and end-to-end checks on that target's native runner before release. Universal macOS bundles are not supported by this preparation path.
 
 `npm ci` also prepares the Unix `node-pty` helper's executable mode. Packaging explicitly unpacks native PTY resources, so the installed app can start its terminal.
 
@@ -140,7 +163,7 @@ Historical milestone records (not the active RPC contract):
 
 The v0.1 implementation covers the core chat loop, tool visibility, session management, runtime settings, error states, and light/dark visual polish. The repository includes automated tests and milestone evidence under `docs/`.
 
-Rei remains a development build, not a signed public release. Native packaging is configured, but release signing, macOS notarization, an auto-updater, live OAuth/account testing, screen-reader testing, and native Windows/Linux verification remain release gates.
+Rei is preview software, not a signed stable release. The release workflow builds and checks macOS ARM64/Intel, Windows x64 and Linux x64 before publishing installers. Code signing, macOS notarization, an auto-updater, live OAuth/account testing and hands-on screen-reader/device testing are not provided by this preview.
 
 ---
 

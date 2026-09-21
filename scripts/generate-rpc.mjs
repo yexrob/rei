@@ -5,7 +5,9 @@ import { createHash } from 'node:crypto'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const input = resolve(process.argv.find((arg) => arg.endsWith('.json')) ?? resolve(root, '../bingo-improve/schema/rpc.json'))
-const raw = await readFile(input, 'utf8')
+// Git checkout line endings must not change the schema identity or binding check.
+const normalizeEol = (text) => text.replaceAll('\r\n', '\n')
+const raw = normalizeEol(await readFile(input, 'utf8'))
 const schema = JSON.parse(raw)
 const reference = (ref) => {
   if (!ref.startsWith('#/$defs/') || !schema.$defs[ref.slice(8)]) throw new Error(`Unknown ref: ${ref}`)
@@ -59,7 +61,7 @@ const validators = banner + `import { z } from 'zod'\nimport type { RpcMethod } 
 for (const [relative, content] of [['src/shared/rpc.ts', types], ['src/main/desktop/rpc-validation.ts', validators]]) {
   const path = resolve(root, relative)
   if (process.argv.includes('--check')) {
-    if (await readFile(path, 'utf8') !== content) throw new Error(`${relative} differs from canonical schema; regenerate it`)
+    if (normalizeEol(await readFile(path, 'utf8')) !== content) throw new Error(`${relative} differs from canonical schema; regenerate it`)
   } else {
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, content)

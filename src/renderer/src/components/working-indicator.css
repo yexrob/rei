@@ -1,0 +1,10 @@
+.working-state.live-working { display: flex; align-items: center; gap: 8px; min-height: 22px; margin: 8px 0 12px; padding: 0; color: var(--secondary); font-size: 12px; line-height: 1.5; }
+.working-beam-icon { flex-shrink: 0; color: var(--secondary); animation: working-orbit 1.65s linear infinite; }
+.working-beam-label { position: relative; display: inline-block; }
+.beam-shimmer { position: absolute; inset: 0; pointer-events: none; }
+.beam-shimmer::before { content: attr(data-label); display: block; color: transparent; background: linear-gradient(110deg, transparent 35%, var(--text) 49%, transparent 63%); background-size: 240% 100%; background-clip: text; -webkit-background-clip: text; animation: working-beam-sweep 2.2s ease-in-out infinite; }
+.transcript[data-working="true"] > :nth-last-child(2) { margin-block-end: 0; }
+@keyframes working-orbit { to { transform: rotate(360deg); } }
+@keyframes working-beam-sweep { from { background-position: 160% 0; } to { background-position: -70% 0; } }
+@media (prefers-reduced-motion: reduce) { .working-beam-icon { animation: none; } .beam-shimmer { display: none; } }
+@media (forced-colors: active) { .beam-shimmer { display: none; } .working-state.live-working { color: CanvasText; } }

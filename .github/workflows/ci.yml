@@ -22,6 +22,25 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - uses: actions/checkout@v4
+        with:
+          repository: yexrob/bingo
+          ref: 04af7d6bd913c34b61b34d9c46303234a0a7cf20
+          path: _runtime
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: _runtime -> target
+      - name: Build required native runtime
+        working-directory: _runtime
+        run: cargo build --release --locked -p bingo
+      - name: Select required native runtime
+        shell: bash
+        run: |
+          binary="$GITHUB_WORKSPACE/_runtime/target/release/bingo"
+          if [[ "$RUNNER_OS" == 'Windows' ]]; then binary="$binary.exe"; fi
+          echo "BINGO_BUNDLE_BINARY=$binary" >> "$GITHUB_ENV"
       - run: npm run package:dir
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'

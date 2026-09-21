@@ -5,13 +5,13 @@ import type { Result } from '../../../shared/desktop'
 import { DesktopFailure } from '../rpc-client'
 import { sameDocument, trustedSender } from '../security'
 import { PanelBrowser } from './browser'
-import { PanelTerminal } from './terminal'
+import { PanelTerminals } from './terminals'
 import { browserActionSchema, browserLayoutSchema, terminalAckSchema, terminalIdSchema, terminalResizeSchema, terminalWriteSchema, webUrlSchema } from './validation'
 
 type Options = { window(): BrowserWindow | null; documentUrl: string; workspace(): string | null }
 export class Panels {
   private readonly browser: PanelBrowser
-  private readonly terminal: PanelTerminal
+  private readonly terminals: PanelTerminals
   private readonly channels: string[] = []
   private boundContents: WebContents | null = null
   private closed = false
@@ -19,25 +19,25 @@ export class Panels {
   constructor(private readonly options: Options) {
     const emit = (event: PanelsEvent): void => this.emit(event)
     this.browser = new PanelBrowser({ ...options, emit })
-    this.terminal = new PanelTerminal({ workspace: options.workspace, emit })
-    this.handle(PANELS_IPC.snapshot, z.undefined(), () => ({ browser: this.browser.snapshot(), terminal: this.terminal.snapshot() }))
+    this.terminals = new PanelTerminals({ workspace: options.workspace, emit })
+    this.handle(PANELS_IPC.snapshot, z.undefined(), () => ({ browser: this.browser.snapshot(), terminals: this.terminals.snapshot() }))
     this.handle(PANELS_IPC.browserNavigate, webUrlSchema, (url) => this.browser.navigate(url))
     this.handle(PANELS_IPC.browserAction, browserActionSchema, (action) => this.browser.action(action))
     this.handle(PANELS_IPC.browserLayout, browserLayoutSchema, (layout) => this.browser.setLayout(layout))
-    this.handle(PANELS_IPC.terminalStart, z.undefined(), () => this.terminal.start())
-    this.handle(PANELS_IPC.terminalWrite, terminalWriteSchema, ({ id, data }) => this.terminal.write(id, data))
-    this.handle(PANELS_IPC.terminalResize, terminalResizeSchema, ({ id, cols, rows }) => this.terminal.resize(id, cols, rows))
-    this.handle(PANELS_IPC.terminalStop, terminalIdSchema, (id) => this.terminal.stop(id))
-    this.handle(PANELS_IPC.terminalAck, terminalAckSchema, ({ id, sequence }) => this.terminal.ack(id, sequence))
+    this.handle(PANELS_IPC.terminalStart, z.undefined(), () => this.terminals.start())
+    this.handle(PANELS_IPC.terminalWrite, terminalWriteSchema, ({ id, data }) => this.terminals.write(id, data))
+    this.handle(PANELS_IPC.terminalResize, terminalResizeSchema, ({ id, cols, rows }) => this.terminals.resize(id, cols, rows))
+    this.handle(PANELS_IPC.terminalStop, terminalIdSchema, (id) => this.terminals.stop(id))
+    this.handle(PANELS_IPC.terminalAck, terminalAckSchema, ({ id, sequence }) => this.terminals.ack(id, sequence))
   }
-  get busy(): boolean { return ['running', 'stopping'].includes(this.terminal.snapshot().status) }
+  get busy(): boolean { return this.terminals.busy }
   openBrowser(url: string): void { if (!this.closed) { this.bindWindow(); this.browser.open(url) } }
   setBrowserOccluded(value: boolean): void { this.browser.setOccluded(value) }
   close(): Promise<void> {
     if (this.closed) return Promise.resolve()
     if (this.closing) return this.closing
     this.browser.close()
-    this.closing = this.terminal.close().then(() => {
+    this.closing = this.terminals.close().then(() => {
       this.closed = true
       this.unbindWindow()
       for (const channel of this.channels) ipcMain.removeHandler(channel)
@@ -69,7 +69,7 @@ export class Panels {
   private bindWindow(): void {
     const contents = this.options.window()?.webContents
     if (!contents || contents === this.boundContents) return
-    if (this.boundContents) { void this.terminal.close().catch(() => {}); this.browser.close() }
+    if (this.boundContents) { void this.terminals.close().catch(() => {}); this.browser.close() }
     this.unbindWindow()
     this.boundContents = contents
     contents.on('did-start-navigation', this.onNavigation)
@@ -77,9 +77,9 @@ export class Panels {
     contents.on('destroyed', this.onRendererGone)
   }
   private onNavigation = (_event: Electron.Event, _url: string, inPlace: boolean, mainFrame: boolean): void => {
-    if (mainFrame && !inPlace) { this.browser.hide(); void this.terminal.close().catch(() => {}) }
+    if (mainFrame && !inPlace) { this.browser.hide(); void this.terminals.close().catch(() => {}) }
   }
-  private onRendererGone = (): void => { this.browser.hide(); void this.terminal.close().catch(() => {}) }
+  private onRendererGone = (): void => { this.browser.hide(); void this.terminals.close().catch(() => {}) }
   private unbindWindow(): void {
     this.boundContents?.off('did-start-navigation', this.onNavigation)
     this.boundContents?.off('render-process-gone', this.onRendererGone)

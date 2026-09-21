@@ -1,0 +1,26 @@
+.markdown .markstream-react {
+  font: inherit;
+  color: inherit;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.markdown .markstream-react > :first-child { margin-top: 0; }
+.markdown .markstream-react > :last-child { margin-bottom: 0; }
+.markdown .markstream-react .code-block { margin-block: 16px; color: var(--text); }
+.markdown .markstream-react .code-block .code-heading { color: var(--secondary); }
+.markdown .markstream-react .code-block pre { margin: 0; white-space: pre; overflow-x: auto; color: var(--text); }
+.markdown .markstream-react .code-block code { padding: 0; background: none; color: var(--text); }
+.markdown .markstream-react table { display: block; overflow-x: auto; max-width: 100%; }
+.markdown .markstream-react a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.markdown .markstream-react blockquote { color: var(--secondary); border-color: var(--control-line); }
+.markdown-image { display: block; max-width: 100%; max-height: 520px; object-fit: contain; border-radius: 8px; margin-block: 12px; }
+.media-placeholder { color: var(--secondary); font-size: 12px; }
+.media-placeholder button { margin-inline-start: 8px; text-decoration: underline; }
+.markdown-diagram { margin-block: 16px; min-width: 0; }
+.diagram-preview { display: block; max-width: 100%; max-height: 600px; width: auto; margin-inline: auto; background: #fff; border-radius: 8px; padding: 12px; }
+.markdown-diagram summary, .media-status { font-size: 12px; color: var(--secondary); }
+.markdown-diagram summary { cursor: pointer; padding-block: 8px; }
+.math-display { display: block; overflow-x: auto; max-width: 100%; padding-block: 0.5em; }
+.math-inline { overflow-wrap: normal; }
+.markdown .katex { font-size: 1.12em; }

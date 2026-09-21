@@ -1,37 +1,57 @@
-import { Children, isValidElement, memo, type ReactNode } from 'react'
-import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { createContext, memo, useContext } from 'react'
+import MarkdownRender, { setCustomComponents, type CodeBlockNodeProps, type LinkNodeProps, type NodeComponentProps, type NodeRendererProps } from 'markstream-react'
+import 'markstream-react/index.css'
+import './markdown.css'
 import type { Action, View } from '../../../shared/rpc'
 import { CopyButton } from './primitives'
 import { useI18n } from '../i18n'
+import { MarkdownImage } from './media/MarkdownImage'
+import { MarkdownDiagram } from './media/MarkdownDiagram'
+import { MarkdownMath } from './media/MarkdownMath'
 
 export type RunAction = (action: Action) => void
 export type OpenLink = (url: string) => void
 
-function textOf(node: ReactNode): string {
-  if (typeof node === 'string' || typeof node === 'number') return String(node)
-  if (Array.isArray(node)) return node.map(textOf).join('')
-  if (node && typeof node === 'object' && 'props' in node) return textOf((node.props as { children?: ReactNode }).children)
-  return ''
+const MarkdownLinkContext = createContext<OpenLink>(() => {})
+const markdownId = 'bingo-safe-markdown'
+
+function isWebLink(href: string): boolean {
+  try { return ['http:', 'https:'].includes(new URL(href).protocol) } catch { return false }
 }
+
+function MarkdownLink({ node, ctx, renderNode, indexKey }: NodeComponentProps<LinkNodeProps['node']>): React.JSX.Element {
+  const openLink = useContext(MarkdownLinkContext)
+  const children = ctx && renderNode ? node.children?.map((child, index) => renderNode(child, `${indexKey}-${index}`, ctx)) : node.text
+  if (!isWebLink(node.href)) return <span>{children}</span>
+  return <a href={node.href} onClick={(event) => { event.preventDefault(); openLink(node.href) }} onAuxClick={(event) => { event.preventDefault(); if (event.button === 1) openLink(node.href) }}>{children}</a>
+}
+
+function MarkdownCode({ node }: NodeComponentProps<CodeBlockNodeProps['node']>): React.JSX.Element {
+  return <CodeBlock text={node.code} language={node.language} />
+}
+
+// Raw HTML and unrequested diagram engines remain inert; rich media owns its own trust boundary.
+setCustomComponents(markdownId, {
+  link: MarkdownLink,
+  image: MarkdownImage,
+  code_block: MarkdownCode,
+  mermaid: MarkdownDiagram,
+  math_inline: MarkdownMath,
+  math_block: MarkdownMath,
+  d2: MarkdownCode,
+  infographic: MarkdownCode,
+  html_block: () => null,
+  html_inline: () => null
+})
+const safeMarkdown: NonNullable<NodeRendererProps['customMarkdownIt']> = (markdown) => markdown.set({ validateLink: (url: string) => isWebLink(url) || (!/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(url) || /^[a-z]:[\\/]/i.test(url)) })
 
 export function CodeBlock({ text, language }: { text: string; language?: string }): React.JSX.Element {
   const { t } = useI18n()
   return <div className="code-block"><div className="code-heading"><span>{language || t('Plain text')}</span><CopyButton text={text} label={t('Copy code')} /></div><pre><code>{text}</code></pre></div>
 }
 
-export const RichText = memo(function RichText({ text, openLink }: { text: string; openLink: OpenLink }): React.JSX.Element {
-  const { t } = useI18n()
-  return <div className="markdown"><Markdown skipHtml remarkPlugins={[remarkGfm]} components={{
-    a: ({ href, children }) => href && /^https?:\/\//i.test(href) ? <a href={href} onClick={(event) => { event.preventDefault(); openLink(href) }}>{children}</a> : <span>{children}</span>,
-    img: ({ alt }) => <span className="media-placeholder">{alt ? t('Image: {alt}', { alt }) : t('External image')} · {t('not loaded automatically')}</span>,
-    pre: ({ children }) => {
-      const code = Children.toArray(children).find(isValidElement)
-      const language = isValidElement<{ className?: string }>(code) ? code.props.className?.replace(/^language-/, '') : undefined
-      return <CodeBlock text={textOf(children).replace(/\n$/, '')} language={language} />
-    },
-    table: ({ children }) => <div className="table-scroll"><table>{children}</table></div>
-  }}>{text}</Markdown></div>
+export const RichText = memo(function RichText({ text, openLink, final = true }: { text: string; openLink: OpenLink; final?: boolean }): React.JSX.Element {
+  return <MarkdownLinkContext.Provider value={openLink}><div className="markdown"><MarkdownRender content={text} final={final} customId={markdownId} customMarkdownIt={safeMarkdown} htmlPolicy="safe" fade={false} smoothStreaming={false} batchRendering={false} deferNodesUntilVisible={false} showTooltips={false} /></div></MarkdownLinkContext.Provider>
 })
 
 export function StructuredView({ view, runAction, openLink, depth = 0 }: { view: View; runAction: RunAction; openLink: OpenLink; depth?: number }): React.JSX.Element {

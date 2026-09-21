@@ -10,7 +10,7 @@ on:
       runtime_ref:
         description: Full bingo commit SHA to bundle
         required: true
-        default: fb1eaa5be1b48be45dc13d6be998c86cb57406f3
+        default: 04af7d6bd913c34b61b34d9c46303234a0a7cf20
 
 permissions:
   contents: read
@@ -83,6 +83,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
       - run: npm ci
+      - name: Verify mandatory bundle before desktop tests
+        run: npm run bundle:prepare
       - run: npm run typecheck
       - name: Check canonical protocol
         run: node scripts/generate-rpc.mjs "$GITHUB_WORKSPACE/_runtime/schema/rpc.json" --check
@@ -97,6 +99,30 @@ jobs:
           fi
       - name: Package native installers
         run: npx electron-builder --config electron-builder.cjs ${{ matrix.args }} --publish never
+      - name: Verify packaged default runtime
+        run: |
+          case "$RUNNER_OS" in
+            macOS)
+              folder=mac
+              if [[ "$(node -p process.arch)" == 'arm64' ]]; then folder=mac-arm64; fi
+              export BINGO_TEST_PACKAGED_APP="$GITHUB_WORKSPACE/dist/$folder/Rei.app/Contents/MacOS/Rei"
+              export BINGO_TEST_PACKAGED_RESOURCES="$GITHUB_WORKSPACE/dist/$folder/Rei.app/Contents/Resources"
+              ;;
+            Windows)
+              export BINGO_TEST_PACKAGED_APP="$GITHUB_WORKSPACE/dist/win-unpacked/Rei.exe"
+              export BINGO_TEST_PACKAGED_RESOURCES="$GITHUB_WORKSPACE/dist/win-unpacked/resources"
+              ;;
+            Linux)
+              export BINGO_TEST_PACKAGED_APP="$GITHUB_WORKSPACE/dist/linux-unpacked/bingo-gui"
+              export BINGO_TEST_PACKAGED_RESOURCES="$GITHUB_WORKSPACE/dist/linux-unpacked/resources"
+              ;;
+          esac
+          npm test -- src/main/desktop/binary.test.ts
+          if [[ "$RUNNER_OS" == 'Linux' ]]; then
+            xvfb-run -a npx playwright test tests/bundled-runtime.e2e.ts
+          else
+            npx playwright test tests/bundled-runtime.e2e.ts
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: rei-${{ matrix.name }}

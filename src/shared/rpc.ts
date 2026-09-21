@@ -1,5 +1,5 @@
 // Generated from bingo-improve/schema/rpc.json; do not edit.
-// SHA-256: d90a354bee2f1090918356a3d59450b96e80df205c060b39f13235a5d826cd21
+// SHA-256: 837e8667830e8976d284c907320b69628b4c968519807b7c29ea1810686d6799
 export const RPC_PROTOCOL = 1 as const
 
 export type Action = { "name": string; "args"?: unknown }
@@ -24,7 +24,7 @@ export type Catalog = { "kind": CatalogKind; "entries": Array<CatalogEntry> }
 
 export type CatalogEntry = { "id": string; "label": string; "meta"?: unknown }
 
-export type CatalogKind = "models" | "providers" | "tools" | "commands" | "skills" | "plugins"
+export type CatalogKind = "models" | "providers" | "tools" | "commands" | "plugins"
 
 export type CatalogParams = { "kind": CatalogKind }
 
@@ -48,6 +48,8 @@ export type DeltaKind = ("text" | "reasoning" | "tail")
 
 export type Driver = ("model" | "log")
 
+export type Effort = "minimal" | "low" | "medium" | "high" | "xHigh" | "max"
+
 export type Empty = Record<string, unknown>
 
 export type ErrorCode = ("SESSION_NOT_FOUND" | "SESSION_LOCKED" | "SESSION_CLOSED" | "INTERACTION_CLOSED" | "NOT_READY" | "STALE_GENERATION" | "NOT_INITIALIZED" | "INVALID_INPUT" | "PERMISSION_DENIED" | "TOOL_NOT_FOUND" | "TOOL_FAILED" | "PROVIDER_UNAVAILABLE" | "AUTH_REQUIRED" | "RATE_LIMITED" | "CONTEXT_OVERFLOW" | "TIMEOUT" | "OFFLINE" | "SERVER_ERROR" | "TURN_LOST" | "TURN_BUDGET_EXHAUSTED" | "INTERNAL" | "NOT_FOUND" | "STORAGE")
@@ -68,7 +70,7 @@ export type HistoryPage = { "before"?: (ItemId | null); "limit"?: number }
 
 export type HistoryParams = { "session": SessionId; "page"?: HistoryPage }
 
-export type Image = { "mediaType": string; "data": string }
+export type Image = { "mediaType": string; "data": string; "path"?: (string | null) }
 
 export type InitializeParams = { "client": ClientIdentity; "protocol": number }
 
@@ -101,6 +103,8 @@ export type ItemId = string
 export type ItemStatus = "pending" | "running" | "completed" | "failed" | "interrupted"
 
 export type KernelError = { "code": ErrorCode; "message": string }
+
+export type LastTurn = { "id": TurnId; "status": TurnStatus; "startedAt": string; "endedAt": string; "usage"?: Usage }
 
 export type Level = "info" | "warn" | "error"
 
@@ -144,9 +148,9 @@ export type SessionParams = { "session": SessionId }
 
 export type SessionSelector = ({ "spec": SessionSpec; "kind": "create" } | { "id": SessionId; "kind": "byId" } | { "key": string; "kind": "byKey" } | { "cwd": string; "kind": "latest" })
 
-export type SessionSpec = { "cwd": string; "key"?: (string | null); "parent"?: (ParentLink | null); "title"?: (string | null); "driver"?: Driver; "provider"?: (string | null); "model"?: (string | null); "systemExtra"?: (string | null); "tools"?: (Array<string> | null) }
+export type SessionSpec = { "cwd": string; "key"?: (string | null); "parent"?: (ParentLink | null); "title"?: (string | null); "driver"?: Driver; "provider"?: (string | null); "model"?: (string | null); "systemExtra"?: (string | null); "tools"?: (Array<string> | null); "thinking"?: (Effort | null) }
 
-export type SessionState = { "seq": Seq; "summary": SessionSummary; "config"?: ConfigView; "historyGeneration"?: number; "items": Array<Item>; "turn"?: (LiveTurn | null); "queue"?: Array<QueueEntry>; "interactions"?: Array<Interaction>; "context"?: (ContextUsage | null); "lastTurn"?: (TurnStatus | null); "unread"?: boolean; "closed"?: boolean; "extensions"?: Record<string, Record<string, unknown>>; "signals"?: Record<string, Record<string, unknown>> }
+export type SessionState = { "seq": Seq; "summary": SessionSummary; "config"?: ConfigView; "historyGeneration"?: number; "items": Array<Item>; "turn"?: (LiveTurn | null); "queue"?: Array<QueueEntry>; "interactions"?: Array<Interaction>; "context"?: (ContextUsage | null); "lastTurn"?: (LastTurn | null); "unread"?: boolean; "closed"?: boolean; "extensions"?: Record<string, Record<string, unknown>>; "signals"?: Record<string, Record<string, unknown>> }
 
 export type SessionSummary = { "id": SessionId; "key"?: (string | null); "title"?: (string | null); "cwd": string; "parent"?: (ParentLink | null); "driver"?: Driver; "model"?: (string | null); "systemExtra"?: (string | null); "tools"?: (Array<string> | null); "provider"?: (string | null); "createdAt": string; "updatedAt": string; "usage"?: Usage; "busy"?: boolean; "messages"?: (number | null) }
 

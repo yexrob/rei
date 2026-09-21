@@ -1,0 +1,37 @@
+.environment-trigger { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 5px 8px; border: 0; background: transparent; color: var(--secondary); font-size: 11px; font-weight: 400; }
+.environment-trigger[aria-expanded="true"] { background: var(--sidebar); color: var(--text); }
+.environment-popover { z-index: 75; width: min(304px, calc(100vw - 32px)); padding: 15px 16px 12px; border: 1px solid color-mix(in srgb, var(--line) 70%, transparent); border-radius: 14px; background: var(--surface); color: var(--text); box-shadow: 0 8px 30px #00000012, 0 1px 4px #00000006; }
+.environment-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 18px; }
+.environment-heading strong { font-size: 12px; font-weight: 550; }
+.environment-heading > span { display: inline-flex; gap: 5px; align-items: center; font-size: 10px; color: var(--secondary); }
+.environment-project { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; color: var(--secondary); font-size: 12px; }
+.environment-project > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.environment-action { width: 100%; display: flex; justify-content: flex-start; min-height: 34px; gap: 8px; padding: 5px 0; border: 0; background: transparent; font-size: 12px; font-weight: 400; }
+.environment-action > svg:last-child { margin-inline-start: auto; color: var(--secondary); }
+.environment-agents, .environment-rooms { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.environment-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 7px; color: var(--secondary); font-size: 11px; }
+.environment-agent-line { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+.environment-count { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: var(--secondary); }
+.environment-empty { margin: 4px 0 0; color: var(--secondary); font-size: 11px; line-height: 1.55; }
+.environment-room { width: 100%; display: flex; justify-content: flex-start; align-items: center; min-height: 34px; padding: 4px 0; gap: 8px; border: 0; background: transparent; font-size: 12px; font-weight: 400; }
+.environment-room-icon { display: grid; place-items: center; width: 23px; height: 23px; border-radius: 6px; background: var(--sidebar); color: var(--secondary); flex-shrink: 0; }
+.environment-room > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.environment-room > small { margin-inline-start: auto; color: var(--secondary); font-size: 10px; white-space: nowrap; }
+.environment-room > svg { color: var(--secondary); flex-shrink: 0; }
+.environment-room[aria-current="page"] .environment-room-icon { color: var(--text); background: var(--selected); }
+.collaboration-avatar-glyph { width: 24px; height: 24px; border-radius: 0; background: transparent; color: color-mix(in srgb, hsl(var(--avatar-hue) 52% 42%) 65%, var(--text)); }
+.collaboration-avatar-glyph.collaboration-avatar-main { color: var(--text); background: transparent; }
+.collaboration-avatar-glyph.collaboration-avatar-room { border-radius: 6px; background: var(--sidebar); color: var(--secondary); font-size: 16px; }
+.collaboration-avatar-glyph .collaboration-avatar-status { width: 6px; height: 6px; border-width: 1px; inset-inline-end: 0; inset-block-end: 0; }
+.collaboration-dock-compact { position: static; flex-shrink: 0; }
+.collaboration-dock-compact .collaboration-stack { height: 28px; min-height: 28px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.collaboration-dock-compact .collaboration-stack-toggle { height: 28px; min-height: 28px; padding: 0; border-radius: 6px; }
+.collaboration-dock-compact .collaboration-stack-slot { width: 25px; height: 26px; flex-basis: 25px; border: 0; border-radius: 5px; background: transparent; }
+.collaboration-dock-compact .collaboration-stack-slot + .collaboration-stack-slot { margin-inline-start: -2px; }
+.collaboration-dock-compact .collaboration-stack-slot.is-selected { background: var(--sidebar); }
+.collaboration-dock-compact .collaboration-stack-slot .collaboration-avatar { width: 24px; height: 24px; }
+.collaboration-dock-compact .collaboration-panel-bridge { width: 100%; inset-block-start: 100%; inset-inline-end: 0; padding-top: 8px; }
+.collaboration-dock-compact .collaboration-row { grid-template-columns: 24px minmax(0, 1fr) 12px; height: 72px; min-height: 72px; padding: 9px 8px; gap: 8px; border: 0; border-radius: 6px; }
+.collaboration-dock-compact .collaboration-row[aria-current="page"] { background: var(--sidebar); }
+.collaboration-dock-compact .collaboration-row-heading strong { font-weight: 500; }
+@media (max-width: 759px) { .environment-trigger > span { display: none; } .environment-trigger { width: 32px; padding: 5px; } .environment-trigger > svg:last-child { display: none; } }

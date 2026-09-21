@@ -131,10 +131,12 @@ describe('localized renderer boundaries', () => {
     expect(container.querySelector('.user-prose')?.textContent).toBe('Cancel')
     expect(container.querySelector('.assistant-message .markdown')?.textContent).toBe('Ready')
     expect(container.querySelector('.reasoning-content')?.textContent).toBe('Thinking')
-    expect(container.querySelector('.tool-name')?.textContent).toBe('Settings')
-    expect(container.querySelector('.tool-target')?.textContent).toBe('/work/Settings')
-    expect(container.querySelector('.live-tail')?.textContent).toBe('Working…')
-    expect(container.querySelector('.tool-output')?.textContent).toBe('Failed')
+    const tool = container.querySelector('[data-tool-name="Settings"]')!
+    expect(tool.querySelector('.tool-card-name')?.textContent).toBe('Settings')
+    fireEvent.click(tool.querySelector('.tool-card-disclosure')!)
+    expect(tool.textContent).toContain('/work/Settings')
+    expect(tool.querySelector('.tool-recorded-result pre')?.textContent).toBe('Failed')
+    expect(tool.querySelector('.tool-progress-tail')).toBeNull()
     expect(screen.getByText('退出码 7')).toBeTruthy()
     expect([...container.querySelectorAll('pre code')].map((node) => node.textContent)).toContain('$ echo Ready\nDone')
   })
@@ -220,13 +222,18 @@ describe('localized renderer boundaries', () => {
 function settingsWorkspace() {
   return {
     connection: { status: 'ready', workspace: '/work', binary: '/bin/bingo' },
-    preferences: { theme: 'light', recentWorkspaces: [] }, catalogs: {},
+    preferences: { theme: 'light', recentWorkspaces: [] }, catalogs: {}, runtimeSelection: { model: null, thinking: null },
     readCatalog: vi.fn(async () => {}), report: vi.fn(), savePreferences: vi.fn(async () => {}), connect: vi.fn(async () => {})
   } as unknown as ReturnType<typeof useWorkspace>
 }
 async function selectOption(label: string, option: string) {
-  fireEvent.keyDown(screen.getByRole('combobox', { name: label }), { key: 'Enter' })
-  fireEvent.click(await screen.findByRole('option', { name: option }))
+  const trigger = screen.getByRole('combobox', { name: label })
+  // Keyboard events target focused controls; otherwise Radix can dismiss the portal as focus leaves.
+  act(() => trigger.focus())
+  fireEvent.keyDown(trigger, { key: 'Enter' })
+  const choice = await screen.findByRole('option', { name: option })
+  act(() => choice.focus())
+  fireEvent.keyDown(choice, { key: 'Enter' })
 }
 
 describe('localized settings and desktop controls', () => {
@@ -266,9 +273,9 @@ describe('localized settings and desktop controls', () => {
     expect(screen.getByText('Cancel')).toBeTruthy()
     expect(screen.getByRole('button', { name: '发送消息' })).toBeTruthy()
     await selectOption('思考强度', '极高')
-    expect(command).toHaveBeenCalledWith('think', 'xhigh')
+    await waitFor(() => expect(command).toHaveBeenCalledWith('think', 'xhigh'))
     await selectOption('权限模式', '跳过权限提示')
-    expect(command).toHaveBeenCalledWith('permission', 'bypassPermissions')
+    await waitFor(() => expect(command).toHaveBeenCalledWith('permission', 'bypassPermissions'))
   })
   it('translates clipboard feedback, but not copied text or error details', async () => {
     localStorage.setItem('rei.locale', 'zh-CN')
