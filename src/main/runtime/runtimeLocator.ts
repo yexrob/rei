@@ -110,7 +110,8 @@ export class RuntimeLocator {
         }
       })
       child.on('error', () => finish(this.error('BINGO_PROBE_FAILED', 'Could not start bingo. Check the binary and retry.')))
-      child.on('exit', (code) => {
+      // Process exit may arrive before stdout finishes draining.
+      child.on('close', (code) => {
         if (settled) return
         const lines = stdout.split('\n').filter(Boolean)
         if (code !== 0 || lines.length !== 1) {

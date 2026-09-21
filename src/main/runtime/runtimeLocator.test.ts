@@ -1,4 +1,7 @@
 import { chmod, mkdtemp, writeFile } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it, vi } from 'vitest'
@@ -7,7 +10,7 @@ import { RuntimeLocator } from './runtimeLocator'
 // Run the real script child through Node; Windows cannot execute Unix shebang fixtures.
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>()
-  return { ...actual, spawn: (file: string, args: string[], options: import('node:child_process').SpawnOptions) => actual.spawn(process.execPath, [file, ...args], options) }
+  return { ...actual, spawn: vi.fn((file: string, args: string[], options: import('node:child_process').SpawnOptions) => actual.spawn(process.execPath, [file, ...args], options)) }
 })
 
 async function fixture(body: string): Promise<string> {
@@ -25,8 +28,26 @@ if (process.argv.slice(2).join(' ') !== '--json-events --probe') process.exit(9)
 console.log(JSON.stringify({protocolVersion:1,seq:1,sessionId:null,type:'protocol.ready',bingoVersion:'0.4.0'}))
 `)
     const result = await new RuntimeLocator({ env: { ...process.env, BINGO_GUI_BINARY: binary } }).probe(process.cwd())
-    expect(result).toMatchObject({ ok: true, value: { bingoVersion: '0.4.0', protocolVersion: 1, workspacePath: process.cwd() } })
+    expect(result, JSON.stringify(result)).toMatchObject({ ok: true, value: { bingoVersion: '0.4.0', protocolVersion: 1, workspacePath: process.cwd() } })
     if (result.ok) expect(result.value.binaryPath).toMatch(/bingo-gui-probe-.+[\\/]bingo$/)
+  })
+
+  it.each([false, true])('drains stdout after exit and validates late extra events: %s', async (extra) => {
+    const binary = await fixture('')
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), exitCode: 0, killed: false, kill: vi.fn(() => true) })
+    const record = JSON.stringify({ protocolVersion: 1, seq: 1, sessionId: null, type: 'protocol.ready', bingoVersion: '0.4.0' }) + '\n'
+    vi.mocked(spawn).mockImplementationOnce(() => {
+      queueMicrotask(() => {
+        child.emit('exit', 0)
+        child.stdout.write(record)
+        child.stdout.end(extra ? record : '')
+        child.emit('close', 0)
+      })
+      return child as unknown as ReturnType<typeof spawn>
+    })
+    const result = await new RuntimeLocator({ env: { ...process.env, BINGO_GUI_BINARY: binary } }).probe(process.cwd())
+    expect(result).toMatchObject(extra ? { ok: false, error: { code: 'BINGO_PROTOCOL_UNSUPPORTED' } } : { ok: true, value: { bingoVersion: '0.4.0', protocolVersion: 1 } })
+    expect(child.kill).not.toHaveBeenCalled()
   })
 
   it('rejects extra probe events', async () => {
