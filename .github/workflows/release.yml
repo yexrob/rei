@@ -10,7 +10,7 @@ on:
       runtime_ref:
         description: Full bingo commit SHA to bundle
         required: true
-        default: 04af7d6bd913c34b61b34d9c46303234a0a7cf20
+        default: 13b62ef4f9faf7cd186cca61a18945de2bc08d0b
 
 permissions:
   contents: read
@@ -67,6 +67,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: _runtime -> target
+          # Native C artifacts cannot cross Linux glibc baselines.
+          key: ${{ runner.os == 'Linux' && matrix.os || '' }}
           cache-on-failure: true
       - name: Build matching runtime
         working-directory: _runtime
