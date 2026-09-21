@@ -91,7 +91,8 @@ jobs:
       - run: npm run typecheck
       - name: Check canonical protocol
         run: node scripts/generate-rpc.mjs "$GITHUB_WORKSPACE/_runtime/schema/rpc.json" --check
-      - run: npm test
+      - name: Verify unit contracts on bounded workers
+        run: npm test -- --maxWorkers=2 --testTimeout=15000
       - run: npm run build
       - name: Verify native desktop and runtime workflows
         run: |
