@@ -38,16 +38,17 @@ it('separates staged and unstaged tracked patches without writing the index or w
   expect(await readFile(join(root, 'example.txt'), 'utf8')).toBe('working\n')
 })
 
-it('supports unborn repositories, binary files, unusual names and workspace subdirectory boundaries', async () => {
+// Windows forbids control characters in filenames; spaces and Unicode exercise its parser boundary.
+it.each(['space café 名字.txt', ...(process.platform === 'win32' ? [] : ['tab\tname\n.txt'])])('supports unborn repositories, binary files and subdirectory boundaries with %j', async (filename) => {
   const root = await fixture()
   await mkdir(join(root, 'inside'))
   await writeFile(join(root, 'outside.txt'), 'outside\n')
-  await writeFile(join(root, 'inside', 'tab\tname\n.txt'), 'inside\n')
+  await writeFile(join(root, 'inside', filename), 'inside\n')
   await writeFile(join(root, 'inside', 'binary.dat'), Buffer.from([0, 1, 2]))
   git(root, 'add', '.')
   const result = await readReview(join(root, 'inside'), 'staged')
   expect(result.status).toBe('ready')
-  expect(result.files.map((file) => file.path)).toEqual(['binary.dat', 'tab\tname\n.txt'])
+  expect(result.files.map((file) => file.path)).toEqual(['binary.dat', filename])
   expect(result.files[0]).toMatchObject({ binary: true, additions: null, deletions: null })
   expect(result.files[1].patch).toContain('+inside')
 })

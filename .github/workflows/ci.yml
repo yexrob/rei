@@ -32,6 +32,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: _runtime -> target
+          cache-on-failure: true
       - name: Build required native runtime
         working-directory: _runtime
         run: cargo build --release --locked -p bingo
