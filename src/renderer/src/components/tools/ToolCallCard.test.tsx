@@ -113,6 +113,35 @@ describe('semantic tool cards', () => {
     expect(container.querySelector('.tool-diagnostics pre')).toBeNull()
   })
 
+  it.each(['object', 'array'])('collapses core-clipped JSON %s without implying the omitted content can be copied', async kind => {
+    const original = JSON.stringify(kind === 'object' ? { data: 'x'.repeat(100000) } : ['x'.repeat(100000)])
+    const recorded = `${original.slice(0, 50000)}\n[truncated: ${original.length - 50000} more characters]`
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const { container } = render(<ToolCallCard item={fixture('mcp__report__clipped', {}, recorded)} {...actions} />)
+    expand()
+    expect(container.querySelector('.tool-recorded-text pre')).toBeNull()
+    expect(screen.getByText('The runtime truncated this result. Preview and copy include only the recorded portion, including the truncation marker.')).toBeTruthy()
+    expect(screen.queryByText('Structured content is summarized for display. Expand a bounded preview or copy the complete recorded text.')).toBeNull()
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Copy recorded output' })))
+    expect(writeText).toHaveBeenCalledWith(recorded)
+    fireEvent.click(screen.getByText('Inspect recorded content'))
+    fireEvent(container.querySelector('.tool-structured-fallback details')!, new Event('toggle'))
+    expect(container.querySelector('.tool-recorded-text pre')?.textContent).toBe(recorded)
+  })
+
+  it.each([
+    'Ordinary text\n[truncated: 20 more characters]',
+    '{incomplete object without a runtime marker',
+    '[incomplete array\n[truncated: 20 more bytes]',
+    '{incomplete object\n[truncated: 20 more characters]\nadditional text'
+  ])('does not infer clipped JSON from ordinary or unproven text: %s', text => {
+    const { container } = render(<ToolCallCard item={fixture('mcp__report__text', {}, text)} {...actions} />)
+    expand()
+    expect(container.querySelector('.tool-structured-fallback')).toBeNull()
+    expect(container.querySelector('.tool-recorded-text pre')?.textContent).toBe(text)
+  })
+
   it('keeps raw diagnostics lazy and limits large output rendering', () => {
     const huge = 'x'.repeat(100000)
     const { container } = render(<ToolCallCard item={fixture('mcp__test__large', { body: huge }, huge)} {...actions} />)

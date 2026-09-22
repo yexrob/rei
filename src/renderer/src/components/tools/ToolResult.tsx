@@ -29,12 +29,12 @@ function JsonValue({ value, depth = 0, openLink }: { value: unknown; depth?: num
   return <><dl className="tool-result-fields">{entries.slice(0, 60).map(([key, child]) => <div key={key}><dt>{Array.isArray(value) ? Number(key) + 1 : key}</dt><dd><JsonValue value={child} depth={depth + 1} openLink={openLink} /></dd></div>)}</dl>{entries.length > 60 && <p className="tool-limit-note">{t('More fields are available in the raw result.')}</p>}</>
 }
 
-function StructuredFallback({ text }: { text: string }): React.JSX.Element {
+function StructuredFallback({ text, runtimeTruncated = false }: { text: string; runtimeTruncated?: boolean }): React.JSX.Element {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   return <div className="tool-structured-fallback">
     <div className="tool-section-heading"><span>{t('Recorded content · {count} characters', { count: text.length })}</span><CopyButton text={text} label={t('Copy recorded output')} /></div>
-    <p className="tool-limit-note">{t('Structured content is summarized for display. Expand a bounded preview or copy the complete recorded text.')}</p>
+    <p className="tool-limit-note">{t(runtimeTruncated ? 'The runtime truncated this result. Preview and copy include only the recorded portion, including the truncation marker.' : 'Structured content is summarized for display. Expand a bounded preview or copy the complete recorded text.')}</p>
     <details onToggle={event => setOpen(event.currentTarget.open)}><summary>{t('Inspect recorded content')}</summary>{open && <RecordedText text={text} copy={false} />}</details>
   </div>
 }
@@ -42,6 +42,9 @@ function StructuredFallback({ text }: { text: string }): React.JSX.Element {
 export function JsonResult({ text, openLink }: { text: string; openLink?: OpenLink }): React.JSX.Element {
   const { t } = useI18n()
   if (text === '') return <p className="tool-empty-result">{t('Empty recorded content.')}</p>
+  // The core's exact clipping receipt is evidence of missing data, not malformed JSON
+  // to repair. Preserve the received prefix and marker verbatim for inspection/copy.
+  if (/^\s*[\[{]/.test(text) && /\n\[truncated: [1-9]\d* more characters\]$/.test(text)) return <StructuredFallback text={text} runtimeTruncated />
   // A framing hint only: do not parse an unbounded payload to build the summary.
   // Ordinary long prose stays directly readable. Raw input remains exact either way.
   if (text.length > textLimit) return /^\s*[\[{]/.test(text) && /[\]}]\s*$/.test(text) ? <StructuredFallback text={text} /> : <RecordedText text={text} />
