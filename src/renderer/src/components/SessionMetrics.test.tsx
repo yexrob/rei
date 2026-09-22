@@ -7,8 +7,10 @@ afterEach(cleanup)
 
 describe('session usage charts', () => {
   it('plots actual token proportions and context with accessible numeric equivalents', () => {
-    render(<SessionMetrics inputTokens={750} outputTokens={250} context={{ used: 1200, window: 4000, trigger: 3200 }} />)
+    const { container } = render(<SessionMetrics inputTokens={750} outputTokens={250} context={{ used: 1200, window: 4000, trigger: 3200 }} />)
     expect(screen.getByRole('img', { name: '750 in · 250 out' }).querySelector('.metric-input')?.getAttribute('width')).toBe('120')
+    expect(container.querySelector('.metric-output')?.getAttribute('width')).toBe('40')
+    expect(container.querySelector('.context-arc')?.getAttribute('stroke-dasharray')).toBe('30 100')
     expect(screen.getByRole('img', { name: '1,200 of 4,000 context tokens' })).toBeTruthy()
     expect(screen.getByText('30%')).toBeTruthy()
   })

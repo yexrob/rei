@@ -1,14 +1,6 @@
 // English source strings are canonical. Remote text and identities are not keys.
 export const zhCN = {
-  'A little space. A lot of possibility.': '一方空间，无限可能。',
-  'Bring a question, an idea, or something to make.': '带着问题、灵感，或想做的事，从这里开始。',
-  'Starting points': '从这里开始',
-  'Understand code': '读懂代码',
-  'Explore an idea': '探索灵感',
-  'Make a plan': '制定计划',
-  'Help me understand a codebase. Ask me which project or code I want to explore first.': '帮我理解一个代码库。请先问我想了解哪个项目或哪段代码。',
-  'Help me explore an idea. Start by asking what I have in mind, then help me shape it.': '帮我探索一个想法。先了解我的初步构想，再一起把它梳理清楚。',
-  'Help me turn a goal into an actionable plan. Ask me about the goal and constraints first.': '帮我把一个目标变成可执行的计划。请先了解我的目标和限制条件。',
+  'What would you like to work on?': '今天想做些什么？',
   '{used} of {total} context tokens': '上下文已用 {used}，容量 {total} token',
   'Context capacity unavailable': '上下文容量暂不可用',
   'Enter to send': 'Enter 发送',

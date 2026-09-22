@@ -17,13 +17,13 @@ export function StartupTransition({ ready, children }: { ready: boolean; childre
   useEffect(() => {
     if (phase !== 'intro') return
     const elapsed = performance.now() - started.current
-    const wait = ready ? Math.max(0, 380 - elapsed) : Math.max(0, 1800 - elapsed)
+    const wait = ready ? Math.max(0, 140 - elapsed) : Math.max(0, 1800 - elapsed)
     const timer = setTimeout(() => setPhase('revealing'), wait)
     return () => clearTimeout(timer)
   }, [ready, phase])
   useEffect(() => {
     if (phase !== 'revealing') return
-    const timer = setTimeout(() => setPhase('settled'), 650)
+    const timer = setTimeout(() => setPhase('settled'), 360)
     return () => clearTimeout(timer)
   }, [phase])
   return <div className="startup-stage" data-phase={phase}>

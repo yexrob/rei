@@ -43,6 +43,37 @@ describe('desktop composer', () => {
     expect(p.stop).toHaveBeenCalledOnce()
   })
 
+  it('keeps the send target stable and explains idle, sending and working states', () => {
+    const p = props(); const { rerender, container } = render(<Composer {...p} draft={{ text: 'A task', images: [] }} />)
+    const send = screen.getByRole('button', { name: 'Send message' })
+    expect(container.querySelector('.composer')?.getAttribute('data-state')).toBe('composing')
+    expect(screen.getByRole('textbox').getAttribute('aria-describedby')).toBe('composer-hint')
+    rerender(<Composer {...p} sending draft={{ text: 'A task', images: [] }} />)
+    expect(screen.getByRole('button', { name: 'Send message' })).toBe(send)
+    expect(send.hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('textbox').hasAttribute('readonly')).toBe(true)
+    expect(container.querySelector('.composer')?.getAttribute('data-state')).toBe('sending')
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' })
+    expect(p.send).not.toHaveBeenCalled()
+    rerender(<Composer {...p} busy ready={false} />)
+    expect(screen.getByRole('button', { name: 'Stop generation' }).hasAttribute('disabled')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Stop generation' }))
+    expect(p.stop).not.toHaveBeenCalled()
+  })
+
+  it('never sends for IME Enter or Shift Enter, but submits an ordinary Enter', () => {
+    const p = props(); render(<Composer {...p} draft={{ text: '中文任务', images: [] }} />)
+    const input = screen.getByRole('textbox')
+    fireEvent.compositionStart(input)
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.compositionEnd(input)
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 })
+    fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })
+    expect(p.send).not.toHaveBeenCalled()
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(p.send).toHaveBeenCalledOnce()
+  })
+
   it('lets a follow-up send without hiding the stop control', () => {
     const p = props(); render(<Composer {...p} busy draft={{ text: 'Add tests too', images: [] }} />)
     expect(screen.getByRole('button', { name: 'Stop generation' })).toBeTruthy()

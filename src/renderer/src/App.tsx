@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowUpRight, Download, Globe2, Info, MessageSquare, MoreHorizontal, PanelLeft, SquareTerminal, Terminal, Trash2, X } from './components/icons'
-import { WelcomeHeading, PromptStarters } from './components/Welcome'
+import { WelcomeHeading } from './components/Welcome'
 import { SessionMetrics } from './components/SessionMetrics'
 import { SessionStatus } from './components/SessionStatus'
 import { DESKTOP_IMAGE_LIMITS } from '../../shared/desktop'
@@ -72,7 +72,8 @@ function WorkspaceApp(): React.JSX.Element {
   const childAgent = state ? isAgentSession(state.summary) : false
   const agentName = childAgent ? state?.summary.title || t('Agent') : 'Bingo'
   const hasCollaboration = w.collaboration.entries.length > 1
-  const status = room?.closed ? 'closed' : w.active ? selectStatus(w.active) : 'ready'
+  const status = !ready ? w.connection.status === 'connecting' ? 'connecting' : 'disconnected' : room?.closed ? 'closed' : w.active ? selectStatus(w.active) : 'ready'
+  const showWelcome = !state?.items.length && !childAgent && !state?.turn
   const scratch = w.connection.workspace === w.bootstrap?.scratchWorkspace
   const workspaceLabel = scratch ? t('Personal space') : w.connection.workspace ? basename(w.connection.workspace) : t('Personal space')
   const model = w.runtimeSelection.model ?? ''
@@ -216,13 +217,13 @@ function WorkspaceApp(): React.JSX.Element {
           {state?.interactions?.map((interaction) => <InteractionPanel key={interaction.id} interaction={interaction} disabled={!ready} openLink={interaction.kind.kind === 'login' ? openSignIn : openLink} respond={(answer, activation) => w.respond(interaction.session, interaction.id, answer, activation)} />)}
           <RoomComposer key={w.activeId} draft={draft} setDraft={setDraft} send={() => void send()} attach={attach} ready={ready && !w.active.resync} sending={sending || commandBusy || w.loading} roomName={title} closed={room.closed} members={room.members} inputRef={input} />
         </>} />
-      </> : <div className={`conversation ${!state?.items.length ? 'empty-conversation' : ''}`}>
-        {!state?.items.length && !childAgent && !state?.turn && <WelcomeHeading />}
-        {w.active && Boolean(state?.items.length) && <Timeline key={w.activeId} projection={w.active} assistantName={agentName} openLink={openLink} runAction={runAction} sessions={w.sessions} onSelectSession={selectCollaborator} loadHistory={() => { void w.loadHistory().catch(w.report) }} loading={w.loading} />}
+      </> : <div className={`conversation ${showWelcome ? 'empty-conversation' : ''}`}>
+        {showWelcome && <WelcomeHeading />}
+        {w.active && !showWelcome && <Timeline key={w.activeId} connected={ready} projection={w.active} assistantName={agentName} openLink={openLink} runAction={runAction} sessions={w.sessions} onSelectSession={selectCollaborator} loadHistory={() => { void w.loadHistory().catch(w.report) }} loading={w.loading} />}
         {w.commandView && !settings && <div className="command-result"><IconButton label="Dismiss command result" onClick={() => w.setCommandView(null)}><X size={15} /></IconButton><StructuredView view={w.commandView} runAction={runAction} openLink={openLink} /></div>}
         {state?.interactions?.map((interaction) => <InteractionPanel key={interaction.id} interaction={interaction} disabled={!ready} openLink={interaction.kind.kind === 'login' ? openSignIn : openLink} respond={(answer, activation) => w.respond(interaction.session, interaction.id, answer, activation)} />)}
         {ready && currentError && <div className="composer-error"><ErrorBanner message={currentError} onDismiss={() => { w.setError(''); setDraftError('') }} onRetry={w.active?.resync && w.activeId ? () => { void w.openSession(w.activeId!, true).catch(w.report) } : undefined} /></div>}
-        <Composer draft={draft} setDraft={setDraft} send={() => void send()} stop={stopCurrent} attach={attach} ready={ready && !w.active?.resync} busy={Boolean(state?.turn)} sending={sending || commandBusy || w.loading} model={model} thinking={thinking} permission={permission} models={w.catalogs.models?.entries ?? []} commands={w.catalogs.commands?.entries ?? []} command={command} inputRef={input} queue={state?.queue} workspaceName={workspaceLabel} chooseProject={chooseProject} recipient={hasCollaboration || childAgent ? { name: agentName, role: childAgent ? 'agent' : 'main' } : undefined} />
+        <Composer draft={draft} setDraft={setDraft} send={() => void send()} stop={stopCurrent} attach={attach} ready={ready && !w.active?.resync} busy={ready && Boolean(state?.turn)} sending={sending || commandBusy || w.loading} model={model} thinking={thinking} permission={permission} models={w.catalogs.models?.entries ?? []} commands={w.catalogs.commands?.entries ?? []} command={command} inputRef={input} queue={state?.queue} workspaceName={workspaceLabel} chooseProject={chooseProject} recipient={hasCollaboration || childAgent ? { name: agentName, role: childAgent ? 'agent' : 'main' } : undefined} />
       </div>}
       </div><ReviewPanel visible={reviewOpen && page === 'thread'} workspace={w.connection.workspace} onClose={() => setReviewOpen(false)} onCompose={compose} /><BrowserPanel visible={browserOpen && page === 'thread'} occluded={browserOccluded} onClose={() => setBrowserOpen(false)} /></div>{terminalMounted && <Suspense fallback={<section className="terminal-panel"><p className="terminal-status">{t('Starting terminal…')}</p></section>}><TerminalPanel visible={terminalOpen && page === 'thread'} onClose={() => setTerminalOpen(false)} /></Suspense>}</div>
     </main>

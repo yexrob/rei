@@ -47,7 +47,7 @@ function desktop({ welcome = false, reject = false } = {}) {
     configureProvider: vi.fn(async () => ({ ok: true as const, value: undefined }))
   }
   window.bingoDesktop = api
-  return { api, emit, state }
+  return { api, emit, state, emitDesktop: (event: DesktopEvent) => listener(event) }
 }
 
 beforeEach(() => {
@@ -97,6 +97,51 @@ describe('desktop user journeys', () => {
     expect(api.connect).toHaveBeenCalledWith({ binary: '/bin/bingo' })
     expect(vi.mocked(api.request).mock.calls.some(([call]) => call.method === 'session/open')).toBe(false)
     expect(screen.getByRole('button', { name: 'Personal space' })).toBeTruthy()
+  })
+  it('leaves the starting area on first send and restores it only for a new thread', async () => {
+    desktop(); render(<App />); await ready()
+    expect(screen.getByRole('heading', { name: 'What would you like to work on?' })).toBeTruthy()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message bingo' }), { target: { value: 'Plan a small change' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+    await screen.findByRole('heading', { name: 'Answer' })
+    expect(screen.queryByRole('heading', { name: 'What would you like to work on?' })).toBeNull()
+    expect(document.querySelector('.empty-conversation')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'New thread' }))
+    expect(screen.getByRole('heading', { name: 'What would you like to work on?' })).toBeTruthy()
+  })
+  it('pauses stale retry presentation on disconnect while retaining history, error and editable drafts', async () => {
+    const { api, emit, emitDesktop, state } = desktop(); render(<App />); await ready()
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button'))
+    await screen.findByRole('heading', { name: 'Review the workspace' })
+    await act(async () => {
+      emit({ type: 'itemCompleted', item: { id: 'history', status: 'completed', startedAt: time, body: { kind: 'assistant', text: 'Saved history remains readable.' } } })
+      emit({ type: 'turnStarted', turn: 'turn', inputs: [], origin: 'submit' })
+      emit({ type: 'turnRetrying', turn: 'turn', attempt: 1, max: 3, delayMs: 1000, dropped: [], reason: 'Provider connection was reset.' })
+    })
+    expect(document.querySelector('.session-status.retrying')).toBeTruthy()
+    expect(document.querySelector('.live-working')?.textContent).toBe('Retrying · attempt 1 of 3')
+    expect(screen.getByRole('button', { name: 'Stop generation' })).toBeTruthy()
+    const input = screen.getByRole('textbox', { name: 'Message bingo' })
+    fireEvent.change(input, { target: { value: 'Unsent direction' } })
+    await act(async () => emitDesktop({ type: 'connection', connection: { status: 'failed', connectionId: 'connection', workspace: '/work', binary: '/bin/bingo', error: { code: 'TRANSPORT_CLOSED', message: 'Runtime disconnected.' } } }))
+    expect(document.querySelector('.session-status.disconnected')?.textContent).toBe('Not connected')
+    expect(document.querySelector('.live-working')).toBeNull()
+    expect(screen.queryByText('Retrying · attempt 1 of 3')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Stop generation' })).toBeNull()
+    expect(screen.getByText('Saved history remains readable.')).toBeTruthy()
+    expect(screen.getByText('Runtime disconnected.')).toBeTruthy()
+    fireEvent.change(input, { target: { value: 'Still editable offline' } })
+    expect((input as HTMLTextAreaElement).value).toBe('Still editable offline')
+    expect(screen.getByRole('button', { name: 'Send message' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy()
+    // Only a fresh authoritative open after reconnect may present a live turn again.
+    state.turn = { id: 'fresh-turn', startedAt: time, origin: 'submit' }
+    fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }))
+    await waitFor(() => expect(api.connect).toHaveBeenCalledTimes(2))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button'))
+    await waitFor(() => expect(document.querySelector('.session-status.working')).toBeTruthy())
+    expect(document.querySelector('.live-working')?.textContent).toBe('Working…')
+    expect(screen.getByRole('button', { name: 'Stop generation' }).hasAttribute('disabled')).toBe(false)
   })
   it('submits through the real protocol contract, renders response, and clears only accepted drafts', async () => {
     desktop(); render(<App />); await ready()

@@ -9,11 +9,20 @@ import { join, resolve } from 'node:path'
 const binary = process.env.BINGO_E2E_BINARY || resolve('../bingo-improve/target/debug', process.platform === 'win32' ? 'bingo.exe' : 'bingo')
 
 async function expectComposerPosition(page: Page, centered: boolean) {
-  await expect.poll(() => page.locator('.conversation').evaluate((conversation, centered) => {
-    const composer = conversation.querySelector('.composer-region')!.getBoundingClientRect()
+  if (!centered) {
+    await expect.poll(() => page.locator('.conversation').evaluate((conversation) => Math.abs(conversation.querySelector('.composer-region')!.getBoundingClientRect().bottom - conversation.getBoundingClientRect().bottom))).toBeLessThan(2)
+    return
+  }
+  // The complete starting area is the composition, not the input alone.
+  await expect.poll(() => page.locator('.conversation').evaluate((conversation) => {
     const bounds = conversation.getBoundingClientRect()
-    return centered ? Math.abs(composer.y + composer.height / 2 - bounds.y - bounds.height / 2) : Math.abs(composer.bottom - bounds.bottom)
-  }, centered)).toBeLessThan(2)
+    const heading = conversation.querySelector('.welcome-heading')!.getBoundingClientRect()
+    const composer = conversation.querySelector('.composer-region')!.getBoundingClientRect()
+    return Math.abs((heading.top + composer.bottom) / 2 - (bounds.top + bounds.bottom) / 2) < 30
+      && heading.top >= bounds.top + 15 && composer.bottom <= bounds.bottom - 15
+      && heading.bottom + 16 <= composer.top
+      && composer.width >= Math.min(300, bounds.width - 40)
+  })).toBe(true)
 }
 
 test('real desktop: connect, stream, approve, resume, stop, themes and narrow layout', async ({}, testInfo) => {

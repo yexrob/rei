@@ -42,7 +42,7 @@ export const TranscriptItem = memo(function TranscriptItem({ item, openLink, run
   return <p className="system-note">{itemText(item)}</p>
 })
 
-export function Timeline({ projection, openLink, runAction, loadHistory, loading, assistantName = 'Bingo', sessions, onSelectSession }: { projection: SessionProjection; openLink: OpenLink; runAction: RunAction; loadHistory: () => void; loading: boolean; assistantName?: string } & Omit<ToolNavigation, 'sessionId'>): React.JSX.Element {
+export function Timeline({ projection, openLink, runAction, loadHistory, loading, assistantName = 'Bingo', sessions, onSelectSession, connected = true }: { projection: SessionProjection; openLink: OpenLink; runAction: RunAction; loadHistory: () => void; loading: boolean; assistantName?: string; connected?: boolean } & Omit<ToolNavigation, 'sessionId'>): React.JSX.Element {
   const { t } = useI18n()
   const scroll = useRef<HTMLDivElement>(null)
   const transcript = useRef<HTMLDivElement>(null)
@@ -50,7 +50,7 @@ export function Timeline({ projection, openLink, runAction, loadHistory, loading
   const previousHeight = useRef(0)
   const [showLatest, setShowLatest] = useState(false)
   const state = projection.snapshot
-  const processing = Boolean(state.turn && !state.interactions?.length)
+  const processing = connected && Boolean(state.turn && !state.interactions?.length)
   useLayoutEffect(() => {
     const element = scroll.current
     if (!element) return
@@ -70,8 +70,8 @@ export function Timeline({ projection, openLink, runAction, loadHistory, loading
     if (!element) return
     following.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100
     setShowLatest(!following.current)
-  }}><div className="transcript" ref={transcript} data-working={processing}>
-    {!projection.history.complete && <button className="history-button" disabled={loading} onClick={() => { following.current = false; previousHeight.current = scroll.current?.scrollHeight ?? 0; loadHistory() }}>{t(loading ? 'Loading history…' : 'Load earlier messages')}</button>}
+  }}><div className="transcript" ref={transcript} data-working={processing} data-connected={connected}>
+    {!projection.history.complete && <button className="history-button" disabled={loading || !connected} onClick={() => { following.current = false; previousHeight.current = scroll.current?.scrollHeight ?? 0; loadHistory() }}>{t(loading ? 'Loading history…' : 'Load earlier messages')}</button>}
     {state.items.map((item) => <TranscriptItem key={item.id} item={item} openLink={openLink} runAction={runAction} assistantName={assistantName} sessionId={state.summary.id} sessions={sessions} onSelectSession={onSelectSession} deferActions={Boolean(state.turn && item.turn === state.turn.id)} />)}
     {processing && <WorkingIndicator retrying={state.turn?.retrying} />}
     {state.lastTurn?.status.kind === 'failed' && !state.turn && <p className="turn-failure" role="alert">{state.lastTurn.status.error.message}</p>}
