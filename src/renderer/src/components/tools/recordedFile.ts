@@ -1,6 +1,6 @@
 import type { ContentPart } from '../../../../shared/rpc'
 import type { ToolCallItem } from '../../state/session'
-import { object } from '../primitives'
+import { inputRecord } from './toolPresentation'
 import { recordedImages, recordedImageSource } from '../media/JournalMedia'
 export { parseRecordedDiff } from './recordedDiff'
 
@@ -27,7 +27,7 @@ function readTab(text: string): RecordedTab {
     const match = /^\s*(\d+)\t(.*)$/.exec(text)
     return match && Number.isSafeInteger(Number(match[1])) ? { number: Number(match[1]), text: match[2] } : { text }
   })
-  return { kind: 'source', label: 'Recorded read', text: rows.map((row) => row.text).join('\n'), rows, truncated: bounded.truncated }
+  return { kind: 'source', label: 'Recorded read', text: text.replace(/^[ \t]*\d+\t/gm, ''), rows, truncated: bounded.truncated }
 }
 
 function imageTabs(parts: ContentPart[]): RecordedTab[] {
@@ -52,7 +52,7 @@ function outputText(parts: ContentPart[]): string {
 
 export function recordedFile(item: ToolCallItem): RecordedFile {
   const { name, output } = item.body
-  const input = object(item.body.input)
+  const input = inputRecord(item.body.input)
   const parts = Array.isArray(output?.parts) ? output.parts : []
   const receipt = outputText(parts)
   const path = typeof input.file_path === 'string' ? input.file_path : ''

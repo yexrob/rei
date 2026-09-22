@@ -11,8 +11,8 @@ export function GenericToolCall(props: ToolCallProps): React.JSX.Element {
   const input = inputRecord(item.body.input)
   const mcp = mcpIdentity(item.body.name)
   return <ToolCallFrame item={item} icon={mcp ? Plug : Wrench} title={mcp ? <span className="tool-mcp-name"><small>MCP</small><span>{mcp.server}</span></span> : item.body.name} summary={mcp?.method ?? t('Tool operation')}>
-    <ParameterChips input={input} />
     <ToolResult {...props} />
+    <ParameterChips input={input} />
   </ToolCallFrame>
 }
 

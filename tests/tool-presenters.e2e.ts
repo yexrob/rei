@@ -31,13 +31,13 @@ async function fixture() {
   await writeFile(join(home, '.bingo/settings.json'), JSON.stringify({ provider: 'fake', model: 'fake-1', permissions: { defaultMode: 'bypassPermissions' }, mcpServers: { fixture: { type: 'stdio', command: process.execPath, args: [mcp] } } }))
   await writeFile(join(home, '.bingo/skills/presenter-check/SKILL.md'), '---\nname: presenter-check\ndescription: Inspect the isolated presenter fixture.\n---\nUse only the isolated fixture.\n')
   await writeFile(join(workspace, 'target.rs'), 'pub fn value() -> u8 { 1 }\n')
-  await writeFile(join(workspace, 'readme.rs'), 'pub fn read_me() {}\n')
+  await writeFile(join(workspace, 'readme.rs'), '// outside requested range\npub fn read_me() {}\n// outside requested range\n')
   const script = join(home, 'responses.json')
   await writeFile(script, JSON.stringify({ responses: [
     { steps: [
       { toolCall: { name: 'Write', input: { file_path: join(workspace, 'index.html'), content: html } } },
       { toolCall: { name: 'Edit', input: { file_path: join(workspace, 'target.rs'), old_string: '1', new_string: '2' } } },
-      { toolCall: { name: 'Read', input: { file_path: join(workspace, 'readme.rs') } } },
+      { toolCall: { name: 'Read', input: { file_path: join(workspace, 'readme.rs'), offset: 2, limit: 1 } } },
       { toolCall: { name: 'Glob', input: { pattern: '*.rs', path: workspace } } },
       { toolCall: { name: 'Grep', input: { pattern: 'pub fn', path: workspace, glob: '*.rs', output_mode: 'content', '-n': true } } },
       { toolCall: { name: 'Bash', input: { command: 'echo TOOL_TERMINAL_OUTPUT' } } },
@@ -78,7 +78,21 @@ test('semantic tool UI: recorded files, real MCP, terminal, inline beam and redu
     await page.screenshot({ animations: 'disabled', path: info.outputPath('semantic-tool-stream.png') })
 
     const write = page.locator('[data-tool-name="Write"]')
+    // Filename, icon, Enter, and Space all activate the same native row button.
+    const writeToggle = write.locator('.tool-card-toggle')
+    await write.getByText('index.html', { exact: true }).click()
+    await expect(writeToggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(write.locator('.recorded-source')).toContainText('REI_TOOL_SOURCE_EXECUTED')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await writeToggle.press('Space')
+    await expect(writeToggle).toHaveAttribute('aria-expanded', 'false')
+    await writeToggle.press('Enter')
+    await expect(writeToggle).toHaveAttribute('aria-expanded', 'true')
+    await write.locator('.tool-family-icon').click()
+    await expect(writeToggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.locator('.tool-card button button, .tool-card-disclosure')).toHaveCount(0)
     await write.getByRole('button', { name: 'Preview index.html' }).click()
+    await expect(writeToggle).toHaveAttribute('aria-expanded', 'false')
     const preview = page.getByRole('dialog', { name: 'Recorded file preview' })
     await expect(preview.locator('.recorded-source')).toContainText('REI_TOOL_SOURCE_EXECUTED')
     await expect(preview.getByRole('button', { name: 'Written content', exact: true })).toHaveAttribute('aria-pressed', 'true')
@@ -96,14 +110,22 @@ test('semantic tool UI: recorded files, real MCP, terminal, inline beam and redu
     await expect(preview.locator('.recorded-diff')).toContainText('pub fn value() -> u8 { 2 }')
     await page.screenshot({ animations: 'disabled', path: info.outputPath('recorded-file-diff.png') })
     await page.keyboard.press('Escape')
-    await page.locator('[data-tool-name="Read"]').getByRole('button', { name: 'Preview readme.rs' }).click()
+    const read = page.locator('[data-tool-name="Read"]')
+    await read.locator('.tool-card-toggle').press('Enter')
+    await expect(read.locator('.recorded-source')).toContainText('pub fn read_me()')
+    await expect(read.locator('.recorded-source')).not.toContainText('outside requested range')
+    await expect(read.locator('.recorded-range')).toHaveText('Recorded lines 2–2')
+    await expect(read.locator('.recorded-line-number').first()).toHaveText('2')
+    await page.screenshot({ animations: 'disabled', path: info.outputPath('inline-read-range.png') })
+    await read.getByRole('button', { name: 'Preview readme.rs' }).click()
     await expect(preview.locator('.recorded-source')).toContainText('pub fn read_me()')
     await page.keyboard.press('Escape')
+    await expect(read.locator('.tool-card-toggle')).toHaveAttribute('aria-expanded', 'true')
 
     for (const name of ['Glob', 'Grep', 'Bash', 'TaskCreate', 'Skill', 'ScheduleList', 'mcp__fixture__inspect']) {
       const card = page.locator(`[data-tool-name="${name}"]`)
       await expect(card).toBeVisible()
-      await card.getByRole('button', { name: 'Show tool details' }).click()
+      await card.getByRole('button', { name: /^Show tool details:/ }).click()
       await expect(card.locator('.tool-card-body')).toBeVisible()
     }
     const bash = page.locator('[data-tool-name="Bash"]')

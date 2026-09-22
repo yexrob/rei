@@ -6,6 +6,11 @@
 .file-additions { color: var(--success); }
 .file-deletions { color: var(--danger); }
 .file-record-detail { min-width: 0; padding: 2px 0; }
+.file-record-detail .recorded-source { max-height: 360px; border: 0; border-radius: 5px; }
+.file-record-detail .recorded-toolbar { margin: 8px 0; }
+.file-record-detail .recorded-tabs { padding: 0; border: 0; background: transparent; }
+.file-record-detail .recorded-tabs button { padding: 3px 7px; min-height: 28px; }
+.recorded-range { color: var(--secondary); font-size: 11px; margin: 5px 0; }
 .file-record-path, .recorded-file-path { margin: 0 0 8px; color: var(--secondary); overflow-wrap: anywhere; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .file-receipt { max-height: 180px; margin: 6px 0; white-space: pre-wrap; overflow: auto; overflow-wrap: anywhere; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .recorded-file-preview { min-width: 0; }
