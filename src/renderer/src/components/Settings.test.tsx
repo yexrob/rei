@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { useWorkspace } from '../state/useWorkspace'
 import { Settings } from './Settings'
@@ -29,6 +29,18 @@ it('preserves native dialog semantics, focus return and real appearance preferen
   result.unmount()
   expect(document.activeElement).toBe(opener)
   opener.remove()
+})
+it('keeps navigation and theme previews accessible without decorative names', () => {
+  render(<Settings workspace={workspace()} onClose={vi.fn()} openLink={vi.fn()} clearDrafts={vi.fn()} />)
+  const nav = screen.getByRole('navigation', { name: 'Settings sections' })
+  expect(within(nav).getByRole('button', { name: 'General' }).getAttribute('aria-current')).toBe('page')
+  const appearance = screen.getByRole('group', { name: 'Appearance' })
+  expect(within(appearance).getAllByRole('button').map((button) => button.textContent)).toEqual(['System', 'Light', 'Dark'])
+  expect(within(appearance).queryAllByRole('img')).toHaveLength(0)
+  expect(within(appearance).getByRole('button', { name: 'System' }).getAttribute('aria-pressed')).toBe('true')
+  fireEvent.click(within(nav).getByRole('button', { name: 'Keyboard shortcuts' }))
+  expect(screen.getByRole('heading', { name: 'Keyboard shortcuts', level: 1 })).toBeTruthy()
+  expect(within(nav).getByRole('button', { name: 'Keyboard shortcuts' }).getAttribute('aria-current')).toBe('page')
 })
 it('clears an optional runtime override before reconnecting through default discovery', async () => {
   const w = workspace()

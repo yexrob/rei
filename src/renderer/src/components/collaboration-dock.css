@@ -19,21 +19,22 @@
 .collaboration-panel { width: 100%; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised); box-shadow: var(--shadow-soft); overflow: hidden; animation: collaboration-enter var(--motion-normal) var(--ease-out); }
 @keyframes collaboration-enter { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .collaboration-panel { animation: none; } }
-.collaboration-panel-heading { padding: 12px 14px 6px; color: var(--secondary); font-size: 10px; font-weight: 500; }
+.collaboration-panel-heading { padding: 12px 14px 6px; color: var(--secondary); font-size: 11px; font-weight: 500; }
 .collaboration-rows { max-height: min(410px, calc(100dvh - 190px)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 4px; }
 .collaboration-row { position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr) 14px; align-items: center; width: 100%; height: 82px; min-height: 82px; gap: 10px; padding: 10px; border: 1px solid transparent; border-radius: 9px; background: transparent; text-align: start; }
 .collaboration-row[aria-current="page"] { background: var(--canvas); border-color: var(--line); }
 .collaboration-row:hover { background: var(--sidebar); }
 .collaboration-row:focus-visible, .collaboration-stack-toggle:focus-visible, .collaboration-stack-room:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .collaboration-row-body { display: flex; flex-direction: column; min-width: 0; gap: 4px; }
-.collaboration-row-heading { display: flex; align-items: baseline; min-width: 0; gap: 6px; height: 16px; }
-.collaboration-row-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
-.collaboration-role { flex-shrink: 0; font-size: 9px; color: var(--secondary); }
-.collaboration-row-status { flex-shrink: 0; margin-inline-start: auto; font-size: 9px; color: var(--secondary); }
+/* Reserve one header line so live status changes never move pointer targets. */
+.collaboration-row-heading { display: flex; align-items: baseline; min-width: 0; gap: 6px; height: 16px; line-height: 16px; }
+.collaboration-row-heading strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.collaboration-role { flex-shrink: 0; font-size: 11px; color: var(--secondary); }
+.collaboration-row-status { flex-shrink: 0; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-inline-start: auto; font-size: 11px; color: var(--secondary); }
 .collaboration-row-status[data-status="working"] { color: var(--success); }
 .collaboration-row-status[data-status="failed"] { color: var(--danger); }
 .collaboration-activity, .collaboration-activity-detail { display: block; height: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 400; line-height: 14px; }
-.collaboration-activity-detail { font-size: 10px; color: var(--secondary); }
+.collaboration-activity-detail { font-size: 11px; color: var(--secondary); }
 .collaboration-row-chevron { color: var(--secondary); opacity: 0; }
 .collaboration-row:hover .collaboration-row-chevron, .collaboration-row:focus-visible .collaboration-row-chevron { opacity: 1; }
 @media (max-width: 600px) {

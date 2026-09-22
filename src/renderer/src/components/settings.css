@@ -16,7 +16,7 @@
 .modal.wide:has(> .settings-layout) > .modal-heading {
   position: absolute;
   inset: 0 auto auto 0;
-  width: 280px;
+  width: 252px;
   height: 62px;
   padding: 0 22px;
   border: 0;
@@ -24,7 +24,7 @@
 }
 .app-shell[data-platform='darwin'] .modal.wide:has(> .settings-layout) > .modal-heading { padding-inline-start: 88px; }
 .modal.wide:has(> .settings-layout) > .modal-heading h2 { font-size: 14px; font-weight: 600; }
-.modal > .settings-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 0; height: 100%; min-height: 0; }
+.modal > .settings-layout { display: grid; grid-template-columns: 252px minmax(0, 1fr); gap: 0; height: 100%; min-height: 0; }
 .settings-layout > .settings-nav { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 86px 16px 24px; border-inline-end: 1px solid var(--line); background: var(--sidebar); }
 .settings-layout > .settings-nav button { display: flex; align-items: center; gap: 11px; min-height: 42px; justify-content: flex-start; padding: 10px 12px; border: 1px solid transparent; border-radius: 9px; color: var(--secondary); background: transparent; font-size: 13px; text-align: start; transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out); }
 .settings-layout > .settings-nav button > svg { flex-shrink: 0; }
@@ -86,9 +86,9 @@
 .settings-content .catalog-list p { color: var(--secondary); font-size: 13px; line-height: 1.6; }
 .settings-content .shortcuts > div { display: flex; justify-content: space-between; gap: 20px; padding: 17px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
 .settings-content .shortcuts dd { margin: 0; }
-@media (max-width: 800px) {
-  .modal > .settings-layout { grid-template-columns: 200px minmax(0, 1fr); }
-  .modal.wide:has(> .settings-layout) > .modal-heading { width: 200px; }
+@media (max-width: 1000px) {
+  .modal > .settings-layout { grid-template-columns: 220px minmax(0, 1fr); }
+  .modal.wide:has(> .settings-layout) > .modal-heading { width: 220px; }
   .settings-layout > .settings-content { padding: 42px 24px; }
 }
 @media (max-width: 560px) {
