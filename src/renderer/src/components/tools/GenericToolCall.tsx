@@ -1,4 +1,4 @@
-import { CircleHelp, Plug, Wrench } from 'lucide-react'
+import { CircleHelp, Plug, Wrench } from '../icons'
 import { useI18n } from '../../i18n'
 import { ToolCallFrame } from './ToolCallFrame'
 import { ParameterChips } from './ToolFields'

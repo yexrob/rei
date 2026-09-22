@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import * as Popover from '@radix-ui/react-popover'
-import { ChevronDown, ChevronRight, Folder, GitCompareArrows, Hash, Monitor } from 'lucide-react'
+import { ChevronDown, ChevronRight, Folder, GitCompareArrows, Hash, Monitor } from './icons'
 import type { Collaborator } from '../state/collaboration'
 import { roomMetadata } from '../state/collaboration'
 import { CollaborationDock } from './CollaborationDock'

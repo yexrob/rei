@@ -1,4 +1,4 @@
-import { ListTodo } from 'lucide-react'
+import { ListTodo } from '../icons'
 import { useI18n } from '../../i18n'
 import { ToolCallFrame } from './ToolCallFrame'
 import { taskFields, ToolFields } from './ToolFields'

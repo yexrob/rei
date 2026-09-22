@@ -1,4 +1,4 @@
-import { ExternalLink, Globe, Search, PanelsTopLeft } from 'lucide-react'
+import { ExternalLink, Globe, Search, PanelsTopLeft } from '../icons'
 import { useI18n } from '../../i18n'
 import { RichText } from '../Content'
 import { ToolCallFrame } from './ToolCallFrame'

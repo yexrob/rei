@@ -1,6 +1,7 @@
 .native-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--surface); }
 .native-panel[hidden] { display: none; }
-.panel-heading { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; min-height: 40px; padding: 4px 10px; border-bottom: 1px solid var(--line); }
+.panel-heading { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; min-height: 46px; padding: 7px 12px; border-bottom: 1px solid var(--line); background: var(--surface-raised); }
+.panel-heading > span:first-child > svg { color: var(--brand); }
 .panel-heading > span:first-child { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .panel-page-title, .terminal-cwd { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--secondary); }
 .panel-page-title { text-align: end; }

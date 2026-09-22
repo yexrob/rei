@@ -1,4 +1,4 @@
-import { X } from 'lucide-react'
+import { X } from '../icons'
 import { useI18n } from '../../i18n'
 import { IconButton } from '../primitives'
 import type { TerminalTab } from './terminal-controller'

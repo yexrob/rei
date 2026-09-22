@@ -1,0 +1,68 @@
+.rei-icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  vertical-align: middle;
+  overflow: visible;
+}
+
+.rei-icon :is(.icon-motion, .icon-accent) {
+  transform-box: view-box;
+  transform-origin: center;
+  transition: transform var(--motion-normal, 220ms) var(--ease-out, cubic-bezier(.2, .8, .2, 1)), color var(--motion-fast, 140ms) ease;
+}
+
+/* Movement follows the action, not the container: only an actionable parent's
+   direct icon responds, never all icons inside a card or navigation region. */
+:where(button:not(:disabled), a[href], [role="button"]:not([aria-disabled="true"])):is(:hover, :focus-visible) > .rei-icon .icon-accent {
+  color: var(--brand, currentColor);
+}
+
+:where(button:not(:disabled), a[href], [role="button"]:not([aria-disabled="true"])):is(:hover, :focus-visible) > .rei-icon:is([data-icon="arrow-up-right"], [data-icon="external-link"]) .icon-motion {
+  transform: translate(1px, -1px);
+}
+
+:where(button:not(:disabled), a[href]):is(:hover, :focus-visible) > .rei-icon[data-icon="arrow-up"] .icon-motion {
+  transform: translateY(-1.5px);
+}
+
+:where(button:not(:disabled), a[href]):is(:hover, :focus-visible) > .rei-icon:is([data-icon="arrow-down"], [data-icon="download"]) .icon-motion {
+  transform: translateY(1.5px);
+}
+
+:where(button:not(:disabled), a[href]):is(:hover, :focus-visible) > .rei-icon[data-icon="arrow-left"] .icon-motion {
+  transform: translateX(-1.5px);
+}
+
+:where(button:not(:disabled), a[href]):is(:hover, :focus-visible) > .rei-icon[data-icon="arrow-right"] .icon-motion {
+  transform: translateX(1.5px);
+}
+
+:where(button:not(:disabled), a[href]):is(:hover, :focus-visible) > .rei-icon:is([data-icon="refresh-cw"], [data-icon="rotate-cw"]) .icon-motion {
+  transform: rotate(24deg);
+}
+
+:where(button:not(:disabled), a[href]):is(:hover, :focus-visible) > .rei-icon[data-icon="copy"] .icon-motion {
+  transform: translate(1px, 1px);
+}
+
+:where(button:not(:disabled), a[href]):is(:hover, :focus-visible) > .rei-icon[data-icon="trash"] .icon-motion {
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rei-icon,
+  .rei-icon * {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .rei-icon .icon-motion {
+    transform: none !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .rei-icon .icon-accent {
+    color: inherit !important;
+  }
+}

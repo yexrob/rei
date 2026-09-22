@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowUp, AtSign, Hash, Plus, X } from 'lucide-react'
+import { ArrowUp, AtSign, Hash, Plus, X } from './icons'
 import { DESKTOP_IMAGE_LIMITS } from '../../../shared/desktop'
 import { useI18n } from '../i18n'
 import type { Draft } from './Composer'

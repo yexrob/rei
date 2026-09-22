@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { FileCode2, FileImage, FileText, type LucideIcon } from 'lucide-react'
+import { FileCode2, FileImage, FileText, type IconComponent } from '../icons'
 import type { ToolCallItem } from '../../state/session'
 import type { OpenLink, RunAction } from '../Content'
 import { basename } from '../primitives'
@@ -10,7 +10,7 @@ import { parseRecordedDiff, type DiffCounts } from './recordedDiff'
 import { RecordedFilePreview } from './RecordedFilePreview'
 import './file-tools.css'
 
-function fileIcon(path: string): LucideIcon {
+function fileIcon(path: string): IconComponent {
   if (/\.(png|jpe?g|gif|webp|svg|ico)$/i.test(path)) return FileImage
   if (/\.(tsx?|jsx?|html?|css|scss|json|rs|py|go|sh|ya?ml|toml|xml|vue|svelte)$/i.test(path)) return FileCode2
   return FileText

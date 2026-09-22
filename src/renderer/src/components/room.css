@@ -20,7 +20,8 @@
 .room-post .system-note { margin-block: 0; }
 .room-post .attached-image { max-width: 100%; max-height: 320px; object-fit: contain; margin-top: 8px; }
 .room-empty { color: var(--secondary); text-align: center; margin-top: 60px; font-size: 13px; }
-.room-details { width: 264px; flex-shrink: 0; min-height: 0; overflow-y: auto; padding: 12px 22px 24px; border-left: 1px solid var(--line); background: var(--canvas); }
+.room-details { width: 264px; flex-shrink: 0; min-height: 0; overflow-y: auto; padding: 18px 22px 24px; border-left: 1px solid var(--line); background: var(--surface-inset); animation: room-details-enter var(--motion-normal) var(--ease-out); }
+@keyframes room-details-enter { from { opacity: 0; transform: translateX(6px); } to { opacity: 1; transform: translateX(0); } }
 .room-details h3 { display: flex; gap: 10px; align-items: baseline; margin: 0 0 20px; font-size: 13px; font-weight: 600; }
 .room-details h3 > span { color: var(--secondary); font-size: 11px; font-weight: 400; }
 .room-members { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }

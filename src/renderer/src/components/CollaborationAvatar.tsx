@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { Asterisk, Diamond, Flower2, Orbit, Sparkles } from 'lucide-react'
+import { Asterisk, Diamond, Flower2, Orbit, Sparkles } from './icons'
 import './collaboration-dock.css'
 
 export interface CollaborationAvatarProps {

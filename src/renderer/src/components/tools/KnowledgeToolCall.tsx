@@ -1,4 +1,4 @@
-import { BookOpen, Lightbulb } from 'lucide-react'
+import { BookOpen, Lightbulb } from '../icons'
 import { useI18n } from '../../i18n'
 import { ToolCallFrame } from './ToolCallFrame'
 import { knowledgeFields, ToolFields } from './ToolFields'

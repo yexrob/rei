@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useI18n } from '../i18n'
+import { ReiMark } from './icons'
 
 type Phase = 'intro' | 'revealing' | 'settled'
 
@@ -28,7 +29,7 @@ export function StartupTransition({ ready, children }: { ready: boolean; childre
   return <div className="startup-stage" data-phase={phase}>
     <div className="startup-content" inert={phase === 'intro'}>{children}</div>
     {phase !== 'settled' && <div className="startup-prelude" aria-hidden={phase === 'revealing'}>
-      <div className="startup-identity"><span className="startup-seal" aria-hidden="true">b.</span><span className="startup-wordmark">bingo</span><span className="startup-status" role="status">{t('Opening your space')}</span></div>
+      <div className="startup-identity"><span className="startup-seal" aria-hidden="true"><ReiMark size={42} /></span><span className="startup-wordmark">Rei</span><span className="startup-status" role="status">{t('Opening your space')}</span></div>
       {phase === 'intro' && <button className="startup-skip" onClick={() => setPhase('settled')}>{t('Skip intro')}</button>}
     </div>}
   </div>

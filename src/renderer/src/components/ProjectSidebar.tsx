@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Blocks, ChevronDown, ChevronRight, Clock3, Folder, PanelLeft, Plus, Search, Settings2, SquarePen } from 'lucide-react'
+import { Blocks, ChevronDown, ChevronRight, Clock3, Folder, PanelLeft, Plus, ReiMark, Search, Settings2, SquarePen } from './icons'
 import type { SessionSummary } from '../../../shared/rpc'
 import { useI18n } from '../i18n'
 import { basename, IconButton } from './primitives'
@@ -37,12 +37,13 @@ export function ProjectSidebar(p: Props): React.JSX.Element {
 
   return <aside className="sidebar" aria-label={t('Workspace navigation')} inert={!p.visible}>
     <div className="sidebar-titlebar">
-      <span className="sidebar-window-space" aria-hidden="true">{p.platform !== 'darwin' && 'bingo'}</span>
+      <span className="sidebar-window-space" aria-hidden="true" />
       <IconButton label="Hide sidebar" onClick={p.onHide}><PanelLeft size={17} /></IconButton>
       <IconButton label="Search & commands" onClick={p.onSearch}><Search size={17} /></IconButton>
     </div>
+    <div className="sidebar-identity"><ReiMark size={25} /><span>Rei</span><span className="sidebar-identity-caption">{t('Workspace')}</span></div>
     <div className="sidebar-actions">
-      <button onClick={p.onNewThread}><SquarePen size={17} />{t('New thread')}<kbd aria-hidden="true">{p.platform === 'darwin' ? '⌘N' : 'Ctrl N'}</kbd></button>
+      <button className="new-thread-button" onClick={p.onNewThread}><SquarePen size={17} />{t('New thread')}<kbd aria-hidden="true">{p.platform === 'darwin' ? '⌘N' : 'Ctrl N'}</kbd></button>
       <button aria-current={p.page === 'automations' ? 'page' : undefined} className={p.page === 'automations' ? 'selected' : ''} onClick={() => p.onPage('automations')}><Clock3 size={17} />{t('Automations')}</button>
       <button aria-current={p.page === 'skills' ? 'page' : undefined} className={p.page === 'skills' ? 'selected' : ''} onClick={() => p.onPage('skills')}><Blocks size={17} />{t('Skills')}</button>
     </div>
@@ -68,7 +69,7 @@ export function ProjectSidebar(p: Props): React.JSX.Element {
     </div>
     <div className="sidebar-bottom">
       <div className="sidebar-settings-row"><button onClick={p.onSettings}><Settings2 size={16} />{t('Settings')}</button><span className="sidebar-wordmark">bingo</span></div>
-      <div className="connection-indicator" role="status"><span className={`connection-dot ${p.ready ? 'connected' : ''}`} /><span>{t(p.ready ? 'Connected locally' : p.connecting ? 'Connecting…' : 'Not connected')}</span></div>
+      <div className="connection-indicator" role="status"><span className={`connection-dot ${p.ready ? 'connected' : p.connecting ? 'connecting' : ''}`} aria-hidden="true" /><span>{t(p.ready ? 'Connected locally' : p.connecting ? 'Connecting…' : 'Not connected')}</span></div>
     </div>
   </aside>
 }

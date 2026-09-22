@@ -1,5 +1,5 @@
 import { useId, useState } from 'react'
-import { ExternalLink, ShieldCheck } from 'lucide-react'
+import { ExternalLink, ShieldCheck } from './icons'
 import type { Activation, Answer, Interaction, Question } from '../../../shared/rpc'
 import { CodeBlock, type OpenLink } from './Content'
 import { useI18n } from '../i18n'

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowUpRight, BookOpen, RefreshCw, Search } from 'lucide-react'
+import { ArrowUpRight, BookOpen, RefreshCw, Search } from './icons'
 import type { useWorkspace } from '../state/useWorkspace'
 import type { OpenLink } from './Content'
 import { ErrorBanner, errorMessage, object } from './primitives'
@@ -26,7 +26,7 @@ export function SkillsPage({ workspace: w, onCompose }: Props): React.JSX.Elemen
   const entries = (w.catalogs.commands?.entries ?? []).filter((entry) => object(entry.meta).family === 'skill').map((entry) => ({ ...entry, label: entry.id }))
   const filtered = entries.filter((entry) => `${entry.label} ${entry.id} ${String(object(entry.meta).description ?? object(entry.meta).hint ?? '')}`.toLowerCase().includes(query.trim().toLowerCase()))
   return <section className="capability-page" aria-labelledby="skills-title">
-    <header className="capability-heading"><div><h1 id="skills-title">{t('Skills')}</h1><p>{t('Reusable instructions, discovered from your runtime.')}</p></div><button disabled={!ready || state.loading} onClick={() => setRevision((value) => value + 1)}><RefreshCw size={15} />{t('Refresh skills')}</button></header>
+    <header className="capability-heading"><div><h1 id="skills-title"><BookOpen size={25} />{t('Skills')}</h1><p>{t('Reusable instructions, discovered from your runtime.')}</p></div><button disabled={!ready || state.loading} onClick={() => setRevision((value) => value + 1)}><RefreshCw size={15} className={ready && state.loading ? 'capability-refreshing' : undefined} />{t('Refresh skills')}</button></header>
     <div className="capability-search"><Search size={16} /><input type="search" aria-label={t('Search skills')} placeholder={t('Search skills…')} value={query} onChange={(event) => setQuery(event.target.value)} /></div>
     <p className="capability-note">{t('Choose a skill to add its command to your draft. Nothing runs until you send.')}</p>
     {!ready ? <div className="capability-empty"><BookOpen size={24} /><p>{t('Connect to bingo to discover skills.')}</p></div>

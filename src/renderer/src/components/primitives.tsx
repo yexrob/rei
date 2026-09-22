@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
-import { Check, Copy, X } from 'lucide-react'
+import { Check, Copy, X } from './icons'
 import { useI18n } from '../i18n'
 
-export function IconButton({ label, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }): React.JSX.Element {
+export function IconButton({ label, children, className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }): React.JSX.Element {
   const { t } = useI18n()
-  return <button type="button" className="icon-button" title={t(label)} aria-label={t(label)} {...props}>{children}</button>
+  return <button type="button" className={`icon-button ${className}`.trim()} title={t(label)} aria-label={t(label)} {...props}>{children}</button>
 }
 
 export function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }): React.JSX.Element {
@@ -15,7 +15,7 @@ export function CopyButton({ text, label = 'Copy' }: { text: string; label?: str
     const timer = setTimeout(() => setStatus(''), 2400)
     return () => clearTimeout(timer)
   }, [status])
-  return <span className="copy-control"><IconButton label={status || label} onClick={() => {
+  return <span className="copy-control" data-state={status === 'Copied' ? 'copied' : status ? 'failed' : 'idle'}><IconButton label={status || label} onClick={() => {
     void navigator.clipboard.writeText(text).then(() => setStatus('Copied'), () => setStatus('Could not copy'))
   }}>{status === 'Copied' ? <Check size={14} /> : <Copy size={14} />}</IconButton><span className="sr-only" role="status">{t(status)}</span></span>
 }

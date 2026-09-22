@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Clock3, Plus, RefreshCw } from 'lucide-react'
+import { Clock3, Plus, RefreshCw } from './icons'
 import type { View } from '../../../shared/rpc'
 import type { useWorkspace } from '../state/useWorkspace'
 import { StructuredView, type OpenLink } from './Content'
@@ -32,7 +32,7 @@ export function AutomationsPage({ workspace: w, openLink, onCompose }: Props): R
   }, [ready, w.connection.connectionId, w.readCatalog, w.runActionView, revision])
   const refresh = () => setRevision((value) => value + 1)
   return <section className="capability-page" aria-labelledby="automations-title">
-    <header className="capability-heading"><div><h1 id="automations-title">{t('Automations')}</h1><p>{t('Give recurring work a place on the calendar.')}</p></div><div className="button-row"><button disabled={!ready || result.kind === 'loading'} onClick={refresh} aria-label={t('Refresh automations')}><RefreshCw size={15} /></button><button className="primary" disabled={!ready || result.kind !== 'ready'} onClick={() => setCreating(!creating)}><Plus size={15} />{t('New automation')}</button></div></header>
+    <header className="capability-heading"><div><h1 id="automations-title"><Clock3 size={25} />{t('Automations')}</h1><p>{t('Give recurring work a place on the calendar.')}</p></div><div className="button-row"><button disabled={!ready || result.kind === 'loading'} onClick={refresh} aria-label={t('Refresh automations')}><RefreshCw size={15} className={ready && result.kind === 'loading' ? 'capability-refreshing' : undefined} /></button><button className="primary" disabled={!ready || result.kind !== 'ready'} aria-expanded={creating && ready && result.kind === 'ready'} onClick={() => setCreating(!creating)}><Plus size={15} />{t('New automation')}</button></div></header>
     <p className="capability-note">{t('Schedules are managed by bingo. They run only while a bingo process holds the schedule store.')}</p>
     {creating && ready && result.kind === 'ready' && <AutomationDraft onCompose={onCompose} onCancel={() => setCreating(false)} />}
     {!ready ? <div className="capability-empty"><Clock3 size={24} /><p>{t('Connect to bingo to view automations.')}</p></div>

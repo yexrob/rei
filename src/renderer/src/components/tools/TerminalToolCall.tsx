@@ -1,4 +1,4 @@
-import { Terminal } from 'lucide-react'
+import { Terminal } from '../icons'
 import { useI18n } from '../../i18n'
 import { contentText } from '../../state/session'
 import { ToolCallFrame } from './ToolCallFrame'

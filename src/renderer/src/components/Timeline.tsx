@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowDown, ChevronRight, Terminal, Wrench } from 'lucide-react'
+import { ArrowDown, ChevronRight, Terminal, Wrench } from './icons'
 import type { Item, SessionSummary, View } from '../../../shared/rpc'
 import { contentText, itemText, type SessionProjection, type ToolCallItem } from '../state/session'
 import { ToolCallCard } from './tools/ToolCallCard'

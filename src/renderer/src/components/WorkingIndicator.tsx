@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { LoaderCircle } from 'lucide-react'
+import { LoaderCircle } from './icons'
 import type { Retry } from '../../../shared/rpc'
 import { useI18n } from '../i18n'
 import './working-indicator.css'

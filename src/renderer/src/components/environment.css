@@ -1,6 +1,8 @@
 .environment-trigger { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 5px 8px; border: 0; background: transparent; color: var(--secondary); font-size: 11px; font-weight: 400; }
 .environment-trigger[aria-expanded="true"] { background: var(--sidebar); color: var(--text); }
-.environment-popover { z-index: 75; width: min(304px, calc(100vw - 32px)); padding: 15px 16px 12px; border: 1px solid color-mix(in srgb, var(--line) 70%, transparent); border-radius: 14px; background: var(--surface); color: var(--text); box-shadow: 0 8px 30px #00000012, 0 1px 4px #00000006; }
+.environment-popover { z-index: 75; width: min(304px, calc(100vw - 32px)); padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised); color: var(--text); box-shadow: var(--shadow-soft); transform-origin: var(--radix-popover-content-transform-origin); animation: environment-enter var(--motion-normal) var(--ease-out); }
+@keyframes environment-enter { from { opacity: 0; transform: translateY(-4px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .environment-popover { animation: none; } }
 .environment-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 18px; }
 .environment-heading strong { font-size: 12px; font-weight: 550; }
 .environment-heading > span { display: inline-flex; gap: 5px; align-items: center; font-size: 10px; color: var(--secondary); }

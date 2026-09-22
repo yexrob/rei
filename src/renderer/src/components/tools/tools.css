@@ -1,5 +1,5 @@
 .tool-card { --tool-accent: var(--quiet); margin: 3px 0; min-width: 0; border: 0; background: transparent; font-size: 12px; }
-.tool-card--running, .tool-card--pending { --tool-accent: var(--accent, #6d69e8); }
+.tool-card--running, .tool-card--pending { --tool-accent: var(--brand); }
 .tool-card--failed { --tool-accent: var(--danger); }
 .tool-card--interrupted { --tool-accent: var(--warning); }
 .tool-card-header { display: flex; align-items: center; gap: 9px; padding: 5px 0; min-width: 0; }

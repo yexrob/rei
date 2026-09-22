@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from 'react'
-import { Check, ChevronRight, CirclePause, LoaderCircle, TriangleAlert, type LucideIcon } from 'lucide-react'
+import { Check, ChevronRight, CirclePause, LoaderCircle, TriangleAlert, type IconComponent } from '../icons'
 import type { ToolCallItem } from '../../state/session'
 import { useI18n } from '../../i18n'
 import { RecordedText } from './ToolResult'
@@ -8,7 +8,7 @@ import './tools.css'
 
 export type ToolCallFrameProps = {
   item: ToolCallItem
-  icon: LucideIcon
+  icon: IconComponent
   title?: ReactNode
   summary?: ReactNode
   actions?: ReactNode

@@ -1,28 +1,37 @@
 :root {
   color-scheme: light;
-  --canvas: #fafaf9;
-  --sidebar: #f0f0ee;
-  --surface: #ffffff;
-  --hover: #ededea;
-  --selected: #e5e5e2;
-  --text: #242424;
-  --secondary: #666661;
-  --quiet: #666661;
-  --line: #e2e2df;
-  --control-line: #b6b6b1;
-  --accent: #242424;
-  --on-accent: #ffffff;
-  --focus: #3665a4;
-  --danger: #a75050;
-  --danger-bg: #f8ebe9;
-  --warning: #896025;
-  --warning-bg: #faf4e8;
-  --success: #34764f;
-  --addition-bg: #eaf4ec;
-  --code: #f0f0ee;
-  --shadow: 0 12px 48px #252b231c, 0 2px 8px #252b230c;
-  --radius: 8px;
-  --fast: 120ms;
+  --canvas: #faf9f6;
+  --sidebar: #f0efeb;
+  --surface: #fffefb;
+  --surface-raised: #ffffff;
+  --surface-inset: #f3f2ee;
+  --hover: #e9e9e3;
+  --selected: #e2e7e0;
+  --text: #292e2b;
+  --secondary: #626962;
+  --quiet: #6d746c;
+  --line: #e0e3da;
+  --control-line: #aeb6aa;
+  --accent: #293d33;
+  --on-accent: #fffefb;
+  --brand: #456e61;
+  --brand-soft: #e8eee7;
+  --focus: #456e61;
+  --danger: #a3463f;
+  --danger-bg: #faece8;
+  --warning: #86601e;
+  --warning-bg: #f6efdc;
+  --success: #3a7154;
+  --addition-bg: #e9f1e9;
+  --code: #f2f3ee;
+  --shadow-soft: 0 2px 4px #25372b03, 0 8px 24px #25372b06;
+  --shadow: 0 16px 56px #1e30251a, 0 3px 10px #1e302508;
+  --radius: 9px;
+  --motion-fast: 140ms;
+  --motion-normal: 220ms;
+  --motion-slow: 360ms;
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --fast: var(--motion-fast);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 14px;
   font-synthesis: none;
@@ -32,33 +41,38 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #202020;
-  --sidebar: #191919;
-  --surface: #262626;
-  --hover: #2b2b2b;
-  --selected: #303030;
-  --text: #ededed;
-  --secondary: #a5a5a0;
-  --quiet: #a5a5a0;
-  --line: #393939;
-  --control-line: #70706b;
-  --accent: #ededed;
-  --on-accent: #202020;
-  --focus: #9ac3ff;
-  --danger: #e39494;
-  --danger-bg: #3a2929;
-  --warning: #e4c989;
-  --warning-bg: #393326;
-  --success: #82c99a;
-  --addition-bg: #24372a;
-  --code: #191919;
-  --shadow: 0 12px 48px #0005, 0 2px 8px #0003;
+  --canvas: #1b201e;
+  --sidebar: #171b19;
+  --surface: #232925;
+  --surface-raised: #2b322d;
+  --surface-inset: #181d1a;
+  --hover: #2e3630;
+  --selected: #354238;
+  --text: #e7eae2;
+  --secondary: #a8b1a6;
+  --quiet: #9ba69a;
+  --line: #343e36;
+  --control-line: #606f62;
+  --accent: #dde8dc;
+  --on-accent: #1b2b20;
+  --brand: #9fc9b5;
+  --brand-soft: #28392f;
+  --focus: #9fc9b5;
+  --danger: #e5a096;
+  --danger-bg: #3b2c28;
+  --warning: #d8bd7e;
+  --warning-bg: #363225;
+  --success: #9ac5a5;
+  --addition-bg: #263a2e;
+  --code: #181e1a;
+  --shadow-soft: 0 2px 4px #0000000a, 0 8px 24px #00000018;
+  --shadow: 0 16px 56px #0005, 0 3px 10px #0003;
 }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body { overflow: hidden; }
 button, input, textarea, select { font: inherit; color: inherit; }
-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 34px; padding: 7px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); cursor: pointer; font-size: 13px; font-weight: 500; transition: background var(--fast), border-color var(--fast); -webkit-app-region: no-drag; }
+button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 34px; padding: 7px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); cursor: pointer; font-size: 13px; font-weight: 500; transition: background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast), box-shadow var(--motion-fast); -webkit-app-region: no-drag; }
 button:hover:not(:disabled) { background: var(--hover); }
 button:disabled { cursor: not-allowed; color: var(--quiet); opacity: .6; }
 button svg { flex-shrink: 0; }
@@ -88,13 +102,17 @@ kbd { font-size: 10px; color: var(--secondary); font-weight: 400; }
 .icon-button { width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 6px; background: transparent; border-color: transparent; color: var(--secondary); }
 .text-button { border: 0; background: transparent; color: var(--secondary); padding-inline: 0; }
 .button-row { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin-block-start: 22px; }
-.app-shell { display: grid; grid-template-columns: 280px minmax(0, 1fr); height: 100%; overflow: hidden; }
+.app-shell { display: grid; grid-template-columns: 252px minmax(0, 1fr); height: 100%; overflow: hidden; transition: grid-template-columns var(--motion-normal) var(--ease-out); }
 .app-shell.sidebar-hidden { grid-template-columns: 0 minmax(0, 1fr); }
-.sidebar { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--sidebar); padding: 0 12px 12px; overflow: hidden; }
-.sidebar-hidden .sidebar { visibility: hidden; padding: 0; }
-.sidebar-titlebar { height: 62px; flex-shrink: 0; display: flex; gap: 2px; align-items: center; padding-inline: 8px; -webkit-app-region: drag; }
-.sidebar-window-space { flex: 1; min-width: 0; font-weight: 600; font-size: 13px; }
-.sidebar-wordmark { margin-inline-start: auto; color: var(--secondary); font-size: 13px; font-weight: 600; }
+.sidebar { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--sidebar); padding: 0 14px 16px; border-inline-end: 1px solid var(--line); overflow: hidden; }
+.sidebar-hidden .sidebar { visibility: hidden; padding: 0; border: 0; }
+.sidebar-titlebar { height: 62px; flex-shrink: 0; display: flex; gap: 2px; align-items: center; padding-inline: 4px; -webkit-app-region: drag; }
+.sidebar-window-space { flex: 1; min-width: 0; }
+.sidebar-identity { display: flex; align-items: center; gap: 9px; padding: 5px 9px 25px; white-space: nowrap; }
+.sidebar-identity > svg { color: var(--brand); }
+.sidebar-identity > span:first-of-type { font-size: 21px; font-weight: 550; letter-spacing: -.8px; }
+.sidebar-identity-caption { margin-inline-start: auto; font-size: 11px; color: var(--secondary); }
+.sidebar-wordmark { margin-inline-start: auto; color: var(--secondary); font-size: 12px; font-weight: 500; letter-spacing: -.3px; }
 .project-list { flex: 1; min-height: 0; overflow-y: auto; }
 .project-group { margin-block-end: 14px; }
 .project-heading { width: 100%; justify-content: flex-start; padding: 6px 10px; min-height: 30px; border: 0; background: transparent; color: var(--secondary); }
@@ -106,10 +124,14 @@ kbd { font-size: 10px; color: var(--secondary); font-weight: 400; }
 .bingo-mark { display: inline-block; font-family: Georgia, serif; font-size: 34px; line-height: 1; font-weight: bold; letter-spacing: -3px; color: var(--accent); }
 .bingo-mark.small { font-size: 24px; letter-spacing: -2px; }
 .sidebar-brand .icon-button { margin-inline-start: auto; }
-.sidebar-actions { display: grid; gap: 3px; padding-block: 0 12px; }
-.sidebar-actions button, .sidebar-bottom > button { justify-content: flex-start; background: transparent; border-color: transparent; min-height: 37px; padding-inline: 10px; }
-.sidebar-actions button:first-child { font-weight: 600; }
-.sidebar-actions kbd { margin-inline-start: auto; font-size: 10px; flex-shrink: 0; white-space: nowrap; }
+.sidebar-actions { display: grid; gap: 4px; padding-block: 0 20px; }
+.sidebar-actions button, .sidebar-bottom > button { justify-content: flex-start; background: transparent; border-color: transparent; min-height: 38px; padding-inline: 10px; }
+.sidebar-actions button > svg { color: var(--secondary); }
+.sidebar-actions .new-thread-button { margin-block-end: 8px; background: var(--accent); color: var(--on-accent); border-color: transparent; box-shadow: var(--shadow-soft); font-weight: 550; }
+.sidebar-actions .new-thread-button:hover { background: color-mix(in srgb, var(--accent), var(--brand) 24%); }
+.sidebar-actions .new-thread-button > svg, .sidebar-actions .new-thread-button kbd { color: inherit; }
+.sidebar-actions .selected > svg { color: var(--brand); }
+.sidebar-actions kbd { margin-inline-start: auto; font-size: 10px; flex-shrink: 0; white-space: nowrap; opacity: .8; }
 .workspace-switch { justify-content: flex-start; min-width: 0; border: 0; background: transparent; padding-inline: 10px; color: var(--secondary); }
 .workspace-switch > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 600; }
 .workspace-switch > svg:last-child { margin-inline-start: auto; }

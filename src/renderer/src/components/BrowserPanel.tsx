@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, ExternalLink, Globe, RotateCw, Square, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ExternalLink, Globe, RotateCw, Square, X } from './icons'
 import type { BrowserAction, BrowserState } from '../../../shared/panels'
 import { useI18n } from '../i18n'
 import { IconButton } from './primitives'

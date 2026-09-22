@@ -1,5 +1,5 @@
 import { Fragment, memo, useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { ArrowDown, MessageSquare, PanelRight, Pin } from 'lucide-react'
+import { ArrowDown, MessageSquare, PanelRight, Pin } from './icons'
 import type { Item, SessionSummary } from '../../../shared/rpc'
 import { contentText, type SessionProjection } from '../state/session'
 import { roomMetadata } from '../state/collaboration'

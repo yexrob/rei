@@ -1,4 +1,4 @@
-import { Plus, TerminalSquare, X } from 'lucide-react'
+import { Plus, TerminalSquare, X } from './icons'
 import { useI18n } from '../i18n'
 import { IconButton } from './primitives'
 import { TerminalTabs } from './terminal/TerminalTabs'

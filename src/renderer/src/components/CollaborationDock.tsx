@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight } from './icons'
 import type { Collaborator } from '../state/collaboration'
 import { useI18n } from '../i18n'
 import { CollaborationAvatar } from './CollaborationAvatar'

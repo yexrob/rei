@@ -1,4 +1,4 @@
-import { AlarmClock, CalendarClock } from 'lucide-react'
+import { AlarmClock, CalendarClock } from '../icons'
 import { useI18n } from '../../i18n'
 import { ToolCallFrame } from './ToolCallFrame'
 import { scheduleFields, ToolFields } from './ToolFields'

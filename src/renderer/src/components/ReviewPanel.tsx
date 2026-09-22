@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, GitCompareArrows, RotateCw, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, GitCompareArrows, RotateCw, X } from './icons'
 import type { ReviewFile, ReviewScope, ReviewSnapshot } from '../../../shared/review'
 import { useI18n } from '../i18n'
 import { IconButton } from './primitives'

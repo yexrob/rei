@@ -1,0 +1,19 @@
+.session-metrics { display: flex; flex-wrap: wrap; align-items: center; gap: 24px; }
+.usage-stat { display: grid; gap: 6px; width: 160px; }
+.session-metrics .metric-label { color: var(--secondary); font-size: 11px; }
+.session-metrics .metric-value { color: var(--text); font-size: 19px; font-weight: 550; line-height: 1.2; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+.session-metrics .metric-caption { color: var(--secondary); font-size: 11px; font-variant-numeric: tabular-nums; }
+.token-chart { display: block; width: 160px; height: 6px; overflow: hidden; }
+.token-chart rect { transition: width var(--motion-slow) var(--ease-out), x var(--motion-slow) var(--ease-out); }
+.metric-track { fill: var(--line); }
+.metric-input { fill: var(--brand); }
+.metric-output { fill: var(--secondary); }
+.context-stat { display: flex; gap: 10px; align-items: center; }
+.context-stat > div { display: grid; gap: 5px; }
+.context-chart { width: 42px; height: 42px; flex-shrink: 0; }
+.context-chart circle { fill: none; stroke-width: 2.75; }
+.context-chart .metric-track { stroke: var(--line); }
+.context-arc { stroke: var(--brand); stroke-linecap: round; transition: stroke-dasharray var(--motion-slow) var(--ease-out), stroke var(--motion-normal); }
+.context-arc.near-limit { stroke: var(--warning); }
+@media (prefers-reduced-motion: reduce) { .token-chart rect, .context-arc { transition: none; } }
+@media (forced-colors: active) { .metric-input { fill: Highlight; } .metric-output { fill: CanvasText; } .metric-track { fill: GrayText; } .context-chart .metric-track { stroke: GrayText; } .context-arc { stroke: Highlight; } }

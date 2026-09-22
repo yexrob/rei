@@ -1,4 +1,4 @@
-import { Bot, MessagesSquare } from 'lucide-react'
+import { Bot, MessagesSquare } from '../icons'
 import { contentText } from '../../state/session'
 import { useI18n } from '../../i18n'
 import { ToolCallFrame } from './ToolCallFrame'

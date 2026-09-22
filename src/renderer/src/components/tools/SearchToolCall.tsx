@@ -1,4 +1,4 @@
-import { FileSearch, Search } from 'lucide-react'
+import { FileSearch, Search } from '../icons'
 import { useI18n } from '../../i18n'
 import { CopyButton } from '../primitives'
 import { ToolCallFrame } from './ToolCallFrame'

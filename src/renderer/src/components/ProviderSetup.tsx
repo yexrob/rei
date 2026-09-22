@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { KeyRound } from 'lucide-react'
+import { KeyRound } from './icons'
 import { unwrap, type useWorkspace } from '../state/useWorkspace'
 import { useI18n } from '../i18n'
 import { Picker } from './Picker'

@@ -12,9 +12,10 @@
 .recorded-notice, .recorded-limit { margin: 7px 0 12px; color: var(--secondary); font-size: 12px; line-height: 1.6; }
 .recorded-limit { color: var(--warning); }
 .recorded-toolbar { display: flex; align-items: center; gap: 12px; justify-content: space-between; margin: 14px 0 10px; }
-.recorded-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
-.recorded-tabs button { min-height: 30px; padding: 5px 9px; background: transparent; border-color: transparent; font-size: 12px; color: var(--secondary); }
-.recorded-tabs button[aria-pressed="true"] { background: var(--selected); border-color: var(--line); color: var(--text); }
+.recorded-tabs { display: flex; flex-wrap: wrap; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-inset); }
+.recorded-tabs button { min-height: 30px; padding: 5px 10px; border-radius: 5px; background: transparent; border-color: transparent; font-size: 12px; color: var(--secondary); }
+.recorded-tabs button[aria-pressed="true"] { background: var(--surface-raised); border-color: var(--line); color: var(--brand); }
+@media (forced-colors: active) { .recorded-tabs button[aria-pressed="true"] { border-color: Highlight; } }
 .recorded-source { max-height: 58vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--code); padding-block: 8px; font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 4; }
 .recorded-line { display: flex; width: max-content; min-width: 100%; }
 .recorded-line code { display: block; padding-inline: 12px; white-space: pre; font: inherit; }
