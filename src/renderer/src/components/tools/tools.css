@@ -8,7 +8,7 @@
 .tool-card-toggle:focus-visible, .tool-activity-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .tool-error-preview { margin: 0 0 5px 33px; color: var(--danger); overflow-wrap: anywhere; font-size: 11px; }
 .tool-activity { min-width: 0; margin: 9px 0; }
-.tool-activity-toggle { display: flex; align-items: baseline; gap: 12px; max-width: 100%; width: 100%; padding: 6px 4px; border: 0; border-radius: 5px; background: transparent; text-align: left; color: var(--secondary); font: inherit; font-size: 11px; cursor: pointer; transition: background-color 140ms ease; }
+.tool-activity-toggle { display: flex; justify-content: flex-start; align-items: baseline; gap: 12px; max-width: 100%; width: 100%; padding: 6px 4px; border: 0; border-radius: 5px; background: transparent; text-align: left; color: var(--secondary); font: inherit; font-size: 11px; cursor: pointer; transition: background-color 140ms ease; }
 .tool-activity-toggle > span:first-child { flex-shrink: 0; }
 .tool-activity-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--secondary); }
 .tool-activity-rows { min-width: 0; }
