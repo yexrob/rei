@@ -129,7 +129,7 @@ kbd { font-size: 11px; color: var(--secondary); font-weight: 400; }
 .sidebar-actions button > svg { color: var(--secondary); }
 .sidebar-actions .new-thread-button { font-weight: 600; }
 .sidebar-actions .selected > svg { color: var(--brand); }
-.sidebar-actions kbd { margin-inline-start: auto; font-size: 11px; flex-shrink: 0; white-space: nowrap; opacity: .8; }
+.sidebar-actions kbd { margin-inline-start: auto; font-size: 11px; flex-shrink: 0; white-space: nowrap; }
 .workspace-switch { justify-content: flex-start; min-width: 0; border: 0; background: transparent; padding-inline: 10px; color: var(--secondary); }
 .workspace-switch > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 600; }
 .workspace-switch > svg:last-child { margin-inline-start: auto; }

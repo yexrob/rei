@@ -78,6 +78,13 @@ describe('original neutral palette contract', () => {
     expect(css).not.toMatch(/background(?:-color)?:[^;\n]*var\(--brand\)/)
   })
 
+  it('keeps enabled sidebar shortcut labels opaque instead of diluting neutral text', () => {
+    expect(declarations(css, 'kbd').color).toBe('var(--secondary)')
+    for (const selector of ['.sidebar-actions kbd', '.sidebar-actions .new-thread-button', '.sidebar-actions', '.sidebar']) {
+      expect(Number(declarations(css, selector).opacity ?? '1'), `${selector} opacity`).toBe(1)
+    }
+  })
+
   it('shows neutral light and dark workspace miniatures', () => {
     expect(declarations(settings, '.theme-preview')).toMatchObject({ '--preview-bg': originalLight['--canvas'], '--preview-rail': originalLight['--sidebar'], '--preview-ink': originalLight['--secondary'] })
     expect(declarations(settings, '.theme-preview-dark')).toMatchObject({ '--preview-bg': originalDark['--canvas'], '--preview-rail': originalDark['--sidebar'], '--preview-ink': originalDark['--secondary'] })
