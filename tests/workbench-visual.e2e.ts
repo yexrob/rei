@@ -85,7 +85,7 @@ test('workbench visuals: focused composer, real conversation, motion, light/dark
     await capture('conversation-light-en'); await axe(page)
     // Exercise actual hover text colors inside recorded tool details, not just the empty screen.
     const tool = page.locator('.tool-card').first()
-    await tool.getByRole('button', { name: 'Show tool details' }).click(); await tool.hover(); await axe(page)
+    await tool.getByRole('button', { name: /^Show tool details: Read/ }).click(); await tool.hover(); await axe(page)
     const copy = page.locator('.assistant-message .copy-control button').last()
     await copy.hover()
     await expect.poll(() => copy.locator('.icon-motion').evaluate((el) => getComputedStyle(el).transform)).not.toBe('none')

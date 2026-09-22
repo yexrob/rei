@@ -62,6 +62,73 @@ describe('streaming transcript presentation', () => {
     expect(scroll.scrollTop).toBe(120)
   })
 
+  it.each(['click', 'focus', 'pointerDown'] as const)('holds %s inspection through content growth until the reader explicitly jumps to latest', (interaction) => {
+    let resize = () => {}
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) { resize = () => callback([], this as unknown as ResizeObserver) }
+      observe() {} disconnect() {}
+    })
+    const item: Item = { id: 'read', turn: 'live', startedAt: '2026-09-17T00:00:00Z', status: 'completed', body: { kind: 'toolCall', name: 'Read', callId: 'read', input: { file_path: '/work/note.txt' }, output: { parts: [{ type: 'text', text: '1 recorded text' }] } } }
+    const state = createSessionProjection({ ...rustInitial, items: [item] })
+    const { container, rerender } = render(<Timeline projection={state} {...actions} />)
+    const scroll = container.querySelector('.timeline') as HTMLDivElement
+    Object.defineProperty(scroll, 'scrollHeight', { configurable: true, value: 1000 })
+    Object.defineProperty(scroll, 'clientHeight', { configurable: true, value: 400 })
+    scroll.scrollTo = vi.fn((options?: ScrollToOptions | number, y?: number) => { scroll.scrollTop = typeof options === 'number' ? y ?? 0 : options?.top ?? 0 })
+    scroll.scrollTop = 600
+    fireEvent.scroll(scroll)
+    fireEvent[interaction](screen.getByRole('button', { name: /^Show tool details: Read/ }))
+    Object.defineProperty(scroll, 'scrollHeight', { configurable: true, value: 1400 })
+    act(resize)
+    expect(scroll.scrollTop).toBe(600)
+    // Even a scroll event at the former bottom does not silently resume inspection.
+    scroll.scrollTop = 1000
+    fireEvent.scroll(scroll)
+    rerender(<Timeline projection={{ ...state, snapshot: { ...state.snapshot, items: [...state.snapshot.items, { ...item, id: 'read-two' }] } }} {...actions} />)
+    Object.defineProperty(scroll, 'scrollHeight', { configurable: true, value: 1800 })
+    act(resize)
+    expect(scroll.scrollTop).toBe(1000)
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to latest' }))
+    expect(scroll.scrollTo).toHaveBeenCalledWith({ top: 1800 })
+    Object.defineProperty(scroll, 'scrollHeight', { configurable: true, value: 2200 })
+    act(resize)
+    expect(scroll.scrollTop).toBe(2200)
+    expect(screen.queryByRole('button', { name: 'Jump to latest' })).toBeNull()
+  })
+
+  it('keeps singleton tool inspection mounted when another call joins the same run', () => {
+    const item: Item = { id: 'read', turn: 'live', startedAt: '2026-09-17T00:00:00Z', status: 'completed', body: { kind: 'toolCall', name: 'Read', callId: 'read', input: { file_path: '/work/note.txt' }, output: { parts: [{ type: 'text', text: '1 recorded text' }] } } }
+    const state = createSessionProjection({ ...rustInitial, items: [item] })
+    const { rerender } = render(<Timeline projection={state} {...actions} />)
+    expect(screen.queryByRole('button', { name: /tool activity/ })).toBeNull()
+    const toggle = screen.getByRole('button', { name: /^Show tool details: Read/ })
+    fireEvent.click(toggle)
+    const body = document.querySelector('.tool-card-body')
+    rerender(<Timeline projection={{ ...state, snapshot: { ...state.snapshot, items: [item, { ...item, id: 'second' }] } }} {...actions} />)
+    expect(document.querySelector('.tool-card-body')).toBe(body)
+    expect(screen.getByRole('button', { name: /^Hide tool details: Read/ })).toBe(toggle)
+    expect(screen.getByRole('button', { name: 'Hide tool activity' }).getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('passes disconnection into tool runs without turning historical pending calls into success', () => {
+    const state = createSessionProjection({ ...rustInitial, items: [{ id: 'pending', turn: 'live', startedAt: '2026-09-17T00:00:00Z', status: 'pending', body: { kind: 'toolCall', name: 'Read', callId: 'pending', input: { file_path: '/work/note.txt' } } }] })
+    const { container, rerender } = render(<Timeline projection={state} {...actions} />)
+    expect(container.querySelector('.tool-state-spin')).toBeTruthy()
+    rerender(<Timeline projection={state} {...actions} connected={false} />)
+    expect(screen.getByText('Disconnected')).toBeTruthy()
+    expect(container.querySelector('.tool-state-spin')).toBeNull()
+    expect(container.querySelector('.tool-card--pending')).toBeTruthy()
+    expect(container.querySelector('.tool-activity')?.getAttribute('data-connected')).toBe('false')
+  })
+
+  it('keeps legacy shell expansion native without a decorative trailing chevron', () => {
+    const state = createSessionProjection({ ...rustInitial, items: [{ id: 'shell', startedAt: '2026-09-17T00:00:00Z', status: 'completed', body: { kind: 'shell', command: 'echo hello', output: 'hello', cwd: '/work', exit: 0 } }] })
+    const { container } = render(<Timeline projection={state} {...actions} />)
+    expect(container.querySelector('details.tool-call > summary')).toBeTruthy()
+    expect(container.querySelector('details.tool-call .disclosure')).toBeNull()
+    expect(container.querySelector('details.tool-call > summary [data-icon="terminal"]')).toBeTruthy()
+  })
+
   it.each(['kernel', 'contributor:tasks', 'contributor:experience:index', 'contributor:bingo.rooms', 'hook:beforeTurn'])('keeps %s context in the journal but out of the conversation', (surface) => {
     const state = createSessionProjection({ ...rustInitial, items: [{
       id: 'context', startedAt: '2026-09-17T00:00:00Z', status: 'completed',

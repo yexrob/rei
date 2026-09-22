@@ -77,6 +77,8 @@ test('semantic tool UI: recorded files, real MCP, terminal, inline beam and redu
     expect(await page.locator('.tool-card').evaluateAll((rows) => rows.every((row) => { const style = getComputedStyle(row); return style.borderTopWidth === '0px' && style.backgroundColor === 'rgba(0, 0, 0, 0)' }))).toBe(true)
     await page.screenshot({ animations: 'disabled', path: info.outputPath('semantic-tool-stream.png') })
 
+    // Completed runs are compact by default; explicitly open the recorded activity.
+    for (const toggle of await page.getByRole('button', { name: 'Show tool activity', exact: true }).all()) await toggle.click()
     const write = page.locator('[data-tool-name="Write"]')
     // Filename, icon, Enter, and Space all activate the same native row button.
     const writeToggle = write.locator('.tool-card-toggle')

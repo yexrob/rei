@@ -115,6 +115,24 @@ describe('language preference', () => {
 })
 
 describe('localized renderer boundaries', () => {
+  it('localizes grouped tool controls and recorded ranges without translating paths or data', () => {
+    localStorage.setItem('rei.locale', 'zh-CN')
+    const projection = createSessionProjection({ ...rustInitial, items: [
+      item('read-one', { kind: 'toolCall', name: 'Read', callId: 'one', input: { file_path: '/work/Settings.txt', offset: 40, limit: 2 }, output: { parts: [{ type: 'text', text: '40\tSettings\n41\tKeep this source' }] } }),
+      item('read-two', { kind: 'toolCall', name: 'Read', callId: 'two', input: { file_path: '/work/other.txt' }, output: { parts: [{ type: 'text', text: '1 Other source' }] } })
+    ] })
+    const { container } = localized(<Timeline projection={projection} openLink={noAction} runAction={noAction} loadHistory={noAction} loading={false} />)
+    expect(screen.getByRole('region', { name: '工具活动' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '展开工具活动' }).textContent).toContain('2 项工具调用')
+    fireEvent.click(screen.getByRole('button', { name: '展开工具活动' }))
+    fireEvent.click(screen.getByRole('button', { name: '展开工具详情: Read · /work/Settings.txt' }))
+    expect(screen.getByText('记录行 40–41')).toBeTruthy()
+    expect(screen.getByText('请求起始行')).toBeTruthy()
+    expect(screen.getByText('请求行数上限')).toBeTruthy()
+    expect(container.querySelector('.recorded-source')?.textContent).toContain('Keep this source')
+    expect(container.querySelector('.recorded-source')?.textContent).toContain('Settings')
+    expect(screen.getByRole('button', { name: '收起工具活动' })).toBeTruthy()
+  })
   it('updates memoized transcript controls without translating user, model, reasoning, tool, or shell content', () => {
     const projection = createSessionProjection({ ...rustInitial, items: [
       item('user', { kind: 'user', parts: [{ type: 'text', text: 'Cancel' }], origin: { surface: 'desktop' } }),
@@ -133,7 +151,7 @@ describe('localized renderer boundaries', () => {
     expect(container.querySelector('.reasoning-content')?.textContent).toBe('Thinking')
     const tool = container.querySelector('[data-tool-name="Settings"]')!
     expect(tool.querySelector('.tool-card-name')?.textContent).toBe('Settings')
-    fireEvent.click(tool.querySelector('.tool-card-disclosure')!)
+    fireEvent.click(tool.querySelector('.tool-card-toggle')!)
     expect(tool.textContent).toContain('/work/Settings')
     expect(tool.querySelector('.tool-recorded-result pre')?.textContent).toBe('Failed')
     expect(tool.querySelector('.tool-progress-tail')).toBeNull()

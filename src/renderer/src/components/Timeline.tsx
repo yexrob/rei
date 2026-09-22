@@ -3,6 +3,7 @@ import { ArrowDown, ChevronRight, Terminal, Wrench } from './icons'
 import type { Item, SessionSummary, View } from '../../../shared/rpc'
 import { contentText, itemText, type SessionProjection, type ToolCallItem } from '../state/session'
 import { ToolCallCard } from './tools/ToolCallCard'
+import { groupTimelineItems, ToolActivityGroup } from './tools/ToolActivityGroup'
 import { WorkingIndicator } from './WorkingIndicator'
 import { CodeBlock, RichText, StructuredView, type OpenLink, type RunAction } from './Content'
 import { CopyButton, object } from './primitives'
@@ -30,7 +31,7 @@ export const TranscriptItem = memo(function TranscriptItem({ item, openLink, run
   if (body.kind === 'assistant') return <article className="message assistant-message"><span className="sr-only">{assistantName}</span><RichText text={body.text} openLink={openLink} final={!working} />{!working && !deferActions && <div className="message-actions"><CopyButton text={body.text} label={t('Copy response')} />{item.status === 'interrupted' && <span>{t('Interrupted')}</span>}{item.status === 'failed' && <span className="field-error">{t('Failed')}</span>}</div>}</article>
   if (body.kind === 'reasoning') return <details className="reasoning"><summary><ChevronRight size={14} />{t(working ? 'Thinking…' : 'Thinking')}</summary><div className="reasoning-content"><RichText text={body.text} openLink={openLink} final={!working} /></div></details>
   if (body.kind === 'toolCall') return <ToolCallCard item={item as ToolCallItem} openLink={openLink} runAction={runAction} sessionId={sessionId} sessions={sessions} onSelectSession={onSelectSession} />
-  if (body.kind === 'shell') return <details className="tool-call"><summary><Terminal size={15} /><span className="tool-name">{t('Shell')}</span><span className="tool-target">{body.command}</span><span className="tool-status">{body.exit == null ? t('Interrupted') : t('Exit {code}', { code: body.exit })}</span><ChevronRight className="disclosure" size={14} /></summary><CodeBlock text={`$ ${body.command}\n${body.output}`} language={body.cwd} /></details>
+  if (body.kind === 'shell') return <details className="tool-call"><summary><Terminal size={15} /><span className="tool-name">{t('Shell')}</span><span className="tool-target">{body.command}</span><span className="tool-status">{body.exit == null ? t('Interrupted') : t('Exit {code}', { code: body.exit })}</span></summary><CodeBlock text={`$ ${body.command}\n${body.output}`} language={body.cwd} /></details>
   if (body.kind === 'action') {
     const result = object(body.result)
     return <div className="action-result"><div className="activity-caption"><Wrench size={13} /> /{body.name}{working ? ` · ${t('Working…')}` : ''}</div>{object(result.view).kind ? <StructuredView view={result.view as View} openLink={openLink} runAction={runAction} /> : typeof result.message === 'string' ? <p>{result.message}</p> : body.result != null ? <pre>{JSON.stringify(body.result, null, 2)}</pre> : null}</div>
@@ -47,10 +48,19 @@ export function Timeline({ projection, openLink, runAction, loadHistory, loading
   const scroll = useRef<HTMLDivElement>(null)
   const transcript = useRef<HTMLDivElement>(null)
   const following = useRef(true)
+  const inspecting = useRef(false)
   const previousHeight = useRef(0)
   const [showLatest, setShowLatest] = useState(false)
   const state = projection.snapshot
   const processing = connected && Boolean(state.turn && !state.interactions?.length)
+  const inspectTools = (target: EventTarget | null) => {
+    if (!(target instanceof Element) || !target.closest('.tool-activity')) return
+    // Capture before a row expands: ResizeObserver must not pull an intentional
+    // inspection to the new bottom. Only Jump to latest resumes this mode.
+    inspecting.current = true
+    following.current = false
+    setShowLatest(true)
+  }
   useLayoutEffect(() => {
     const element = scroll.current
     if (!element) return
@@ -65,16 +75,18 @@ export function Timeline({ projection, openLink, runAction, loadHistory, loading
     observer.observe(transcript.current)
     return () => observer.disconnect()
   }, [])
-  return <JournalMediaProvider items={state.items}><div className="timeline-wrap"><div className="timeline" ref={scroll} aria-label={t('Conversation')} tabIndex={0} onScroll={() => {
+  return <JournalMediaProvider items={state.items}><div className="timeline-wrap"><div className="timeline" ref={scroll} aria-label={t('Conversation')} tabIndex={0} onPointerDownCapture={(event) => inspectTools(event.target)} onClickCapture={(event) => inspectTools(event.target)} onFocusCapture={(event) => inspectTools(event.target)} onScroll={() => {
     const element = scroll.current
     if (!element) return
-    following.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100
+    following.current = !inspecting.current && element.scrollHeight - element.scrollTop - element.clientHeight < 100
     setShowLatest(!following.current)
   }}><div className="transcript" ref={transcript} data-working={processing} data-connected={connected}>
     {!projection.history.complete && <button className="history-button" disabled={loading || !connected} onClick={() => { following.current = false; previousHeight.current = scroll.current?.scrollHeight ?? 0; loadHistory() }}>{t(loading ? 'Loading history…' : 'Load earlier messages')}</button>}
-    {state.items.map((item) => <TranscriptItem key={item.id} item={item} openLink={openLink} runAction={runAction} assistantName={assistantName} sessionId={state.summary.id} sessions={sessions} onSelectSession={onSelectSession} deferActions={Boolean(state.turn && item.turn === state.turn.id)} />)}
+    {groupTimelineItems(state.items).map((entry) => entry.kind === 'tools'
+      ? <ToolActivityGroup key={entry.key} items={entry.items} connected={connected} renderTool={(item) => <TranscriptItem item={item} openLink={openLink} runAction={runAction} assistantName={assistantName} sessionId={state.summary.id} sessions={sessions} onSelectSession={onSelectSession} />} />
+      : <TranscriptItem key={entry.key} item={entry.item} openLink={openLink} runAction={runAction} assistantName={assistantName} sessionId={state.summary.id} sessions={sessions} onSelectSession={onSelectSession} deferActions={Boolean(state.turn && entry.item.turn === state.turn.id)} />)}
     {processing && <WorkingIndicator retrying={state.turn?.retrying} />}
     {state.lastTurn?.status.kind === 'failed' && !state.turn && <p className="turn-failure" role="alert">{state.lastTurn.status.error.message}</p>}
     {state.lastTurn?.status.kind === 'interrupted' && !state.turn && <p className="system-note">{t('Turn interrupted. Completed changes have not been undone.')}</p>}
-  </div></div>{showLatest && <button className="latest-button" onClick={() => { following.current = true; scroll.current?.scrollTo({ top: scroll.current.scrollHeight }); setShowLatest(false) }}><ArrowDown size={14} /> {t('Jump to latest')}</button>}</div></JournalMediaProvider>
+  </div></div>{showLatest && <button className="latest-button" onClick={() => { inspecting.current = false; following.current = true; scroll.current?.scrollTo({ top: scroll.current.scrollHeight }); setShowLatest(false) }}><ArrowDown size={14} /> {t('Jump to latest')}</button>}</div></JournalMediaProvider>
 }

@@ -1,5 +1,18 @@
 // English source strings are canonical. Remote text and identities are not keys.
 export const zhCN = {
+  'Tool activity': '工具活动',
+  'Show tool activity': '展开工具活动',
+  'Hide tool activity': '收起工具活动',
+  '{count} tools': '{count} 项工具调用',
+  'Recorded lines {start}–{end}': '记录行 {start}–{end}',
+  'Empty recorded content.': '记录内容为空。',
+  'Requested offset': '请求起始行',
+  'Requested line limit': '请求行数上限',
+  'Some recorded images cannot be previewed safely. See the raw result.': '部分记录图片无法安全预览，请查看原始结果。',
+  'More recorded images are available in the raw result.': '原始结果中还有更多记录图片。',
+  'Recorded content · {count} characters': '记录内容 · {count} 个字符',
+  'Structured content is summarized for display. Expand a bounded preview or copy the complete recorded text.': '结构化内容已摘要显示。可展开限长预览，或复制完整记录文本。',
+  'Inspect recorded content': '查看记录内容',
   'What would you like to work on?': '今天想做些什么？',
   '{used} of {total} context tokens': '上下文已用 {used}，容量 {total} token',
   'Context capacity unavailable': '上下文容量暂不可用',
