@@ -6,13 +6,13 @@ import { parseRecordedDiff } from './recordedDiff'
 
 function SourcePreview({ tab }: { tab: RecordedTab }): React.JSX.Element {
   const { t } = useI18n()
-  return <><div className="recorded-source" aria-label={t(tab.label)}>{tab.rows?.map((row, index) => <div className="recorded-line" key={index}><span className="recorded-line-number" aria-hidden="true">{row.number ?? ''}</span><code>{row.text || '\u200b'}</code></div>)}</div>{tab.truncated && <p className="recorded-limit">{t('Preview shortened for display. The journal may contain more content.')}</p>}</>
+  return <><div className="recorded-source" role="region" tabIndex={0} aria-label={t(tab.label)}>{tab.rows?.map((row, index) => <div className="recorded-line" key={index}><span className="recorded-line-number" aria-hidden="true">{row.number ?? ''}</span><code>{row.text || '\u200b'}</code></div>)}</div>{tab.truncated && <p className="recorded-limit">{t('Preview shortened for display. The journal may contain more content.')}</p>}</>
 }
 
 function DiffPreview({ text }: { text: string }): React.JSX.Element {
   const { t } = useI18n()
   const diff = useMemo(() => parseRecordedDiff(text), [text])
-  return <><div className="recorded-source recorded-diff" aria-label={t('Recorded diff')}>{diff.rows.map((row, index) => <div key={index} className={`recorded-line ${row.kind}`}><span className="recorded-line-number" aria-hidden="true">{row.oldLine ?? ''}</span><span className="recorded-line-number" aria-hidden="true">{row.newLine ?? ''}</span><code>{row.text || '\u200b'}</code></div>)}</div>{diff.truncated && <p className="recorded-limit">{t('Preview shortened for display. The journal may contain more content.')}</p>}</>
+  return <><div className="recorded-source recorded-diff" role="region" tabIndex={0} aria-label={t('Recorded diff')}>{diff.rows.map((row, index) => <div key={index} className={`recorded-line ${row.kind}`}><span className="recorded-line-number" aria-hidden="true">{row.oldLine ?? ''}</span><span className="recorded-line-number" aria-hidden="true">{row.newLine ?? ''}</span><code>{row.text || '\u200b'}</code></div>)}</div>{diff.truncated && <p className="recorded-limit">{t('Preview shortened for display. The journal may contain more content.')}</p>}</>
 }
 
 function TabContent({ tab }: { tab: RecordedTab }): React.JSX.Element {

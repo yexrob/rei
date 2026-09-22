@@ -45,6 +45,7 @@
 .tool-recorded-text { position: relative; min-width: 0; }
 .tool-recorded-text > .copy-control, .tool-json-result > .copy-control { position: sticky; top: 0; float: right; z-index: 1; }
 .tool-recorded-text pre { margin: 0; font: 11px/1.65 var(--font-mono, ui-monospace, monospace); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 340px; overflow: auto; }
+.recorded-source:focus-visible, .tool-recorded-text pre:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .tool-recorded-image { max-width: 100%; max-height: 300px; object-fit: contain; border-radius: 5px; }
 .tool-limit-note, .tool-empty-result { color: var(--secondary); font-size: 11px; margin: 3px 0; }
 .tool-structured-fallback summary { cursor: pointer; padding: 6px 0; font-size: 11px; color: var(--secondary); }

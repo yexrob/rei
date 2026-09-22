@@ -9,7 +9,7 @@ import { prettyJson, safeWebUrl, type ToolCallProps } from './toolPresentation'
 const textLimit = 64000
 export function RecordedText({ text, className = '', copy = true }: { text: string; className?: string; copy?: boolean }): React.JSX.Element {
   const { t } = useI18n()
-  return <div className={`tool-recorded-text ${className}`}>{copy && <CopyButton text={text} label={t('Copy recorded output')} />}<pre>{text.slice(0, textLimit)}</pre>{text.length > textLimit && <p className="tool-limit-note">{t('Preview limited to {count} characters. Copy preserves the recorded text.', { count: textLimit })}</p>}</div>
+  return <div className={`tool-recorded-text ${className}`}>{copy && <CopyButton text={text} label={t('Copy recorded output')} />}<pre role="region" tabIndex={0} aria-label={t('Recorded result')}>{text.slice(0, textLimit)}</pre>{text.length > textLimit && <p className="tool-limit-note">{t('Preview limited to {count} characters. Copy preserves the recorded text.', { count: textLimit })}</p>}</div>
 }
 
 function JsonValue({ value, depth = 0, openLink }: { value: unknown; depth?: number; openLink?: OpenLink }): React.JSX.Element {
