@@ -1,4 +1,5 @@
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+import { electron } from './helpers/electron'
 import AxeBuilder from '@axe-core/playwright'
 import { execFileSync } from 'node:child_process'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'

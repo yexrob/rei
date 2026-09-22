@@ -1,4 +1,5 @@
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+import { electron, copiedText } from './helpers/electron'
 import AxeBuilder from '@axe-core/playwright'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -53,10 +54,9 @@ test('real 100k MCP result retains core clipping evidence and defaults to a comp
     await expect(card.locator('.tool-diagnostics')).not.toHaveAttribute('open', '')
     await page.screenshot({ animations: 'disabled', path: info.outputPath('core-clipped-mcp-collapsed.png') })
 
-    // Exercise the real renderer copy button without replacing the person's clipboard.
-    await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => { (window as any).__fixtureCopied = text } } }))
+    // Shared test sink: verify the exact renderer payload, never the OS clipboard.
     await fallback.getByRole('button', { name: 'Copy recorded output' }).click()
-    await expect.poll(() => page.evaluate(() => (window as any).__fixtureCopied)).toBe(recorded)
+    await expect.poll(() => copiedText(page)).toBe(recorded)
     await expect(fallback.getByRole('button', { name: 'Copied', exact: true })).toBeVisible()
     await fallback.getByText('Inspect recorded content', { exact: true }).click()
     const preview = fallback.locator('pre')

@@ -1,4 +1,5 @@
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+import { electron, assertBackground, foregroundEnabled } from './helpers/electron'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -48,9 +49,7 @@ test('offline runtime burst preserves deltas, permission and intent/lifecycle ev
     console.error('Burst failure state:', await page.evaluate(() => window.bingoDesktop.bootstrap()))
     throw error
   } finally {
-    // Failure intentionally leaves a busy snapshot; don't hang on the native
-    // "stop running work" confirmation while closing this isolated fixture.
-    await app.evaluate(({ app }) => app.exit(0)).catch(() => {})
+    if (!foregroundEnabled) await assertBackground(app)
     await app.close()
   }
 })

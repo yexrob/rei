@@ -1,4 +1,5 @@
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+import { electron, foregroundEnabled } from './helpers/electron'
 import { access, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
@@ -6,6 +7,7 @@ import { isAbsolute, join, relative } from 'node:path'
 const executablePath = process.env.BINGO_TEST_PACKAGED_APP
 
 test('packaged app connects and streams using only its bundled runtime', async ({}, info) => {
+  test.skip(!foregroundEnabled, 'Packaged apps have no test-only hidden mode. Requires explicit REI_E2E_FOREGROUND=1 and user approval.')
   test.skip(!executablePath, 'Set BINGO_TEST_PACKAGED_APP to the unpacked native application executable.')
   await access(executablePath!)
   const home = await mkdtemp(join(tmpdir(), 'rei-packaged-e2e-'))

@@ -1,4 +1,5 @@
-import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { electron, copiedText, settledMotion } from './helpers/electron'
 import AxeBuilder from '@axe-core/playwright'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -32,6 +33,7 @@ async function close(app: ElectronApplication) {
   await app.close()
 }
 async function axe(page: Page) {
+  await settledMotion(page)
   const result = await new AxeBuilder({ page }).setLegacyMode().withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()
   expect(result.violations).toEqual([])
 }
@@ -93,6 +95,7 @@ test('workbench visuals: focused composer, real conversation, motion, light/dark
     await copy.focus(); await expect(copy).toBeFocused()
     await copy.click()
     await expect(copy).toHaveAttribute('aria-label', 'Copied')
+    expect(await copiedText(page)).toBe('## A clear starting point\n\nThe note is ready. We can build on it without changing the original.\n\n- Read the existing code\n- Decide on a small change\n- Verify it with a test')
     expect(await copy.locator('svg').evaluate((el) => getComputedStyle(el).animationName)).toContain('symbol-enter')
     expect(await copy.locator('svg').evaluate((el) => getComputedStyle(el).animationIterationCount)).toBe('1')
     await page.getByRole('button', { name: 'Session details', exact: true }).click()

@@ -1,4 +1,5 @@
-import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { electron, foregroundEnabled } from './helpers/electron'
 import type { TerminalState } from '../src/shared/panels'
 import AxeBuilder from '@axe-core/playwright'
 import { createServer } from 'node:http'
@@ -160,7 +161,20 @@ test('desktop pickers repair a mixed-case provider, preserve the draft and apply
   } finally { await app.close(); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())) }
 })
 
+test('real terminal tabs remain interactive in the hidden desktop without OS focus', async ({}, info) => {
+  const root = await home('rei-hidden-terminal-')
+  await writeFile(join(root, '.bingo/settings.json'), JSON.stringify({ provider: 'fake', model: 'fake-1' }))
+  const { app, page } = await launch(root)
+  try {
+    const terminal = await exerciseTerminalTabs(page)
+    await page.screenshot({ animations: 'disabled', path: info.outputPath('hidden-real-terminal-tabs.png') })
+    await page.locator('.terminal-tab-item').filter({ has: page.locator(`#terminal-tab-${terminal}`) }).getByRole('button', { name: /^Close terminal / }).click()
+    await expect.poll(() => terminals(page)).toEqual([])
+  } finally { await app.close() }
+})
+
 test('real native right browser and terminal tabs, including shell exits, agent ShowPage and privileged overlays', async ({}, info) => {
+  test.skip(!foregroundEnabled, 'Native WebContentsView sendInputEvent requires focused OS input. Requires explicit REI_E2E_FOREGROUND=1 and user approval; DOM clicks are not a substitute.')
   const root = await home('rei-tools-ui-')
   await writeFile(join(root, '.bingo/settings.json'), JSON.stringify({ provider: 'fake', model: 'fake-1', permissions: { defaultMode: 'bypassPermissions' } }))
   const script = join(root, 'responses.json')

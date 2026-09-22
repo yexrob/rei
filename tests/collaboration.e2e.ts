@@ -1,4 +1,5 @@
-import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { electron, settledMotion } from './helpers/electron'
 import AxeBuilder from '@axe-core/playwright'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -142,6 +143,12 @@ test('collaboration: stacked live journals, child routing, independent drafts, r
     await openEnvironment(page)
     await page.getByRole('button', { name: 'Open room #search-review' }).click()
     await expect(roomInput).toHaveValue('Unsent room draft.')
+    // Reopening mounts the finite room-details-enter opacity animation. Axe must
+    // measure the settled palette, not an arbitrary partially blended frame.
+    const beforeAxe = await members.evaluate(node => ({ opacity: getComputedStyle(node).opacity, animations: node.getAnimations().map(animation => animation.playState) }))
+    await settledMotion(page)
+    await expect(members).toHaveCSS('opacity', '1')
+    console.info('Room details before finite-animation settle:', beforeAxe)
     expect((await new AxeBuilder({ page }).setLegacyMode().withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations).toEqual([])
     await page.getByRole('button', { name: 'Back to Bingo' }).click()
     await expect(mainInput).toHaveValue('Unsent draft for the main agent.')

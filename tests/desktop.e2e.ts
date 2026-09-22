@@ -1,4 +1,5 @@
-import { _electron as electron, expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+import { electron } from './helpers/electron'
 import AxeBuilder from '@axe-core/playwright'
 import { mkdtemp, mkdir, writeFile, readFile, access, stat, readdir } from 'node:fs/promises'
 import { spawn } from 'node:child_process'

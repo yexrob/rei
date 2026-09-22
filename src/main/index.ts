@@ -11,6 +11,13 @@ import { Review } from './desktop/review'
 import { AgentBrowser } from './desktop/agent-browser'
 import { allowsClipboardWrite, externalUrl, sameDocument } from './desktop/security'
 import type { DesktopEvent } from '../shared/desktop'
+import { backgroundTestEnabled, BACKGROUND_WINDOW_OPTIONS, installBackgroundTestGuards } from './background-test-mode'
+
+const backgroundTest = (() => {
+  try { return backgroundTestEnabled(app.isPackaged) }
+  catch (error) { console.error(error); app.exit(1); return false }
+})()
+if (backgroundTest) installBackgroundTestGuards(app, dialog)
 
 let window: BrowserWindow | null = null
 let preferences: PreferencesStore | null = null
@@ -40,16 +47,18 @@ function createWindow(): void {
     minWidth: Math.min(640, area.width), minHeight: Math.min(480, area.height), show: false, title: 'Bingo',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#202020' : '#FAFAF9',
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 14 } } : {}),
+    ...(backgroundTest ? BACKGROUND_WINDOW_OPTIONS : {}),
     webPreferences: {
+      ...(backgroundTest ? BACKGROUND_WINDOW_OPTIONS.webPreferences : {}),
       preload: join(__dirname, '../preload/index.js'), contextIsolation: true,
       nodeIntegration: false, sandbox: true, webSecurity: true, allowRunningInsecureContent: false,
       spellcheck: true, navigateOnDragDrop: false
     }
   })
   const created = window
-  if (bounds?.maximized) created.maximize()
-  created.webContents.session.setPermissionRequestHandler((contents, permission, respond, details) => respond(allowsClipboardWrite(contents, created.webContents, permission, details, documentUrl)))
-  created.webContents.session.setPermissionCheckHandler((contents, permission, _origin, details) => allowsClipboardWrite(contents, created.webContents, permission, details, documentUrl))
+  if (bounds?.maximized && !backgroundTest) created.maximize()
+  created.webContents.session.setPermissionRequestHandler((contents, permission, respond, details) => respond(!backgroundTest && allowsClipboardWrite(contents, created.webContents, permission, details, documentUrl)))
+  created.webContents.session.setPermissionCheckHandler((contents, permission, _origin, details) => !backgroundTest && allowsClipboardWrite(contents, created.webContents, permission, details, documentUrl))
   created.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   created.webContents.on('will-navigate', (event, url) => { if (!sameDocument(url, documentUrl)) event.preventDefault() })
   created.webContents.on('will-attach-webview', (event) => event.preventDefault())
@@ -66,7 +75,7 @@ function createWindow(): void {
     delivery?.reset()
     if (!quitting) void dialog.showMessageBox(created, { type: 'error', message: 'The conversation window stopped.', detail: 'The native runtime has been disconnected. Reload the window and reconnect to recover saved history.', buttons: ['Reload', 'Quit'] }).then((result) => { if (result.response === 0) created.reload(); else app.quit() })
   })
-  created.once('ready-to-show', () => created.show())
+  created.once('ready-to-show', () => { if (!backgroundTest) created.show() })
   created.on('close', (event) => {
     saveWindowBounds(created)
     if (quitting) return
@@ -86,7 +95,7 @@ function saveWindowBounds(target: BrowserWindow): void {
 
 function showWindow(): void {
   if (!window || window.isDestroyed()) createWindow()
-  else { if (window.isMinimized()) window.restore(); window.show(); window.focus() }
+  else if (!backgroundTest) { if (window.isMinimized()) window.restore(); window.show(); window.focus() }
 }
 
 function appMenu(): void {
