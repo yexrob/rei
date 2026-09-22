@@ -1,19 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EventParams, OpenResult } from '../../shared/rpc'
-const calls = vi.hoisted(() => ({ clients: [] as Array<{ notify: (value: unknown) => void; fail: (error: unknown) => void; request: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }> }))
+const calls = vi.hoisted(() => ({ methods: [] as string[], clients: [] as Array<{ notify: (value: unknown) => void; fail: (error: unknown) => void; request: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }> }))
 vi.mock('./rpc-client', async (original) => {
   const actual = await original<typeof import('./rpc-client')>()
   return { ...actual, RpcClient: class {
     request = vi.fn(async () => ({}))
     close = vi.fn(async () => {})
     constructor(_options: unknown, notify: (value: unknown) => void, fail: (error: unknown) => void) { calls.clients.push({ notify, fail, request: this.request, close: this.close }) }
-    async start() { return { name: 'bingo', version: 'test', protocol: 1, capabilities: { methods: [], notifications: [] } } }
+    async start() { return { name: 'bingo', version: 'test', protocol: 1, capabilities: { methods: calls.methods, notifications: [] } } }
   } }
 })
 import { DesktopRuntime } from './runtime'
+import { DesktopFailure } from './rpc-client'
 const snapshot: OpenResult = { session: 's', snapshot: { seq: 0, summary: { id: 's', cwd: '/project', createdAt: '', updatedAt: '' }, items: [] } }
 function frame(event: EventParams['event'], seq = 1) { return { method: 'event', params: { seq, ts: '', session: 's', event } } }
-beforeEach(() => { calls.clients.length = 0 })
+beforeEach(() => { calls.clients.length = 0; calls.methods = [] })
 describe('runtime connection ownership', () => {
   it('rejects stale requests and ignores events from an old connection', async () => {
     const emit = vi.fn(), runtime = new DesktopRuntime(emit)
@@ -26,6 +27,50 @@ describe('runtime connection ownership', () => {
     await expect(runtime.request({ connectionId: old.connectionId!, method: 'session/list', params: {} })).rejects.toMatchObject({ code: 'STALE_CONNECTION' })
     await runtime.request({ connectionId: next.connectionId!, method: 'session/list', params: {} })
     expect(calls.clients[1].request).toHaveBeenCalledOnce()
+  })
+  it('ignores same-connection event and gateway tails after abort', async () => {
+    const emit = vi.fn(), runtime = new DesktopRuntime(emit)
+    await runtime.connect('/bin/bingo', '/project')
+    runtime.abort(new DesktopFailure('RENDERER_BACKPRESSURE', 'stalled'))
+    const count = emit.mock.calls.length
+    calls.clients[0].notify(frame({ type: 'turnStarted', turn: 'tail', inputs: [], origin: 'submit' }))
+    calls.clients[0].notify({ method: 'gateway/event', params: { seq: 1, event: { type: 'tail' } } })
+    expect(emit).toHaveBeenCalledTimes(count)
+    expect(runtime.busy).toBe(false)
+    expect(runtime.connection.status).toBe('failed')
+  })
+  it('keeps an abort notice small even when runtime capabilities are large', async () => {
+    const emit = vi.fn(), runtime = new DesktopRuntime(emit)
+    // 4096-character paths can expand to six JSON bytes per character. The
+    // initialize schema also permits large capabilities within its 16 MiB line.
+    calls.methods = ['x'.repeat(1024 * 1024)]
+    await runtime.connect('\u0001'.repeat(4096), '\u0001'.repeat(4096))
+    runtime.abort(new DesktopFailure('RENDERER_BACKPRESSURE', 'stalled'))
+    expect(Buffer.byteLength(JSON.stringify(emit.mock.calls.at(-1)![0]))).toBeLessThan(64 * 1024)
+    expect(runtime.connection.server).toBeUndefined()
+  })
+  it('checks renderer recovery before changing state or starting a replacement runtime', async () => {
+    const beforeConnect = vi.fn(), runtime = new DesktopRuntime(() => {}, beforeConnect)
+    await runtime.connect('/bin/bingo', '/project')
+    runtime.abort(new DesktopFailure('RENDERER_BACKPRESSURE', 'stalled'))
+    const failed = runtime.connection
+    beforeConnect.mockImplementationOnce(() => { throw new DesktopFailure('RENDERER_BACKPRESSURE', 'not drained') })
+    await expect(runtime.connect('/bin/bingo', '/project')).rejects.toMatchObject({ code: 'RENDERER_BACKPRESSURE' })
+    expect(runtime.connection).toEqual(failed)
+    expect(calls.clients).toHaveLength(1)
+    expect(calls.clients[0].close).toHaveBeenCalledOnce()
+    await runtime.connect('/bin/bingo', '/project')
+    expect(runtime.connection.status).toBe('ready')
+    expect(calls.clients).toHaveLength(2)
+  })
+  it.each(['disconnected', 'connecting'])('does not spawn after %s publication synchronously aborts delivery', async (status) => {
+    const failure = new DesktopFailure('RENDERER_BACKPRESSURE', 'full')
+    const runtime = new DesktopRuntime((event) => {
+      if (event.type === 'connection' && event.connection.status === status) runtime.abort(failure)
+    })
+    await expect(runtime.connect('/bin/bingo', '/project')).rejects.toMatchObject({ code: 'CONNECT_FAILED' })
+    expect(runtime.connection.status).toBe('failed')
+    expect(calls.clients).toHaveLength(0)
   })
   it('tracks real running work from authoritative snapshots and frames', async () => {
     const runtime = new DesktopRuntime(() => {})

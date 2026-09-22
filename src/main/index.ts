@@ -53,9 +53,17 @@ function createWindow(): void {
   created.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   created.webContents.on('will-navigate', (event, url) => { if (!sameDocument(url, documentUrl)) event.preventDefault() })
   created.webContents.on('will-attach-webview', (event) => event.preventDefault())
-  created.webContents.on('render-process-gone', () => {
-    delivery?.reset()
+  created.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
+    if (!isMainFrame || isInPlace) return
+    // Stop old stdout at navigation start, but retain its IPC budget: a
+    // cancelled/failed navigation may leave the current document alive.
     void runtime?.close()
+  })
+  // did-navigate is main-frame cross-document commit (not an in-page change).
+  created.webContents.on('did-navigate', () => delivery?.reset())
+  created.webContents.on('render-process-gone', () => {
+    void runtime?.close()
+    delivery?.reset()
     if (!quitting) void dialog.showMessageBox(created, { type: 'error', message: 'The conversation window stopped.', detail: 'The native runtime has been disconnected. Reload the window and reconnect to recover saved history.', buttons: ['Reload', 'Quit'] }).then((result) => { if (result.response === 0) created.reload(); else app.quit() })
   })
   created.once('ready-to-show', () => created.show())
@@ -143,7 +151,7 @@ else {
     preferences = new PreferencesStore(app.getPath('userData'))
     await preferences.load().catch((error: Error) => dialog.showErrorBox('Desktop preferences unavailable', error.message))
     nativeTheme.themeSource = preferences.preferences.theme
-    runtime = new DesktopRuntime(emit)
+    runtime = new DesktopRuntime(emit, () => delivery?.recover())
     delivery = new EventDelivery(() => window, documentUrl, (error) => runtime?.abort(error))
     desktopIpc = new DesktopIpc({ window: () => window, documentUrl, preferences, runtime, onDialogChange: (open) => panels?.setBrowserOccluded(open) })
     await desktopIpc.initialize()

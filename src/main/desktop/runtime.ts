@@ -11,7 +11,7 @@ export class DesktopRuntime {
   private readonly pasteLogins = new Map<string, Set<string>>()
   private readonly submitting = new Map<string, string>()
   private state: ConnectionState = { status: 'disconnected', connectionId: null, workspace: null, binary: null }
-  constructor(private readonly emit: (event: DesktopEvent) => void) {}
+  constructor(private readonly emit: (event: DesktopEvent) => void, private readonly beforeConnect: () => void = () => {}) {}
   get connection(): ConnectionState { return structuredClone(this.state) }
   get busy(): boolean { return this.submitting.size > 0 || [...this.activity.values()].some((value) => value.turn || value.queued || value.interactions.size > 0 || value.uncertain) }
 
@@ -19,10 +19,13 @@ export class DesktopRuntime {
     if (this.switching) throw new DesktopFailure('CONNECTING', 'A connection is already being established.')
     this.switching = true
     try {
+      this.beforeConnect()
       await this.close()
+      this.throwIfFailed()
       const connectionId = randomUUID()
       this.state = { status: 'connecting', connectionId, binary, workspace }
       this.publish()
+      this.throwIfFailed()
       const client = new RpcClient({ binary, cwd: workspace, env: { ...process.env, BINGO_BROWSER_MODE: 'client' } }, (notification) => this.notification(connectionId, notification), (error) => {
         if (connectionId !== this.state.connectionId) return
         this.state = { ...this.state, status: 'failed', error: { code: error.code, message: error.message } }
@@ -32,9 +35,10 @@ export class DesktopRuntime {
       })
       this.client = client
       const server = await client.start()
-      if (this.state.status === 'failed') throw new DesktopFailure('CONNECT_FAILED', 'The runtime failed while connecting.')
+      this.throwIfFailed()
       this.state = { ...this.state, status: 'ready', server }
       this.publish()
+      this.throwIfFailed()
       return this.connection
     } finally { this.switching = false }
   }
@@ -64,7 +68,9 @@ export class DesktopRuntime {
   abort(error: DesktopFailure): void {
     const client = this.client
     this.client = null
-    this.state = { ...this.state, status: 'failed', error: { code: error.code, message: error.message } }
+    // Do not copy the runtime's potentially large capability table into the
+    // reserved terminal notice. Validated paths and this local error are bounded.
+    this.state = { status: 'failed', connectionId: this.state.connectionId, workspace: this.state.workspace, binary: this.state.binary, error: { code: error.code, message: error.message } }
     this.publish()
     void client?.close()
   }
@@ -90,7 +96,7 @@ export class DesktopRuntime {
     this.activity.set(result.session, { seq: result.snapshot.seq, turn: Boolean(result.snapshot.turn), queued: Boolean(result.snapshot.queue?.length), interactions: new Set((result.snapshot.interactions ?? []).map((interaction) => interaction.id)), uncertain: false })
   }
   private notification(connectionId: string, notification: RpcNotification): void {
-    if (connectionId !== this.state.connectionId) return
+    if (connectionId !== this.state.connectionId || this.state.status === 'failed' || this.state.status === 'disconnected') return
     if (notification.method === 'event') this.observeFrame(notification.params)
     this.emit({ type: 'rpc', connectionId, ...notification })
   }
@@ -120,6 +126,10 @@ export class DesktopRuntime {
     if (event.type === 'queueChanged') activity.queued = event.entries.length > 0
     if (event.type === 'sessionClosed') { activity.turn = false; activity.queued = false; activity.interactions.clear(); activity.uncertain = false }
     this.activity.set(frame.session, activity)
+  }
+  // Publishing can synchronously abort through the delivery overflow callback.
+  private throwIfFailed(): void {
+    if (this.state.status === 'failed') throw new DesktopFailure('CONNECT_FAILED', 'The runtime failed while connecting.')
   }
   private publish(): void { this.emit({ type: 'connection', connection: this.connection }) }
 }
