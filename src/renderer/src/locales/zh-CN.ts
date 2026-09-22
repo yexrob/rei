@@ -13,6 +13,7 @@ export const zhCN = {
   'Recorded content · {count} characters': '记录内容 · {count} 个字符',
   'Structured content is summarized for display. Expand a bounded preview or copy the complete recorded text.': '结构化内容已摘要显示。可展开限长预览，或复制完整记录文本。',
   'Inspect recorded content': '查看记录内容',
+  'The runtime truncated this result. Preview and copy include only the recorded portion, including the truncation marker.': '运行时已截断此结果。预览和复制仅包含已记录的部分，包括截断标记。',
   'What would you like to work on?': '今天想做些什么？',
   '{used} of {total} context tokens': '上下文已用 {used}，容量 {total} token',
   'Context capacity unavailable': '上下文容量暂不可用',
