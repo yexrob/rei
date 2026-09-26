@@ -1,0 +1,951 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="PROTOTYPE — throwaway visual study for the bingo continuous workspace." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231d1f23'/%3E%3Cpath d='M10 7v18h8.5a7 7 0 0 0 0-14H15V7zm5 9h3.5a2 2 0 1 1 0 4H15z' fill='white'/%3E%3C/svg%3E" />
+  <title>bingo continuous workspace — prototype</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #fbfaf7;
+      --surface: #fbfaf7;
+      --selected: #edf2ef;
+      --selected-neutral: #efeee9;
+      --line: #dedbd3;
+      --line-strong: #cbc8bf;
+      --text: #242522;
+      --text-soft: #55574f;
+      --muted: #7f8178;
+      --active: #58766a;
+      --active-bg: #edf2ef;
+      --danger: #956556;
+      --danger-bg: #f4ece8;
+      --code: #2d2e2a;
+      --code-muted: #7a7c74;
+      --focus: #6f8c80;
+      --header-h: 56px;
+      --inset: 28px;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --canvas: #1b1c19;
+      --surface: #1b1c19;
+      --selected: #2a302c;
+      --selected-neutral: #2b2c28;
+      --line: #353731;
+      --line-strong: #4a4c45;
+      --text: #ecebe5;
+      --text-soft: #c5c5bd;
+      --muted: #9a9b92;
+      --active: #8eaa9e;
+      --active-bg: #28332e;
+      --danger: #c49382;
+      --danger-bg: #3b2d28;
+      --code: #efeee8;
+      --code-muted: #9b9d94;
+      --focus: #8eaa9e;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    body { min-width: 720px; background: var(--canvas); color: var(--text); }
+    button, textarea { font: inherit; }
+    button { box-shadow: none !important; background-color: transparent !important; color: inherit !important; }
+    h1, h2, h3 { color: inherit !important; }
+    button:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    svg { display: block; width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 21fr 46fr 33fr;
+      width: 100vw;
+      height: 100vh;
+      background: var(--canvas);
+    }
+
+    .workspace[data-pane="focus"] { grid-template-columns: 21fr 79fr; }
+    .workspace[data-pane="focus"] .context-pane { display: none; }
+    .workspace[data-pane="focus"] .pane-launcher { display: inline-flex; }
+    .workspace[data-pane="changes"] .transcript-diff { display: none; }
+    .workspace[data-pane="changes"] .review-handoff { display: block; }
+
+    .sidebar, .conversation, .context-pane { min-width: 0; min-height: 0; }
+    .sidebar, .conversation { border-right: 1px solid var(--line); }
+
+    .sidebar { display: grid; grid-template-rows: var(--header-h) minmax(0, 1fr) auto; }
+
+    .sidebar-top, .conversation-header, .context-header {
+      display: flex;
+      align-items: center;
+      height: var(--header-h);
+      padding: 0 var(--inset);
+    }
+
+    .mark { margin-right: auto; font-size: 23px; font-weight: 800; letter-spacing: -.12em; line-height: 1; }
+
+    .icon-button {
+      display: inline-grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: 0 !important;
+      background-color: transparent !important;
+      color: var(--text-soft) !important;
+      cursor: pointer;
+    }
+
+    .icon-button:hover { color: var(--text) !important; }
+
+    .sidebar-body {
+      min-height: 0;
+      overflow-y: auto;
+      padding: 4px 16px 12px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--line-strong) transparent;
+    }
+
+    .primary-nav { display: grid; margin-bottom: 20px; }
+
+    .nav-row, .session-row, .new-session {
+      width: 100%;
+      border: 0 !important;
+      background-color: transparent !important;
+      color: var(--text-soft) !important;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .nav-row { min-height: 34px; padding: 0 12px; font-size: 13px; }
+    .nav-row[aria-current="page"] { color: var(--text) !important; font-weight: 680; }
+
+    .session-group { margin: 0 0 16px; }
+    .group-label { margin: 0 12px 5px; color: var(--muted) !important; font-size: 10px; font-weight: 680; letter-spacing: .045em; text-transform: uppercase; }
+    .session-list { display: grid; }
+
+    .session-row {
+      min-height: 34px;
+      padding: 7px 12px;
+      font-size: 12.5px;
+      line-height: 1.35;
+    }
+
+    .session-row[aria-current="page"] {
+      background-color: var(--selected) !important;
+      color: var(--active) !important;
+      font-weight: 670;
+    }
+
+    .sidebar-footer { padding: 6px 16px 12px; }
+    .new-session { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 0 12px; font-size: 12.5px; }
+    .new-session:hover { color: var(--text) !important; }
+    .plus { font-size: 20px; font-weight: 300; line-height: 1; }
+
+    .conversation { display: grid; grid-template-rows: var(--header-h) minmax(0, 1fr) auto; }
+    .conversation-header { gap: 8px; white-space: nowrap; }
+    .conversation-header-inner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: min(100%, 720px);
+      margin: 0 auto;
+    }
+
+    .project-name { font-size: 14px; font-weight: 720; }
+    .breadcrumb-slash { color: var(--muted); }
+    .conversation-title { min-width: 0; overflow: hidden; color: var(--text-soft); font-size: 14px; text-overflow: ellipsis; }
+
+    .pane-launcher {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+      height: 34px;
+      padding: 0 8px;
+      border: 0 !important;
+      background-color: transparent !important;
+      color: var(--text-soft) !important;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .transcript {
+      min-height: 0;
+      overflow-y: auto;
+      padding: 8px var(--inset) 16px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--line-strong) transparent;
+    }
+
+    .transcript-column { width: min(100%, 720px); margin: 0 auto; }
+
+    .user-task {
+      width: min(92%, 650px);
+      margin: 0 0 14px;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 620;
+      line-height: 1.5;
+    }
+
+    .user-task::before { content: "You"; display: block; margin-bottom: 3px; color: var(--muted); font-size: 10px; font-weight: 680; letter-spacing: .04em; text-transform: uppercase; }
+
+    .assistant-copy { margin: 0 0 16px; color: var(--text-soft); font-size: 14px; line-height: 1.52; }
+    code, .mono { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, Menlo, monospace; }
+    .inline-code { color: var(--text); font-size: .92em; }
+
+    .turn-flow { display: grid; gap: 6px; margin: 0 0 9px; }
+
+    .tool-event {
+      display: flex;
+      align-items: baseline;
+      gap: 7px;
+      min-height: 20px;
+      color: var(--text-soft);
+      font-size: 12.5px;
+      line-height: 1.4;
+    }
+
+    .tool-event.is-active { color: var(--text); }
+    .diff-plus { color: var(--active); }
+    .diff-minus { color: var(--danger); }
+
+    .transcript-diff {
+      overflow: hidden;
+      margin: 0 0 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+    }
+
+    .diff-header {
+      display: flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 0 12px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .diff-header .mono { color: var(--text-soft); }
+    .diff-mode { margin-left: auto; }
+    .code-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+
+    .code-table td {
+      height: 22px;
+      padding: 0;
+      color: var(--code);
+      font-family: "SFMono-Regular", "Cascadia Code", ui-monospace, monospace;
+      font-size: 10.5px;
+      line-height: 22px;
+      white-space: pre;
+    }
+
+    .code-table .line-number { width: 34px; padding-right: 7px; color: var(--code-muted); text-align: right; user-select: none; }
+    .code-table .marker { width: 21px; color: var(--code-muted); text-align: center; user-select: none; }
+    .code-table .code-line { overflow: hidden; padding-right: 8px; }
+    .code-table tr.removed { background: var(--danger-bg); }
+    .code-table tr.added { background: var(--active-bg); }
+    .syntax-key { color: var(--danger); }
+    .syntax-fn { color: var(--active); }
+    .syntax-string { color: var(--text-soft); }
+
+    .review-handoff { display: none; margin: 0 0 9px; color: var(--muted); font-size: 11.5px; }
+
+    .composer-wrap { padding: 0 var(--inset) 14px; }
+    .composer { position: relative; width: min(100%, 720px); margin: 0 auto; }
+
+    .composer-surface {
+      display: grid;
+      gap: 8px;
+      min-height: 96px;
+      padding: 10px 10px 9px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 11px;
+    }
+
+    .composer textarea {
+      width: 100%;
+      min-height: 42px;
+      max-height: 108px;
+      padding: 3px 2px;
+      resize: none;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .composer textarea::placeholder { color: var(--muted); }
+
+    .composer-toolbar {
+      display: flex;
+      align-items: center;
+      min-height: 34px;
+    }
+
+    .toolbar-left, .toolbar-right { display: flex; align-items: center; gap: 2px; }
+    .toolbar-right { margin-left: auto; }
+
+    .composer-tool, .runtime-trigger, .send-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 34px;
+      border: 0 !important;
+      background-color: transparent !important;
+      color: var(--text-soft) !important;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    .composer-tool { gap: 6px; padding: 0 7px; font-size: 11.5px; }
+    .attach-button { width: 34px; padding: 0; }
+    .composer-tool svg { width: 16px; height: 16px; }
+
+    .runtime-trigger {
+      gap: 6px;
+      max-width: 210px;
+      padding: 0 8px;
+      color: var(--muted) !important;
+      font-size: 11.5px;
+    }
+
+    .runtime-trigger[aria-expanded="true"], .permission-trigger[aria-expanded="true"] {
+      background-color: var(--selected-neutral) !important;
+      color: var(--text) !important;
+    }
+
+    .toolbar-chevron { width: 10px; height: 10px; flex: 0 0 10px; }
+
+    .send-button {
+      width: 34px;
+      padding: 0;
+      border-radius: 50%;
+      color: var(--muted) !important;
+      cursor: default;
+    }
+
+    .send-button:not(:disabled) { color: var(--active) !important; cursor: pointer; }
+
+    .permission-menu, .runtime-menu, .runtime-submenu {
+      position: absolute;
+      z-index: 12;
+      bottom: calc(100% + 8px);
+      padding: 7px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      background: var(--surface);
+    }
+
+    .permission-menu { left: 0; width: 228px; }
+
+    .runtime-popovers {
+      position: absolute;
+      z-index: 12;
+      right: 0;
+      bottom: calc(100% + 8px);
+      display: grid;
+      grid-auto-flow: column;
+      grid-template-columns: max-content max-content;
+      align-items: end;
+      gap: 8px;
+    }
+
+    .runtime-popovers[hidden], .permission-menu[hidden], .runtime-submenu[hidden] { display: none; }
+    .runtime-menu, .runtime-submenu { position: static; grid-row: 1; }
+    .runtime-menu { width: 260px; }
+    .runtime-submenu { width: 218px; }
+    .runtime-menu { grid-column: 2; }
+    .runtime-submenu { grid-column: 1; }
+
+    .menu-label {
+      margin: 3px 9px 6px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 680;
+      letter-spacing: .045em;
+      text-transform: uppercase;
+    }
+
+    .menu-row, .menu-option {
+      display: grid;
+      align-items: center;
+      width: 100%;
+      min-height: 38px;
+      padding: 0 9px;
+      border: 0 !important;
+      border-radius: 6px;
+      background-color: transparent !important;
+      color: var(--text-soft) !important;
+      cursor: pointer;
+      text-align: left;
+      font-size: 12px;
+    }
+
+    .menu-row { grid-template-columns: minmax(0, 1fr) auto 14px; gap: 8px; }
+    .menu-row > span:nth-child(2) { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+    .menu-row svg { width: 12px; height: 12px; color: var(--muted); }
+    .menu-option { grid-template-columns: minmax(0, 1fr) 16px; gap: 8px; }
+    .menu-row:hover, .menu-option:hover { background-color: var(--selected-neutral) !important; color: var(--text) !important; }
+    .menu-row[aria-expanded="true"], .menu-option[aria-checked="true"] { background-color: var(--selected) !important; color: var(--text) !important; }
+    .menu-check { width: 14px; height: 14px; color: var(--active); }
+    .menu-option[aria-checked="false"] .menu-check { visibility: hidden; }
+
+    .menu-note { margin: -1px 9px 5px; color: var(--muted); font-size: 10.5px; line-height: 1.35; }
+
+    .context-pane { display: grid; grid-template-rows: var(--header-h) minmax(0, 1fr); }
+    .context-header { padding-right: 12px; }
+    .context-tabs { display: flex; align-self: stretch; }
+
+    .context-tab {
+      position: relative;
+      min-width: 72px;
+      padding: 0 12px;
+      border: 0 !important;
+      background-color: transparent !important;
+      color: var(--text-soft) !important;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .context-tab[aria-selected="true"] { color: var(--text) !important; font-weight: 680; }
+    .context-tab[aria-selected="true"]::after { content: ""; position: absolute; right: 12px; bottom: 0; left: 12px; height: 2px; background: var(--active); }
+
+    .change-stat { display: flex; align-items: center; gap: 7px; margin-left: 8px; color: var(--muted); font-family: "SFMono-Regular", ui-monospace, monospace; font-size: 10.5px; white-space: nowrap; }
+    .context-path { min-width: 0; margin: 0 6px 0 auto; overflow: hidden; color: var(--muted); font-family: "SFMono-Regular", ui-monospace, monospace; font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+    .close-pane { flex: 0 0 34px; width: 34px; height: 34px; }
+    .close-pane svg { width: 15px; height: 15px; }
+    .context-view { min-height: 0; }
+
+    .preview-view { height: 100%; overflow-y: auto; }
+
+    .settings-canvas, .changes-view {
+      width: 100%;
+      padding: 24px var(--inset) 36px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--line-strong) transparent;
+    }
+
+    .settings-canvas h1, .changes-view h1 { margin: 0; font-size: 19px; font-weight: 710; letter-spacing: -.025em; }
+    .settings-intro, .review-subtitle { margin: 4px 0 16px; color: var(--muted); font-size: 12px; }
+
+    .setting-row {
+      display: grid;
+      grid-template-columns: minmax(116px, 1fr) minmax(210px, 1.15fr);
+      gap: 24px;
+      align-items: center;
+      min-height: 76px;
+    }
+
+    .setting-copy h2 { margin: 0 0 3px; font-size: 13px; font-weight: 680; }
+    .setting-copy p { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+
+    .segmented {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: 1fr;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+    }
+
+    .segmented button {
+      min-height: 36px;
+      padding: 0 8px;
+      border: 0 !important;
+      background-color: transparent !important;
+      color: var(--text-soft) !important;
+      cursor: pointer;
+      font-size: 11.5px;
+    }
+
+    .segmented button[aria-pressed="true"] { background-color: var(--selected-neutral) !important; color: var(--text) !important; font-weight: 650; }
+
+    .switch {
+      position: relative;
+      justify-self: end;
+      width: 40px;
+      height: 22px;
+      padding: 0;
+      border: 1px solid var(--line-strong) !important;
+      border-radius: 999px;
+      background-color: transparent !important;
+      cursor: pointer;
+    }
+
+    .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: transform 150ms ease, background 150ms ease; }
+    .switch[aria-checked="true"] { border-color: var(--active) !important; }
+    .switch[aria-checked="true"]::after { background: var(--active); transform: translateX(18px); }
+
+    .changes-view { display: none; height: 100%; overflow-y: auto; }
+    .workspace[data-pane="changes"] .preview-view { display: none; }
+    .workspace[data-pane="changes"] .changes-view { display: block; }
+
+    .review-file { display: flex; align-items: center; min-height: 36px; color: var(--text-soft); font-size: 11.5px; }
+    .review-file .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .review-file .change-stat { margin-left: auto; }
+    .review-diff { overflow-x: auto; padding: 8px 0; }
+
+    .review-line {
+      display: grid;
+      grid-template-columns: 32px 18px minmax(390px, 1fr);
+      min-height: 23px;
+      color: var(--code);
+      font-family: "SFMono-Regular", "Cascadia Code", ui-monospace, monospace;
+      font-size: 10.5px;
+      line-height: 23px;
+      white-space: pre;
+    }
+
+    .review-line > span:first-child { color: var(--code-muted); text-align: right; }
+    .review-line > span:nth-child(2) { color: var(--code-muted); text-align: center; }
+    .review-line.added { background: var(--active-bg); }
+    .review-line.removed { background: var(--danger-bg); }
+
+    .review-actions { display: flex; justify-content: flex-end; gap: 6px; padding-top: 8px; }
+    .review-action { height: 32px; padding: 0 9px; border: 1px solid var(--line-strong) !important; border-radius: 5px; background-color: transparent !important; color: var(--text-soft) !important; cursor: pointer; font-size: 11px; }
+
+    .toast { position: fixed; z-index: 10; right: 18px; bottom: 18px; padding: 9px 12px; border-radius: 6px; background: var(--text); color: var(--canvas); font-size: 11.5px; opacity: 0; pointer-events: none; transform: translateY(6px); transition: opacity 140ms ease, transform 140ms ease; }
+    .toast.is-visible { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 1199px) {
+      .workspace, .workspace[data-pane="focus"] { grid-template-columns: 224px minmax(0, 1fr); }
+      .context-pane { display: none; }
+      .pane-launcher { display: inline-flex; }
+      .workspace.drawer-open .context-pane {
+        position: fixed;
+        z-index: 8;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        display: grid;
+        width: min(560px, 88vw);
+        border-left: 1px solid var(--line-strong);
+        background: var(--canvas);
+        box-shadow: -18px 0 50px rgba(20, 22, 25, .12);
+      }
+      .workspace.drawer-open::after { content: ""; position: fixed; z-index: 7; inset: 0; background: rgba(20, 22, 25, .15); }
+      .runtime-popovers {
+        right: 0;
+        grid-auto-flow: row;
+        grid-template-columns: minmax(0, 1fr);
+        width: min(100%, 260px);
+      }
+      .runtime-menu, .runtime-submenu { grid-column: 1; width: 100%; }
+      .runtime-submenu { grid-row: 1; }
+      .runtime-menu { grid-row: 2; }
+    }
+
+    @media (max-width: 900px) {
+      body { min-width: 680px; }
+      .workspace, .workspace[data-pane="focus"] { grid-template-columns: 200px minmax(0, 1fr); }
+      :root { --inset: 22px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .001ms !important; } }
+  </style>
+</head>
+<body>
+  <main class="workspace" id="workspace" data-pane="preview" aria-label="bingo workspace prototype">
+    <nav class="sidebar" aria-label="Session navigation">
+      <div class="sidebar-top">
+        <div class="mark" aria-label="bingo">b</div>
+        <button class="icon-button" type="button" aria-label="Search sessions" title="Search sessions">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+        </button>
+      </div>
+
+      <div class="sidebar-body">
+        <div class="primary-nav">
+          <button class="nav-row" type="button">Home</button>
+          <button class="nav-row" type="button">Code</button>
+          <button class="nav-row" type="button" aria-current="page">Sessions</button>
+        </div>
+
+        <section class="session-group" aria-labelledby="pinned-label">
+          <h2 class="group-label" id="pinned-label">Pinned</h2>
+          <div class="session-list">
+            <button class="session-row" type="button" aria-current="page">Refactor settings flow</button>
+            <button class="session-row" type="button">Add dark mode toggle</button>
+            <button class="session-row" type="button">Fix flaky CI tests</button>
+          </div>
+        </section>
+
+        <section class="session-group" aria-labelledby="scheduled-label">
+          <h2 class="group-label" id="scheduled-label">Scheduled</h2>
+          <div class="session-list"><button class="session-row" type="button">Weekly dependency audit</button></div>
+        </section>
+
+        <section class="session-group" aria-labelledby="recents-label">
+          <h2 class="group-label" id="recents-label">Recents</h2>
+          <div class="session-list">
+            <button class="session-row" type="button">Investigate payment failures</button>
+            <button class="session-row" type="button">Normalize date utilities</button>
+            <button class="session-row" type="button">Add keyboard shortcuts</button>
+            <button class="session-row" type="button">Improve error boundaries</button>
+            <button class="session-row" type="button">Update onboarding copy</button>
+            <button class="session-row" type="button">Optimize dashboard queries</button>
+            <button class="session-row" type="button">Refine mobile layout</button>
+          </div>
+        </section>
+      </div>
+
+      <div class="sidebar-footer"><button class="new-session" type="button"><span class="plus" aria-hidden="true">+</span> New session</button></div>
+    </nav>
+
+    <section class="conversation" aria-labelledby="conversation-heading">
+      <header class="conversation-header">
+        <div class="conversation-header-inner">
+          <span class="project-name">bingo-studio</span><span class="breadcrumb-slash">/</span><span class="conversation-title" id="conversation-heading">Refactor settings flow</span>
+          <button class="pane-launcher" id="paneLauncher" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="1" /><path d="M14 5v14" /></svg>Preview</button>
+        </div>
+      </header>
+
+      <div class="transcript" id="transcript">
+        <div class="transcript-column">
+          <p class="user-task">Add a dark mode toggle to the settings page. Remember the choice and follow the system default until the user picks one.</p>
+          <p class="assistant-copy">There’s already a <code class="inline-code">ThemeProvider</code> wrapping the app, but it’s hard-wired to light. I’ll lift the mode into context, persist it to <code class="inline-code">localStorage</code>, and add a Light / Dark control under <strong>Settings › Appearance</strong>.</p>
+
+          <div class="turn-flow" aria-label="Tool activity">
+            <div class="tool-event">Read 4 files, searched the codebase</div>
+            <div class="tool-event is-active">Edited <span class="mono">theme.tsx</span> <span class="diff-plus">+18</span> <span class="diff-minus">−2</span></div>
+          </div>
+
+          <section class="transcript-diff" aria-label="Expanded code diff">
+            <header class="diff-header"><span class="mono">src/theme/theme.tsx</span><span class="diff-mode">Unified⌄</span></header>
+            <table class="code-table" aria-label="theme.tsx changes"><tbody>
+              <tr><td class="line-number">10</td><td class="marker"></td><td class="code-line"><span class="syntax-key">export function</span> <span class="syntax-fn">ThemeProvider</span>({ children }: { children: ReactNode }) {</td></tr>
+              <tr class="removed"><td class="line-number">11</td><td class="marker">−</td><td class="code-line">  <span class="syntax-key">const</span> prefersDark = <span class="syntax-fn">useMediaQuery</span>(<span class="syntax-string">'(prefers-color-scheme: dark)'</span>)</td></tr>
+              <tr class="removed"><td class="line-number">12</td><td class="marker">−</td><td class="code-line">  <span class="syntax-key">const</span> stored = localStorage.<span class="syntax-fn">getItem</span>(<span class="syntax-string">'theme'</span>)</td></tr>
+              <tr class="removed"><td class="line-number">13</td><td class="marker">−</td><td class="code-line">  <span class="syntax-key">const</span> [mode, setMode] = <span class="syntax-fn">useState</span>&lt;<span class="syntax-string">'light' | 'dark'</span>&gt;(prefersDark ? <span class="syntax-string">'dark'</span> : <span class="syntax-string">'light'</span>)</td></tr>
+              <tr><td class="line-number">14</td><td class="marker"></td><td class="code-line"></td></tr>
+              <tr class="added"><td class="line-number">15</td><td class="marker">+</td><td class="code-line">  <span class="syntax-fn">useEffect</span>(() =&gt; {</td></tr>
+              <tr class="added"><td class="line-number">16</td><td class="marker">+</td><td class="code-line">    localStorage.<span class="syntax-fn">setItem</span>(<span class="syntax-string">'theme'</span>, mode)</td></tr>
+              <tr class="added"><td class="line-number">17</td><td class="marker">+</td><td class="code-line">  }, [mode])</td></tr>
+              <tr><td class="line-number">18</td><td class="marker"></td><td class="code-line"></td></tr>
+              <tr><td class="line-number">19</td><td class="marker"></td><td class="code-line">  <span class="syntax-key">return</span> (</td></tr>
+              <tr><td class="line-number">20</td><td class="marker"></td><td class="code-line">    &lt;ThemeContext.Provider value={{ mode, setMode }}&gt;</td></tr>
+              <tr><td class="line-number">21</td><td class="marker"></td><td class="code-line">      {children}</td></tr>
+            </tbody></table>
+          </section>
+
+          <p class="review-handoff">Expanded review is open in Changes.</p>
+          <div class="turn-flow" aria-label="Additional tool activity">
+            <div class="tool-event">Edited <span class="mono">settings.tsx</span> <span class="diff-plus">+21</span> <span class="diff-minus">−0</span></div>
+            <div class="tool-event">Edited <span class="mono">tokens.css</span> <span class="diff-plus">+24</span> <span class="diff-minus">−0</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="composer-wrap">
+        <form class="composer" id="composer">
+          <div class="composer-surface">
+            <textarea id="composerInput" rows="1" aria-label="Ask bingo" placeholder="Ask bingo anything about your codebase…"></textarea>
+            <div class="composer-toolbar">
+              <div class="toolbar-left">
+                <button class="composer-tool attach-button" type="button" aria-label="Add context" title="Add context"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button>
+                <button class="composer-tool permission-trigger" id="permissionTrigger" type="button" aria-haspopup="menu" aria-expanded="false">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 19 6v5c0 4.5-2.7 7.7-7 9.5C7.7 18.7 5 15.5 5 11V6l7-2.5Z" /><path d="m9.2 12 1.8 1.8 3.8-4" /></svg>
+                  <span id="permissionSummary">Ask before tools</span>
+                </button>
+              </div>
+              <div class="toolbar-right">
+                <button class="runtime-trigger" id="runtimeTrigger" type="button" aria-haspopup="menu" aria-expanded="false"><span id="runtimeSummary">bingo-4o · Auto</span><svg class="toolbar-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 7.5 3-3 3 3" /></svg></button>
+                <button class="send-button" type="submit" aria-label="Send message" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 4 15 8-15 8 3-8-3-8Z" /><path d="M8 12h12" /></svg></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="permission-menu" id="permissionMenu" role="menu" hidden>
+            <p class="menu-label">Permission</p>
+            <button class="menu-option permission-option" type="button" role="menuitemradio" aria-checked="true" data-permission="Ask before tools"><span>Ask before tools</span><svg class="menu-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg></button>
+            <button class="menu-option permission-option" type="button" role="menuitemradio" aria-checked="false" data-permission="Approve for me"><span>Approve for me</span><svg class="menu-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg></button>
+            <button class="menu-option permission-option" type="button" role="menuitemradio" aria-checked="false" data-permission="Read only"><span>Read only</span><svg class="menu-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg></button>
+          </div>
+
+          <div class="runtime-popovers" id="runtimePopovers" hidden>
+            <div class="runtime-menu" role="menu" aria-label="Runtime configuration">
+              <p class="menu-label">Run configuration</p>
+              <button class="menu-row" id="modelRow" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false"><span>Model</span><span id="modelSummary">bingo-4o</span><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m4.5 3 3 3-3 3" /></svg></button>
+              <button class="menu-row" id="thinkingRow" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false"><span>Thinking</span><span id="thinkingSummary">Auto</span><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m4.5 3 3 3-3 3" /></svg></button>
+              <button class="menu-row" id="advancedRow" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false"><span>Advanced</span><span>Provider · Tools</span><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m4.5 3 3 3-3 3" /></svg></button>
+            </div>
+            <div class="runtime-submenu" id="modelMenu" role="menu" aria-label="Model" hidden>
+              <p class="menu-label">Model</p>
+              <button class="menu-option model-option" type="button" role="menuitemradio" aria-checked="true" data-model="bingo-4o"><span>bingo-4o</span><svg class="menu-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg></button>
+              <button class="menu-option" id="modelSettings" type="button" role="menuitem"><span>Open model settings…</span><span></span></button>
+            </div>
+            <div class="runtime-submenu" id="thinkingMenu" role="menu" aria-label="Thinking level" hidden>
+              <p class="menu-label">Thinking</p>
+              <button class="menu-option thinking-option" type="button" role="menuitemradio" aria-checked="false" data-thinking="Off"><span>Off</span><svg class="menu-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg></button>
+              <button class="menu-option thinking-option" type="button" role="menuitemradio" aria-checked="false" data-thinking="Low"><span>Low</span><svg class="menu-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg></button>
+              <button class="menu-option thinking-option" type="button" role="menuitemradio" aria-checked="false" data-thinking="Medium"><span>Medium</span><svg class="menu-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg></button>
+              <button class="menu-option thinking-option" type="button" role="menuitemradio" aria-checked="false" data-thinking="High"><span>High</span><svg class="menu-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg></button>
+              <button class="menu-option thinking-option" type="button" role="menuitemradio" aria-checked="false" data-thinking="Extra high"><span>Extra high</span><svg class="menu-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg></button>
+              <button class="menu-option thinking-option" type="button" role="menuitemradio" aria-checked="false" data-thinking="Max"><span>Max</span><svg class="menu-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg></button>
+              <p class="menu-note">Higher levels use more time and tokens.</p>
+            </div>
+            <div class="runtime-submenu" id="advancedMenu" role="menu" aria-label="Advanced runtime settings" hidden>
+              <p class="menu-label">Advanced</p>
+              <button class="menu-row" type="button" role="menuitem"><span>Provider</span><span>Default</span><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m4.5 3 3 3-3 3" /></svg></button>
+              <button class="menu-row" type="button" role="menuitem"><span>Tools</span><span>Enabled</span><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m4.5 3 3 3-3 3" /></svg></button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <aside class="context-pane" aria-label="Contextual work pane">
+      <header class="context-header">
+        <div class="context-tabs" role="tablist" aria-label="Context view">
+          <button class="context-tab" id="previewTab" type="button" role="tab" aria-selected="true">Preview</button>
+          <button class="context-tab" id="changesTab" type="button" role="tab" aria-selected="false">Changes</button>
+        </div>
+        <div class="change-stat" aria-label="3 changed files, 63 additions and 2 deletions"><span>3 files</span><span class="diff-plus">+63</span><span class="diff-minus">−2</span></div>
+        <span class="context-path">localhost:5173/settings</span>
+        <button class="icon-button close-pane" id="closePane" type="button" aria-label="Close contextual pane" title="Close pane"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" /></svg></button>
+      </header>
+
+      <div class="context-view preview-view" role="tabpanel" aria-labelledby="previewTab">
+        <section class="settings-canvas" aria-labelledby="appearance-title">
+          <h1 id="appearance-title">Appearance</h1>
+          <p class="settings-intro">Customize how bingo looks and feels.</p>
+
+          <div class="setting-row">
+            <div class="setting-copy"><h2>Theme</h2><p>Choose how the app displays.</p></div>
+            <div class="segmented" id="themeControl" aria-label="Theme">
+              <button type="button" data-value="system" aria-pressed="true">System</button>
+              <button type="button" data-value="light" aria-pressed="false">Light</button>
+              <button type="button" data-value="dark" aria-pressed="false">Dark</button>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-copy"><h2>Density</h2><p>Compact rows for power users.</p></div>
+            <div class="segmented" id="densityControl" aria-label="Density">
+              <button type="button" data-value="comfortable" aria-pressed="false">Comfortable</button>
+              <button type="button" data-value="default" aria-pressed="true">Default</button>
+              <button type="button" data-value="compact" aria-pressed="false">Compact</button>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-copy"><h2>Reduce motion</h2><p>Disable animations and transitions.</p></div>
+            <button class="switch" id="motionSwitch" type="button" role="switch" aria-checked="false" aria-label="Reduce motion"></button>
+          </div>
+        </section>
+      </div>
+
+      <section class="context-view changes-view" role="tabpanel" aria-labelledby="changesTab">
+        <h1>Review changes</h1>
+        <p class="review-subtitle">Preview is replaced by the active review.</p>
+        <div class="review-file"><span class="mono">src/theme/theme.tsx</span><span class="change-stat"><span class="diff-plus">+18</span><span class="diff-minus">−2</span></span></div>
+        <div class="review-diff" aria-label="theme.tsx review diff">
+          <div class="review-line"><span>10</span><span></span><span><span class="syntax-key">export function</span> <span class="syntax-fn">ThemeProvider</span>({ children }: Props) {</span></div>
+          <div class="review-line removed"><span>11</span><span>−</span><span>  <span class="syntax-key">const</span> mode = <span class="syntax-string">'light'</span></span></div>
+          <div class="review-line added"><span>11</span><span>+</span><span>  <span class="syntax-key">const</span> prefersDark = <span class="syntax-fn">useMediaQuery</span>(query)</span></div>
+          <div class="review-line added"><span>12</span><span>+</span><span>  <span class="syntax-key">const</span> stored = localStorage.<span class="syntax-fn">getItem</span>(<span class="syntax-string">'theme'</span>)</span></div>
+          <div class="review-line added"><span>13</span><span>+</span><span>  <span class="syntax-key">const</span> [mode, setMode] = <span class="syntax-fn">useState</span>(stored ?? system)</span></div>
+          <div class="review-line"><span>14</span><span></span><span></span></div>
+          <div class="review-line added"><span>15</span><span>+</span><span>  <span class="syntax-fn">useEffect</span>(() =&gt; {</span></div>
+          <div class="review-line added"><span>16</span><span>+</span><span>    localStorage.<span class="syntax-fn">setItem</span>(<span class="syntax-string">'theme'</span>, mode)</span></div>
+          <div class="review-line added"><span>17</span><span>+</span><span>  }, [mode])</span></div>
+        </div>
+        <div class="review-actions"><button class="review-action" type="button" data-toast="Comment added to theme.tsx">Comment</button><button class="review-action" type="button" data-toast="theme.tsx staged">Stage file</button></div>
+      </section>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const workspace = document.getElementById('workspace')
+    const previewTab = document.getElementById('previewTab')
+    const changesTab = document.getElementById('changesTab')
+    const closePane = document.getElementById('closePane')
+    const paneLauncher = document.getElementById('paneLauncher')
+    const toast = document.getElementById('toast')
+    const composerInput = document.getElementById('composerInput')
+    const sendButton = document.querySelector('.send-button')
+    const permissionTrigger = document.getElementById('permissionTrigger')
+    const permissionMenu = document.getElementById('permissionMenu')
+    const permissionSummary = document.getElementById('permissionSummary')
+    const runtimeTrigger = document.getElementById('runtimeTrigger')
+    const runtimePopovers = document.getElementById('runtimePopovers')
+    const runtimeSummary = document.getElementById('runtimeSummary')
+    const modelRow = document.getElementById('modelRow')
+    const modelMenu = document.getElementById('modelMenu')
+    const modelSummary = document.getElementById('modelSummary')
+    const thinkingRow = document.getElementById('thinkingRow')
+    const thinkingMenu = document.getElementById('thinkingMenu')
+    const thinkingSummary = document.getElementById('thinkingSummary')
+    const advancedRow = document.getElementById('advancedRow')
+    const advancedMenu = document.getElementById('advancedMenu')
+    const systemDark = window.matchMedia('(prefers-color-scheme: dark)')
+    let selectedTheme = 'system'
+    let toastTimer
+
+    function setPane(mode, drawer = false) {
+      workspace.dataset.pane = mode
+      workspace.classList.toggle('drawer-open', drawer && mode !== 'focus')
+      previewTab.setAttribute('aria-selected', String(mode === 'preview'))
+      changesTab.setAttribute('aria-selected', String(mode === 'changes'))
+      const url = new URL(window.location.href)
+      url.searchParams.set('pane', mode)
+      history.replaceState(null, '', url)
+    }
+
+    function applyTheme() {
+      document.documentElement.dataset.theme = selectedTheme === 'system' ? (systemDark.matches ? 'dark' : 'light') : selectedTheme
+    }
+
+    function showToast(message) {
+      clearTimeout(toastTimer)
+      toast.textContent = message
+      toast.classList.add('is-visible')
+      toastTimer = setTimeout(() => toast.classList.remove('is-visible'), 1800)
+    }
+
+    previewTab.addEventListener('click', () => setPane('preview', window.innerWidth < 1200))
+    changesTab.addEventListener('click', () => setPane('changes', window.innerWidth < 1200))
+    closePane.addEventListener('click', () => setPane('focus'))
+    paneLauncher.addEventListener('click', () => setPane('preview', window.innerWidth < 1200))
+
+    document.querySelectorAll('.session-row').forEach((row) => row.addEventListener('click', () => {
+      document.querySelectorAll('.session-row').forEach((item) => item.removeAttribute('aria-current'))
+      row.setAttribute('aria-current', 'page')
+      document.getElementById('conversation-heading').textContent = row.textContent.trim()
+    }))
+
+    document.querySelectorAll('#themeControl button').forEach((button) => button.addEventListener('click', () => {
+      selectedTheme = button.dataset.value
+      document.querySelectorAll('#themeControl button').forEach((item) => item.setAttribute('aria-pressed', String(item === button)))
+      applyTheme()
+    }))
+
+    document.querySelectorAll('#densityControl button').forEach((button) => button.addEventListener('click', () => {
+      document.querySelectorAll('#densityControl button').forEach((item) => item.setAttribute('aria-pressed', String(item === button)))
+      const value = button.dataset.value
+      document.documentElement.style.setProperty('--header-h', value === 'compact' ? '52px' : value === 'comfortable' ? '60px' : '56px')
+      document.querySelectorAll('.session-row').forEach((row) => { row.style.minHeight = value === 'compact' ? '30px' : value === 'comfortable' ? '38px' : '34px' })
+    }))
+
+    document.getElementById('motionSwitch').addEventListener('click', (event) => {
+      const button = event.currentTarget
+      button.setAttribute('aria-checked', String(button.getAttribute('aria-checked') !== 'true'))
+    })
+
+    composerInput.addEventListener('input', () => { sendButton.disabled = !composerInput.value.trim() })
+
+    function closeRuntimeSubmenus() {
+      modelMenu.hidden = true
+      thinkingMenu.hidden = true
+      advancedMenu.hidden = true
+      modelRow.setAttribute('aria-expanded', 'false')
+      thinkingRow.setAttribute('aria-expanded', 'false')
+      advancedRow.setAttribute('aria-expanded', 'false')
+    }
+
+    function closeComposerMenus() {
+      permissionMenu.hidden = true
+      permissionTrigger.setAttribute('aria-expanded', 'false')
+      runtimePopovers.hidden = true
+      runtimeTrigger.setAttribute('aria-expanded', 'false')
+      closeRuntimeSubmenus()
+    }
+
+    function toggleRuntimeSubmenu(row, menu) {
+      const willOpen = menu.hidden
+      closeRuntimeSubmenus()
+      menu.hidden = !willOpen
+      row.setAttribute('aria-expanded', String(willOpen))
+    }
+
+    permissionTrigger.addEventListener('click', (event) => {
+      event.stopPropagation()
+      const willOpen = permissionMenu.hidden
+      closeComposerMenus()
+      permissionMenu.hidden = !willOpen
+      permissionTrigger.setAttribute('aria-expanded', String(willOpen))
+    })
+
+    runtimeTrigger.addEventListener('click', (event) => {
+      event.stopPropagation()
+      const willOpen = runtimePopovers.hidden
+      closeComposerMenus()
+      runtimePopovers.hidden = !willOpen
+      runtimeTrigger.setAttribute('aria-expanded', String(willOpen))
+    })
+
+    modelRow.addEventListener('click', (event) => {
+      event.stopPropagation()
+      toggleRuntimeSubmenu(modelRow, modelMenu)
+    })
+
+    thinkingRow.addEventListener('click', (event) => {
+      event.stopPropagation()
+      toggleRuntimeSubmenu(thinkingRow, thinkingMenu)
+    })
+
+    advancedRow.addEventListener('click', (event) => {
+      event.stopPropagation()
+      toggleRuntimeSubmenu(advancedRow, advancedMenu)
+    })
+
+    document.querySelectorAll('.permission-option').forEach((option) => option.addEventListener('click', () => {
+      document.querySelectorAll('.permission-option').forEach((item) => item.setAttribute('aria-checked', String(item === option)))
+      permissionSummary.textContent = option.dataset.permission
+      closeComposerMenus()
+    }))
+
+    document.querySelectorAll('.model-option').forEach((option) => option.addEventListener('click', () => {
+      document.querySelectorAll('.model-option').forEach((item) => item.setAttribute('aria-checked', String(item === option)))
+      modelSummary.textContent = option.dataset.model
+      runtimeSummary.textContent = `${option.dataset.model} · ${thinkingSummary.textContent}`
+      closeComposerMenus()
+    }))
+
+    document.querySelectorAll('.thinking-option').forEach((option) => option.addEventListener('click', () => {
+      document.querySelectorAll('.thinking-option').forEach((item) => item.setAttribute('aria-checked', String(item === option)))
+      thinkingSummary.textContent = option.dataset.thinking
+      runtimeSummary.textContent = `${modelSummary.textContent} · ${option.dataset.thinking}`
+      thinkingMenu.hidden = true
+      thinkingRow.setAttribute('aria-expanded', 'false')
+    }))
+
+    document.getElementById('modelSettings').addEventListener('click', () => {
+      closeComposerMenus()
+      showToast('Model settings')
+    })
+    advancedMenu.querySelectorAll('.menu-row').forEach((row) => row.addEventListener('click', () => showToast(`${row.firstElementChild.textContent} settings`)))
+    document.addEventListener('click', (event) => {
+      if (!event.target.closest('.composer')) closeComposerMenus()
+    })
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeComposerMenus()
+    })
+
+    document.getElementById('composer').addEventListener('submit', (event) => {
+      event.preventDefault()
+      if (!composerInput.value.trim()) return
+      showToast('Prototype only — no turn was sent')
+      composerInput.value = ''
+      sendButton.disabled = true
+    })
+
+    document.querySelectorAll('[data-toast]').forEach((button) => button.addEventListener('click', () => showToast(button.dataset.toast)))
+    systemDark.addEventListener('change', () => { if (selectedTheme === 'system') applyTheme() })
+
+    const initialPane = new URL(window.location.href).searchParams.get('pane')
+    setPane(['preview', 'changes', 'focus'].includes(initialPane) ? initialPane : 'preview')
+    applyTheme()
+  </script>
+</body>
+</html>
