@@ -19,14 +19,21 @@ test('offline runtime burst preserves deltas, permission and intent/lifecycle ev
     await expect(page.locator('.startup-stage')).toHaveAttribute('data-phase', 'settled')
     await expect(page.getByText('Connected locally')).toBeVisible()
     await page.getByRole('navigation', { name: 'Sessions', exact: true }).getByRole('button', { name: /Burst regression/ }).click()
+    await expect(page.locator('h1')).toHaveText('Burst regression')
     await page.evaluate(() => {
       const state = window as typeof window & { burstEvents: DesktopEvent[] }
       state.burstEvents = []
       window.bingoDesktop.onEvent(() => { throw new Error('One bad subscriber must not prevent ACK or other subscribers') })
       window.bingoDesktop.onEvent(event => state.burstEvents.push(event))
     })
-    await page.getByRole('textbox', { name: 'Message bingo' }).fill('Run the isolated burst fixture.')
-    await page.getByRole('button', { name: 'Send message', exact: true }).click()
+    const input = page.getByRole('textbox', { name: 'Message bingo' })
+    await expect(input).toBeEditable()
+    await expect(input).toHaveValue('')
+    await input.fill('Run the isolated burst fixture.')
+    await expect(input).toHaveValue('Run the isolated burst fixture.')
+    const send = page.getByRole('button', { name: 'Send message', exact: true })
+    await expect(send).toBeEnabled()
+    await send.click()
     await expect(page.getByRole('button', { name: 'Allow once', exact: true })).toBeVisible()
     await expect(page.getByText('Burst delivered in order.', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Allow once', exact: true }).click()

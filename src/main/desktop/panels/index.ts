@@ -31,7 +31,7 @@ export class Panels {
     this.handle(PANELS_IPC.terminalAck, terminalAckSchema, ({ id, sequence }) => this.terminals.ack(id, sequence))
   }
   get busy(): boolean { return this.terminals.busy }
-  openBrowser(url: string): void { if (!this.closed) { this.bindWindow(); this.browser.open(url) } }
+  openBrowser(url: string, announce = true): void { if (!this.closed) { this.bindWindow(); this.browser.open(url, announce) } }
   setBrowserOccluded(value: boolean): void { this.browser.setOccluded(value) }
   close(): Promise<void> {
     if (this.closed) return Promise.resolve()

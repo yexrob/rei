@@ -1,5 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowDown, ChevronRight, Terminal, Wrench } from './icons'
+import type { ExportProgress } from '../../../shared/desktop'
 import type { Item, SessionSummary, View } from '../../../shared/rpc'
 import { contentText, itemText, type SessionProjection, type ToolCallItem } from '../state/session'
 import { ToolCallCard } from './tools/ToolCallCard'
@@ -43,7 +44,7 @@ export const TranscriptItem = memo(function TranscriptItem({ item, openLink, run
   return <p className="system-note">{itemText(item)}</p>
 })
 
-export function Timeline({ projection, openLink, runAction, loadHistory, loading, assistantName = 'Bingo', sessions, onSelectSession, connected = true }: { projection: SessionProjection; openLink: OpenLink; runAction: RunAction; loadHistory: () => void; loading: boolean; assistantName?: string; connected?: boolean } & Omit<ToolNavigation, 'sessionId'>): React.JSX.Element {
+export function Timeline({ projection, openLink, runAction, loadHistory, loading, assistantName = 'Bingo', sessions, onSelectSession, connected = true, previewReference, saveReference, exportProgress, cancelExport, childIds = [], childScanComplete = false }: { projection: SessionProjection; openLink: OpenLink; runAction: RunAction; loadHistory: () => void; loading: boolean; assistantName?: string; connected?: boolean; previewReference?: (kind: 'event' | 'history' | 'field', id: string) => void; saveReference?: (kind: 'event' | 'history' | 'field', id: string) => void; exportProgress?: ExportProgress | null; cancelExport?: () => void; childIds?: string[]; childScanComplete?: boolean } & Omit<ToolNavigation, 'sessionId'>): React.JSX.Element {
   const { t } = useI18n()
   const scroll = useRef<HTMLDivElement>(null)
   const transcript = useRef<HTMLDivElement>(null)
@@ -51,7 +52,9 @@ export function Timeline({ projection, openLink, runAction, loadHistory, loading
   const inspecting = useRef(false)
   const previousHeight = useRef(0)
   const [showLatest, setShowLatest] = useState(false)
+  const [childQuery, setChildQuery] = useState('')
   const state = projection.snapshot
+  const missing = Boolean((!state.items.length && !projection.history.complete) || projection.unloaded?.length || projection.unloadedHistory?.length || projection.omittedFields?.length || projection.tree?.descendantsComplete === false || childIds.length || projection.historyPending)
   const processing = connected && Boolean(state.turn && !state.interactions?.length)
   const inspectTools = (target: EventTarget | null) => {
     if (!(target instanceof Element) || !target.closest('.tool-activity')) return
@@ -81,6 +84,17 @@ export function Timeline({ projection, openLink, runAction, loadHistory, loading
     following.current = !inspecting.current && element.scrollHeight - element.scrollTop - element.clientHeight < 100
     setShowLatest(!following.current)
   }}><div className="transcript" ref={transcript} data-working={processing} data-connected={connected}>
+    {missing && <section className="unloaded-content" role="status"><strong>{t('Some content is not loaded.')}</strong>
+      {!state.items.length && !projection.history.complete && <p>{t('Earlier history is not loaded.')}</p>}
+      {projection.tree?.descendantsComplete === false && <p>{t('Older child sessions have not been loaded.')}</p>}
+      {childIds.length > 0 && <details className="unloaded-children"><summary>{t('{count} child sessions discovered; older branches may still be incomplete.', { count: childIds.length })}</summary><input aria-label={t('Find discovered child')} value={childQuery} onChange={event => setChildQuery(event.target.value)} /><div>{childIds.filter(id => id.toLowerCase().includes(childQuery.toLowerCase())).slice(0, 50).map(id => <button key={id} disabled={!onSelectSession} aria-label={t('Open discovered child {id}', { id })} onClick={() => onSelectSession?.(id)}>{sessions?.find(session => session.id === id)?.title || id}</button>)}</div>{!childScanComplete && <p>{t('Child discovery is still incomplete.')}</p>}</details>}
+      {projection.historyPending && <p>{t('History is awaiting verification.')}</p>}
+      {projection.unloaded?.map(ref => <p key={ref.messageId}>{t('Recorded event {name} is not loaded ({bytes} bytes).', { name: ref.item ?? ref.eventType, bytes: ref.totalBytes })} {ref.availability.kind === 'available' && previewReference && <button onClick={() => previewReference('event', ref.messageId)}>{t('Preview raw event {name}', { name: ref.item ?? ref.eventType })}</button>}{ref.availability.kind === 'available' && saveReference && <button disabled={exportProgress?.status === 'running'} onClick={() => saveReference('event', ref.messageId)}>{t('Save full raw JSON for {name}…', { name: ref.item ?? ref.eventType })}</button>}{ref.availability.kind === 'unavailable' && <small>{ref.availability.reason}</small>}</p>)}
+      {projection.unloadedHistory?.map(ref => <p className="unloaded-history-item" data-item-id={ref.id} key={`${ref.generation}:${ref.id}`}>{t('Historical item {name} is not loaded ({bytes} bytes).', { name: ref.id, bytes: ref.totalBytes })} {ref.availability.kind === 'available' && previewReference && <button onClick={() => previewReference('history', ref.id)}>{t('Preview raw item {name}', { name: ref.id })}</button>}{ref.availability.kind === 'available' && saveReference && <button disabled={exportProgress?.status === 'running'} onClick={() => saveReference('history', ref.id)}>{t('Save full raw JSON for {name}…', { name: ref.id })}</button>}{ref.availability.kind === 'unavailable' && <small>{ref.availability.reason}</small>}</p>)}
+      {projection.omittedFields?.map(ref => { const name = ref.path.join('.'); return <p key={name}>{t('Snapshot field {name} is not loaded ({bytes} bytes).', { name, bytes: ref.totalBytes })} {ref.availability.kind === 'available' && previewReference && <button onClick={() => previewReference('field', name)}>{t('Preview raw field {name}', { name })}</button>}{ref.availability.kind === 'available' && saveReference && <button disabled={exportProgress?.status === 'running'} onClick={() => saveReference('field', name)}>{t('Save full raw JSON for {name}…', { name })}</button>}{ref.availability.kind === 'unavailable' && <small>{ref.availability.reason}</small>}</p> })}
+      {projection.rawPreview && <div className="unloaded-preview"><p>{t('{loaded} of {total} bytes previewed; incomplete and unverified.', { loaded: projection.rawPreview.nextOffset ?? projection.rawPreview.totalBytes, total: projection.rawPreview.totalBytes })}</p><pre>{projection.rawPreview.text}</pre></div>}
+      {exportProgress && <p className="reference-export-progress" aria-live="polite">{t(exportProgress.status === 'completed' ? 'Full raw JSON was saved.' : exportProgress.status === 'cancelled' ? 'Save was cancelled.' : exportProgress.status === 'failed' ? 'Saving raw JSON failed.' : 'Saving raw JSON… {done}/{total} bytes', { done: exportProgress.doneBytes, total: exportProgress.totalBytes })}{exportProgress.status === 'running' && cancelExport && <button onClick={cancelExport}>{t('Cancel save')}</button>}</p>}
+    </section>}
     {!projection.history.complete && <button className="history-button" disabled={loading || !connected} onClick={() => { following.current = false; previousHeight.current = scroll.current?.scrollHeight ?? 0; loadHistory() }}>{t(loading ? 'Loading history…' : 'Load earlier messages')}</button>}
     {groupTimelineItems(state.items).map((entry) => entry.kind === 'tools'
       ? <ToolActivityGroup key={entry.key} items={entry.items} connected={connected} renderTool={(item) => <TranscriptItem item={item} openLink={openLink} runAction={runAction} assistantName={assistantName} sessionId={state.summary.id} sessions={sessions} onSelectSession={onSelectSession} />} />

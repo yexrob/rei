@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProjectSidebar, projectPaths } from './ProjectSidebar'
 import { rustInitial } from '../state/fixtures'
+import { hostA, hostB } from '../../../shared/desktop.fixtures'
 
 afterEach(cleanup)
 
@@ -36,6 +37,41 @@ describe('project navigation', () => {
     expect(p.onSession).toHaveBeenCalledWith('search')
     fireEvent.click(screen.getByRole('button', { name: 'Open project site' }))
     expect(p.onProject).toHaveBeenCalledWith('/projects/site')
+  })
+
+  it('omits project-level status chrome while retaining session statuses on expansion', () => {
+    const a = { summary: { ...rustInitial.summary, id: 'session-a', cwd: hostA.workspace!, title: 'A background task' }, status: 'failed', unread: true }
+    const waiting = { summary: { ...rustInitial.summary, id: 'session-waiting', cwd: hostA.workspace!, title: 'A pending task' }, status: 'waiting', unread: false }
+    const working = { summary: { ...rustInitial.summary, id: 'session-working', cwd: hostA.workspace!, title: 'A running task' }, status: 'working', unread: false }
+    const b = { summary: { ...rustInitial.summary, id: 'session-b', cwd: hostB.workspace!, title: 'B foreground task' }, status: 'ready', unread: false }
+    const projects = [{ connection: { ...hostA, status: 'failed' as const }, error: 'A runtime error', sessions: [a, waiting, working] }, { connection: hostB, sessions: [b] }]
+    const p = { ...props(), projects, activeHostId: hostA.hostId, workspace: hostA.workspace, onCloseHost: vi.fn(), onHostSession: vi.fn() }
+    const view = render(<ProjectSidebar {...p} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse project project-a' }))
+    view.rerender(<ProjectSidebar {...p} activeHostId={hostB.hostId} workspace={hostB.workspace} />)
+    const projectA = document.querySelector(`[data-host-id="${hostA.hostId}"]`) as HTMLElement
+    expect(within(projectA).queryByRole('button', { name: /A background task/ })).toBeNull()
+    expect(projectA.querySelector('.project-status')).toBeNull()
+    expect(within(projectA).queryByText('Connection failed')).toBeNull()
+    expect(within(projectA).getByRole('button', { name: 'Open project project-a' })).toBeTruthy()
+    expect(within(projectA).getByRole('button', { name: 'Close idle project project-a' })).toBeTruthy()
+    view.rerender(<ProjectSidebar {...p} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Expand project project-a' }))
+    const failed = within(projectA).getByRole('button', { name: /A background task/ })
+    expect(within(failed).getByText('Failed')).toBeTruthy()
+    expect(within(failed).getByText('Unread')).toBeTruthy()
+    expect(within(within(projectA).getByRole('button', { name: /A pending task/ })).getByText('Needs attention')).toBeTruthy()
+    expect(within(within(projectA).getByRole('button', { name: /A running task/ })).getByText('Running')).toBeTruthy()
+    expect(projectA.querySelector('.project-status')).toBeNull()
+    fireEvent.click(failed)
+    expect(p.onHostSession).toHaveBeenCalledWith(hostA.hostId, 'session-a')
+  })
+
+  it('identifies a bounded missing title without pretending the session is untitled', () => {
+    const p = { ...props(), projects: [{ connection: hostA, sessions: [{ summary: { ...rustInitial.summary, id: 'large-title', cwd: hostA.workspace!, title: undefined }, status: 'ready', unread: false, titleOmitted: true }] }], activeHostId: hostA.hostId, workspace: hostA.workspace }
+    render(<ProjectSidebar {...p} />)
+    expect(screen.getByRole('button', { name: /Title not loaded/ })).toBeTruthy()
+    expect(screen.queryByText('Untitled session')).toBeNull()
   })
 
   it('collapses the active project without losing its thread selection', () => {

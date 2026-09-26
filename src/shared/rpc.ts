@@ -1,5 +1,5 @@
 // Generated from bingo-improve/schema/rpc.json; do not edit.
-// SHA-256: 837e8667830e8976d284c907320b69628b4c968519807b7c29ea1810686d6799
+// SHA-256: f0a97460ee1c5255806af3e32fa324a927c7772f6db48c0d37a0bfe7209083a2
 export const RPC_PROTOCOL = 1 as const
 
 export type Action = { "name": string; "args"?: unknown }
@@ -28,6 +28,10 @@ export type CatalogKind = "models" | "providers" | "tools" | "commands" | "plugi
 
 export type CatalogParams = { "kind": CatalogKind }
 
+export type ChildrenParams = { "parent": SessionId; "after"?: (SessionId | null); "maxBytes": number }
+
+export type ChildrenResult = { "children": Array<SessionId>; "next"?: (SessionId | null) }
+
 export type ClientIdentity = { "name": string; "surface": string }
 
 export type CloseReason = ({ "kind": "client" } | { "kind": "shutdown" } | { "kind": "deleted" } | { "message": string; "kind": "error" })
@@ -52,11 +56,13 @@ export type Effort = "minimal" | "low" | "medium" | "high" | "xHigh" | "max"
 
 export type Empty = Record<string, unknown>
 
-export type ErrorCode = ("SESSION_NOT_FOUND" | "SESSION_LOCKED" | "SESSION_CLOSED" | "INTERACTION_CLOSED" | "NOT_READY" | "STALE_GENERATION" | "NOT_INITIALIZED" | "INVALID_INPUT" | "PERMISSION_DENIED" | "TOOL_NOT_FOUND" | "TOOL_FAILED" | "PROVIDER_UNAVAILABLE" | "AUTH_REQUIRED" | "RATE_LIMITED" | "CONTEXT_OVERFLOW" | "TIMEOUT" | "OFFLINE" | "SERVER_ERROR" | "TURN_LOST" | "TURN_BUDGET_EXHAUSTED" | "INTERNAL" | "NOT_FOUND" | "STORAGE")
+export type ErrorCode = ("SESSION_NOT_FOUND" | "SESSION_LOCKED" | "SESSION_CLOSED" | "INTERACTION_CLOSED" | "NOT_READY" | "STALE_GENERATION" | "NOT_INITIALIZED" | "INVALID_INPUT" | "PERMISSION_DENIED" | "TOOL_NOT_FOUND" | "TOOL_FAILED" | "PROVIDER_UNAVAILABLE" | "AUTH_REQUIRED" | "RATE_LIMITED" | "CONTEXT_OVERFLOW" | "TIMEOUT" | "OFFLINE" | "SERVER_ERROR" | "TURN_LOST" | "TURN_BUDGET_EXHAUSTED" | "INTERNAL" | "PROTOCOL_LIMIT" | "NOT_FOUND" | "STORAGE")
 
 export type Event = ({ "summary": SessionSummary; "type": "sessionUpdated" } | { "reason": CloseReason; "type": "sessionClosed" } | { "turn": TurnId; "inputs": Array<ItemId>; "origin": TurnOrigin; "type": "turnStarted" } | { "turn": TurnId; "attempt": number; "max": number; "delayMs": number; "dropped": Array<ItemId>; "reason": string; "type": "turnRetrying" } | { "turn": TurnId; "usage": Usage; "context": ContextUsage; "type": "turnUsage" } | { "turn": TurnId; "status": TurnStatus; "usage": Usage; "type": "turnCompleted" } | { "item": Item; "type": "itemStarted" } | { "item": ItemId; "n": number; "kind": DeltaKind; "data": string; "type": "itemDelta" } | { "item": Item; "type": "itemUpdated" } | { "item": Item; "type": "itemCompleted" } | { "revision": number; "entries": Array<QueueEntry>; "type": "queueChanged" } | { "interaction": Interaction; "type": "interactionOpened" } | { "id": InteractionId; "answer": Answer; "by": ResolvedBy; "type": "interactionResolved" } | { "id": InteractionId; "reason": CancelReason; "type": "interactionCancelled" } | { "intent": IntentId; "outcome": IntentOutcome; "type": "intentAck" } | { "generation": number; "boundary": ItemId; "summary": ItemId; "kept": Array<ItemId>; "type": "compacted" } | { "generation": number; "toTurn": TurnId; "dropped": Array<ItemId>; "filesRestored": Array<string>; "type": "rewound" } | { "config": ConfigView; "type": "configChanged" } | { "kind": string; "type": "catalogChanged" } | { "level": Level; "code": string; "text": string; "type": "notice" } | { "plugin": string; "kind": string; "payload": unknown; "type": "extension" } | { "plugin": string; "kind": string; "payload": unknown; "type": "signal" } | { "from": Seq; "to": Seq; "type": "lagged" })
 
 export type EventParams = { "seq": Seq; "ts": string; "session": SessionId; "cause"?: (IntentId | null); "event": Event; "root"?: (SessionId | null) }
+
+export type EventRefParams = { "session": SessionId; "root"?: (SessionId | null); "seq": Seq; "messageId": string; "eventType": string; "item"?: (ItemId | null); "interaction"?: (InteractionId | null); "intent"?: (IntentId | null); "stateUncertain": boolean; "generation": number; "availability": ReferenceAvailability; "totalBytes": number; "checksum": string }
 
 export type EventsParams = { "session": SessionId; "since"?: Seq }
 
@@ -64,11 +70,23 @@ export type ExtendParams = { "session": SessionId; "plugin": string; "kind": str
 
 export type GatewayEvent = ({ "summary": SessionSummary; "type": "sessionCreated" } | { "session": SessionId; "type": "sessionRemoved" } | { "kind": CatalogKind; "type": "catalogChanged" })
 
-export type HistoryChunk = { "items": Array<Item>; "next"?: (ItemId | null); "generation": number }
+export type GatewaySessionHeadParams = { "session": SessionId }
 
-export type HistoryPage = { "before"?: (ItemId | null); "limit"?: number }
+export type GatewaySubscribeParams = { "maxBytes"?: (number | null) }
+
+export type HeadField = "key" | "title" | "model" | "provider"
+
+export type HeadFilter = { "cwd"?: (string | null); "parent"?: (SessionId | null) }
+
+export type HeadOmission = { "field": HeadField; "totalBytes": number; "reason": string }
+
+export type HistoryChunk = { "items": Array<Item>; "next"?: (ItemId | null); "generation": number; "oversized"?: (OversizedItem | null) }
+
+export type HistoryPage = { "before"?: (ItemId | null); "limit"?: number; "maxBytes"?: (number | null); "generation"?: (number | null) }
 
 export type HistoryParams = { "session": SessionId; "page"?: HistoryPage }
+
+export type HistoryResult = { "items": Array<Item>; "next"?: (ItemId | null); "generation": number; "oversized"?: (WireOversizedItem | null) }
 
 export type Image = { "mediaType": string; "data": string; "path"?: (string | null) }
 
@@ -100,6 +118,8 @@ export type ItemBody = ({ "parts": Array<ContentPart>; "origin": Origin; "kind":
 
 export type ItemId = string
 
+export type ItemPartParams = { "session": SessionId; "item": ItemId; "generation": number; "token": string; "offset": number; "maxBytes": number }
+
 export type ItemStatus = "pending" | "running" | "completed" | "failed" | "interrupted"
 
 export type KernelError = { "code": ErrorCode; "message": string }
@@ -107,6 +127,10 @@ export type KernelError = { "code": ErrorCode; "message": string }
 export type LastTurn = { "id": TurnId; "status": TurnStatus; "startedAt": string; "endedAt": string; "usage"?: Usage }
 
 export type Level = "info" | "warn" | "error"
+
+export type ListHeadsParams = { "filter"?: HeadFilter; "after"?: (SessionId | null); "maxBytes": number }
+
+export type ListHeadsResult = { "heads": Array<SummaryHead>; "next"?: (SessionId | null) }
 
 export type ListParams = { "filter"?: SessionFilter }
 
@@ -116,15 +140,23 @@ export type LiveTurn = { "id": TurnId; "startedAt": string; "origin": TurnOrigin
 
 export type LoginFlow = ({ "url": string; "kind": "browser" } | { "url": string; "code": string; "kind": "device" } | { "kind": "paste" })
 
-export type OpenOptions = { "children"?: boolean }
+export type OmittedField = { "path": Array<string>; "availability": ReferenceAvailability; "totalBytes": number; "checksum": string }
+
+export type OpenHistory = { "before"?: (ItemId | null); "hasMore": boolean; "generation": number }
+
+export type OpenOptions = { "children"?: boolean; "maxSnapshotBytes"?: (number | null); "treeBackfill"?: (TreeBackfill | null) }
 
 export type OpenParams = { "selector": SessionSelector; "options"?: OpenOptions }
 
-export type OpenResult = { "session": SessionId; "snapshot": SessionState }
+export type OpenResult = { "session": SessionId; "snapshot": SessionState; "history"?: (OpenHistory | null); "tree"?: (TreeSnapshot | null); "omittedFields"?: Array<OmittedField> }
 
 export type Origin = { "surface": string; "principal"?: (string | null); "conversation"?: (string | null) }
 
+export type OversizedItem = { "id": ItemId; "totalBytes": number; "checksum": string }
+
 export type ParentLink = { "session": SessionId; "item"?: (ItemId | null) }
+
+export type PinnedPartParams = { "session": SessionId; "token": string; "offset": number; "maxBytes": number }
 
 export type Preview = ({ "unified": string; "kind": "diff" } | { "command": string; "cwd": string; "kind": "command" } | { "url": string; "kind": "url" })
 
@@ -134,11 +166,15 @@ export type QuestionOption = { "id": string; "label": string; "description"?: (s
 
 export type QueueEntry = { "intent": IntentId; "position": number; "preview": string; "steerable": boolean; "origin": Origin }
 
+export type ReferenceAvailability = ({ "token": string; "kind": "available" } | { "reason": string; "kind": "unavailable" })
+
 export type ResolvedBy = ({ "name": string; "surface": string; "kind": "client" } | { "kind": "kernel" } | { "kind": "policy" })
 
 export type Retry = { "attempt": number; "max": number }
 
 export type Seq = number
+
+export type SerializedPart = { "data": string; "nextOffset"?: (number | null); "totalBytes": number }
 
 export type SessionFilter = { "cwd"?: (string | null); "parent"?: (SessionId | null); "limit"?: (number | null) }
 
@@ -158,11 +194,17 @@ export type SignalParams = { "session": SessionId; "plugin": string; "kind": str
 
 export type SubmitParams = { "session": SessionId; "intent": IntentId; "input": Input }
 
+export type SummaryHead = { "id": SessionId; "cwd": string; "parent"?: (ParentLink | null); "driver": Driver; "createdAt": string; "updatedAt": string; "busy": boolean; "messages"?: (number | null); "key"?: (string | null); "title"?: (string | null); "model"?: (string | null); "provider"?: (string | null); "omitted"?: Array<HeadOmission> }
+
 export type Tone = ("neutral" | "good" | "bad" | "attention")
 
 export type ToolOutput = { "parts": Array<ContentPart>; "isError"?: boolean; "display"?: (View | null) }
 
+export type TreeBackfill = ("liveOnly")
+
 export type TreeNode = { "label": string; "badge"?: (string | null); "tone"?: Tone; "children"?: Array<TreeNode> }
+
+export type TreeSnapshot = { "backfill": TreeBackfill; "descendantsComplete": boolean }
 
 export type TurnId = string
 
@@ -174,24 +216,31 @@ export type Usage = { "inputTokens": number; "outputTokens": number; "cacheReadT
 
 export type View = ({ "text": string; "kind": "text" } | { "text": string; "kind": "markdown" } | { "lang"?: (string | null); "text": string; "kind": "code" } | { "unified": string; "kind": "diff" } | { "items": Array<string>; "kind": "list" } | { "headers": Array<string>; "rows": Array<Array<string>>; "kind": "table" } | { "rows": Array<[string, string]>; "kind": "keyValue" } | { "value": number; "total"?: (number | null); "label"?: (string | null); "kind": "progress" } | { "text": string; "tone"?: Tone; "kind": "badge" } | { "nodes": Array<TreeNode>; "kind": "tree" } | { "children": Array<View>; "kind": "stack" } | { "children": Array<View>; "kind": "columns" } | { "title": string; "child": View; "kind": "panel" } | { "items": Array<ActionItem>; "kind": "actions" } | { "customKind": string; "data": unknown; "fold": string; "kind": "custom" })
 
+export type WireOversizedItem = { "id": ItemId; "totalBytes": number; "checksum": string; "availability": ReferenceAvailability }
+
 export type Frame = EventParams
 
 export interface RpcMethods {
   "initialize": { params: InitializeParams; result: InitializeResult }
   "shutdown": { params: Empty; result: Empty }
   "session/list": { params: ListParams; result: ListResult }
+  "session/listHeads": { params: ListHeadsParams; result: ListHeadsResult }
+  "session/children": { params: ChildrenParams; result: ChildrenResult }
   "session/open": { params: OpenParams; result: OpenResult }
   "session/close": { params: SessionParams; result: Empty }
   "session/delete": { params: SessionParams; result: Empty }
   "session/deliver": { params: DeliverParams; result: Empty }
   "session/extend": { params: ExtendParams; result: Empty }
   "session/signal": { params: SignalParams; result: Empty }
-  "session/history": { params: HistoryParams; result: HistoryChunk }
+  "session/history": { params: HistoryParams; result: HistoryResult }
+  "session/itemPart": { params: ItemPartParams; result: SerializedPart }
+  "session/fieldPart": { params: PinnedPartParams; result: SerializedPart }
+  "session/eventPart": { params: PinnedPartParams; result: SerializedPart }
   "session/events": { params: EventsParams; result: Empty }
   "session/submit": { params: SubmitParams; result: Empty }
   "session/interrupt": { params: InterruptParams; result: Empty }
   "session/answer": { params: AnswerParams; result: Empty }
   "catalog/read": { params: CatalogParams; result: Catalog }
-  "gateway/subscribe": { params: Empty; result: Empty }
+  "gateway/subscribe": { params: GatewaySubscribeParams; result: Empty }
 }
 export type RpcMethod = keyof RpcMethods

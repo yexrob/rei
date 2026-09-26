@@ -30,6 +30,53 @@ describe('streaming transcript presentation', () => {
     expect(screen.getByRole('button', { name: 'Copy response' })).toBeTruthy()
   })
 
+  it('labels deferred events and oversized history as incomplete instead of inventing a full message', () => {
+    const previewReference = vi.fn(), saveReference = vi.fn()
+    const state = createSessionProjection({ ...rustInitial, seq: 2, items: [] }, { before: null, hasMore: true, generation: 0 })
+    state.unloaded = [{ session: rustInitial.summary.id, seq: 1, messageId: 'large-event', eventType: 'itemCompleted', item: 'large-item', generation: 0, stateUncertain: false, availability: { kind: 'available', token: 'event-token' }, totalBytes: 17_000_000, checksum: 'a6a4eddc16724d5c' }]
+    state.unloadedHistory = [{ id: 'older-item', generation: 0, availability: { kind: 'unavailable', reason: 'pinBudgetExceeded' }, totalBytes: 100_000_000, checksum: 'a6a4eddc16724d5c' }]
+    const { container, rerender } = render(<Timeline projection={state} {...actions} previewReference={previewReference} saveReference={saveReference} />)
+    expect(container.querySelector('.unloaded-content')?.textContent).toContain('not loaded')
+    expect(container.querySelector('.unloaded-content')?.textContent).toContain('Earlier history is not loaded.')
+    expect(container.querySelector('.unloaded-content')?.textContent).toContain('large-item')
+    expect(screen.getByRole('button', { name: 'Preview raw event large-item' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Preview raw item older-item' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Save full raw JSON for older-item…' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Save full raw JSON for large-item…' }))
+    expect(saveReference).toHaveBeenCalledWith('event', 'large-event')
+    expect(screen.getByRole('button', { name: 'Load earlier messages' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Preview raw event large-item' }))
+    expect(previewReference).toHaveBeenCalledWith('event', 'large-event')
+    expect(screen.queryByRole('button', { name: 'Copy response' })).toBeNull()
+    rerender(<Timeline projection={{ ...state, rawPreview: { id: 'large-event', text: '{"session":"ses_1"', totalBytes: 17_000_000, nextOffset: 20 } }} {...actions} previewReference={previewReference} saveReference={saveReference} />)
+    expect(container.querySelector('.unloaded-content')?.textContent).toContain('not loaded')
+    expect(container.querySelector('.unloaded-preview')?.textContent).toContain('{"session":"ses_1"')
+  })
+
+  it('does not treat a progress event as a completed raw JSON export', () => {
+    const state = createSessionProjection(rustInitial)
+    state.unloadedHistory = [{ id: 'huge', generation: 0, totalBytes: 17_000_000, checksum: 'a6a4eddc16724d5c', availability: { kind: 'available', token: 'pin' } }]
+    const cancelExport = vi.fn(), progress = { type: 'export-progress' as const, transferId: 'save-1', hostId: 'host', connectionId: 'epoch', session: rustInitial.summary.id, doneBytes: 17_000_000, totalBytes: 17_000_000, status: 'running' as const }
+    const { rerender } = render(<Timeline projection={state} {...actions} exportProgress={progress} cancelExport={cancelExport} />)
+    expect(screen.getByText('Saving raw JSON… 17000000/17000000 bytes')).toBeTruthy()
+    expect(screen.queryByText('Full raw JSON was saved.')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel save' }))
+    expect(cancelExport).toHaveBeenCalledOnce()
+    rerender(<Timeline projection={state} {...actions} exportProgress={{ ...progress, status: 'completed' }} cancelExport={cancelExport} />)
+    expect(screen.getByText('Full raw JSON was saved.')).toBeTruthy()
+  })
+
+  it('exposes paged child IDs for deliberate direct opening without marking the tree complete', () => {
+    const onSelectSession = vi.fn()
+    const state = createSessionProjection(rustInitial)
+    state.tree = { backfill: 'liveOnly', descendantsComplete: false }
+    const { container } = render(<Timeline projection={state} {...actions} childIds={['child-1', 'child-2']} childScanComplete onSelectSession={onSelectSession} />)
+    expect(container.querySelector('.unloaded-content')?.textContent).toContain('not loaded')
+    fireEvent.click(screen.getByText('2 child sessions discovered; older branches may still be incomplete.'))
+    fireEvent.click(screen.getByRole('button', { name: 'Open discovered child child-1' }))
+    expect(onSelectSession).toHaveBeenCalledWith('child-1')
+  })
+
   it('places processing immediately after the stream, not in a pinned footer', () => {
     const state = projection('running')
     state.snapshot.turn = { id: 'live', origin: 'submit', startedAt: '2026-09-17T00:00:00Z' }

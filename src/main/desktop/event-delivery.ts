@@ -1,19 +1,22 @@
 import { ipcMain, type BrowserWindow } from 'electron'
-import { DESKTOP_IPC, type DesktopEvent } from '../../shared/desktop'
+import { DESKTOP_IPC, type BoundedDelivery, type DesktopEvent } from '../../shared/desktop'
 import { trustedSender } from './security'
 import { DesktopFailure } from './rpc-client'
 
 // The control reserve is INCLUDED in the total budget, not an extra IPC lane.
 // Two validated 4096-character paths can expand to ~48 KiB when JSON-escaped.
 export const EVENT_DELIVERY_LIMITS = { inFlight: 256, events: 4096, bytes: 32 * 1024 * 1024, controlBytes: 64 * 1024, timeout: 30_000 } as const
-type Queued = { event: DesktopEvent; size: number }
-type Pending = { size: number; sentAt: number }
+type Ticket = { transferId: string; settled: boolean; id?: number; resolve(): void; reject(error: DesktopFailure): void }
+type Queued = { channel: string; payload: { event: DesktopEvent } | { delivery: BoundedDelivery }; size: number; charged: boolean; ticket?: Ticket }
+type Pending = { size: number; sentAt: number; ticket?: Ticket }
+const error = (code: string, message: string) => new DesktopFailure(code, message)
 
-/** A bounded FIFO absorbs synchronous stdout bursts; ACKs clock the Electron window. */
+/** One bounded FIFO/window for runtime events and explicitly accepted results. */
 export class EventDelivery {
   private nextId = 0
   private bytes = 0
   private readonly pending = new Map<number, Pending>()
+  private readonly tickets = new Map<string, Ticket>()
   private queue: Queued[] = []
   private timer: ReturnType<typeof setTimeout> | undefined
   private failed = false
@@ -21,15 +24,27 @@ export class EventDelivery {
   private transportBroken = false
   private draining = false
 
-  constructor(private readonly window: () => BrowserWindow | null, documentUrl: string, private readonly overflow: (error: DesktopFailure) => void) {
+  constructor(private readonly window: () => BrowserWindow | null, documentUrl: string, private readonly overflow: (failure: DesktopFailure) => void) {
     ipcMain.on('desktop:event-ack', (event, id: unknown) => {
-      const target = window()
-      if (!target || !trustedSender(event, target.webContents, documentUrl) || typeof id !== 'number' || !Number.isSafeInteger(id)) return
-      const pending = this.pending.get(id)
-      if (!pending) return
-      this.pending.delete(id)
-      this.bytes -= pending.size
-      this.drain()
+      if (!this.trusted(event, documentUrl) || !Number.isSafeInteger(id)) return
+      const pending = this.pending.get(id as number)
+      if (!pending || pending.ticket) return // An ordinary ACK cannot release a result body.
+      this.release(id as number)
+    })
+    ipcMain.on(DESKTOP_IPC.boundedAck, (event, input: unknown) => {
+      if (!this.trusted(event, documentUrl) || !input || typeof input !== 'object') return
+      const packet = input as { id?: unknown; ok?: unknown }
+      if (Object.keys(packet).sort().join(',') !== 'id,ok' || !Number.isSafeInteger(packet.id) || typeof packet.ok !== 'boolean') return
+      const pending = this.pending.get(packet.id as number)
+      if (!pending?.ticket) return // A bounded ACK cannot free a lifecycle packet.
+      const ticket = pending.ticket
+      this.release(packet.id as number)
+      this.tickets.delete(ticket.transferId)
+      if (!ticket.settled) {
+        ticket.settled = true
+        if (packet.ok) ticket.resolve()
+        else ticket.reject(error('BOUNDED_CONSUMER_REJECTED', 'The renderer could not accept this bounded result. Retry after inspecting the current session.'))
+      }
     })
   }
 
@@ -37,6 +52,8 @@ export class EventDelivery {
   reset(): void {
     clearTimeout(this.timer)
     this.timer = undefined
+    for (const ticket of this.tickets.values()) this.rejectTicket(ticket, error('RENDERER_CHANGED', 'The window changed before it accepted the bounded result. Reopen its authoritative snapshot.'))
+    this.tickets.clear()
     this.pending.clear()
     this.queue = []
     this.bytes = 0
@@ -48,7 +65,7 @@ export class EventDelivery {
   /** Explicit reconnect must not erase unacknowledged IPC or restart an old deadline. */
   recover(): void {
     if (!this.failed) return
-    if (this.transportBroken || this.pending.size || this.queue.length) throw new DesktopFailure('RENDERER_BACKPRESSURE', 'The window is still recovering runtime events. Wait for it to catch up, or reload the window before reconnecting.')
+    if (this.transportBroken || this.pending.size || this.queue.length) throw error('RENDERER_BACKPRESSURE', 'The window is still recovering runtime events. Wait for it to catch up, or reload the window before reconnecting.')
     this.failed = false
   }
 
@@ -61,18 +78,73 @@ export class EventDelivery {
     const control = this.failed && this.reportingFailure
     if (this.failed && !control && event.type !== 'menu') return
     if (control) this.reportingFailure = false
-    const size = Buffer.byteLength(JSON.stringify(event))
+    const size = this.packetBytes({ id: Number.MAX_SAFE_INTEGER, event })
     if (control) {
       if (size > EVENT_DELIVERY_LIMITS.controlBytes) return
     } else if (this.pending.size + this.queue.length >= EVENT_DELIVERY_LIMITS.events - 1 || this.bytes + size > EVENT_DELIVERY_LIMITS.bytes - EVENT_DELIVERY_LIMITS.controlBytes) {
       this.fail()
       return
     }
-    this.queue.push({ event, size })
+    this.queue.push({ channel: DESKTOP_IPC.event, payload: { event }, size, charged: true })
     this.bytes += size
     this.drain()
   }
 
+  /** Tracks sent-but-cancelled packets too, so their transfer ids cannot be reused. */
+  hasTransfer(transferId: string): boolean { return this.tickets.has(transferId) }
+
+  /** A bounded result only resolves after the trusted async consumer ACKs it. */
+  sendBounded(delivery: BoundedDelivery): Promise<void> {
+    const target = this.window()
+    if (!target || target.isDestroyed() || target.webContents.isDestroyed()) return Promise.reject(error('WINDOW_CLOSED', 'The conversation window cannot receive this result.'))
+    if (this.failed || this.transportBroken) return Promise.reject(error('RENDERER_BACKPRESSURE', 'Reconnect the window before reading more results.'))
+    if (this.tickets.has(delivery.transferId)) return Promise.reject(error('TRANSFER_IN_PROGRESS', 'This transfer identifier is still in use.'))
+    const size = this.packetBytes({ id: Number.MAX_SAFE_INTEGER, delivery })
+    if (size > 8 * 1024 * 1024 + 64 * 1024) return Promise.reject(error('BOUNDED_TOO_LARGE', 'This result exceeds one bounded renderer packet. Request a smaller page.'))
+    // This queue may hold at most eight uncharged, bounded producer results.
+    // They live in Main, never in Electron's unacknowledged IPC queue. The
+    // producer controller enforces the same count before requesting Core data.
+    if (this.queue.filter(entry => entry.ticket && !entry.charged).length >= 8 || this.pending.size + this.queue.length >= EVENT_DELIVERY_LIMITS.events - 1) return Promise.reject(error('BOUNDED_BACKPRESSURE', 'Too many bounded results are awaiting the window. Wait for a receipt.'))
+    return new Promise<void>((resolve, reject) => {
+      const ticket: Ticket = { transferId: delivery.transferId, settled: false, resolve, reject }
+      this.tickets.set(delivery.transferId, ticket)
+      this.queue.push({ channel: DESKTOP_IPC.boundedPacket, payload: { delivery }, size, charged: false, ticket })
+      this.drain()
+    })
+  }
+
+  /** Cancellation does not pretend that an already-sent IPC packet disappeared. */
+  cancelTransfer(transferId: string): void {
+    const ticket = this.tickets.get(transferId)
+    if (!ticket) return
+    this.rejectTicket(ticket, error('TRANSFER_CANCELLED', 'The bounded transfer was cancelled; its outcome was not applied.'))
+    if (ticket.id !== undefined) return // Still charged until ACK/NACK or renderer reset.
+    const index = this.queue.findIndex(entry => entry.ticket === ticket)
+    if (index >= 0) {
+      const [queued] = this.queue.splice(index, 1)
+      if (queued.charged) this.bytes -= queued.size
+    }
+    this.tickets.delete(transferId)
+    this.drain()
+  }
+
+  private packetBytes(value: unknown): number { return Buffer.byteLength(JSON.stringify(value)) }
+  private trusted(event: { sender: unknown; senderFrame: unknown }, documentUrl: string): boolean {
+    const target = this.window()
+    return Boolean(target && trustedSender(event, target.webContents, documentUrl))
+  }
+  private rejectTicket(ticket: Ticket, failure: DesktopFailure): void {
+    if (ticket.settled) return
+    ticket.settled = true
+    ticket.reject(failure)
+  }
+  private release(id: number): void {
+    const pending = this.pending.get(id)
+    if (!pending) return
+    this.pending.delete(id)
+    this.bytes -= pending.size
+    this.drain()
+  }
   private drain(): void {
     if (this.draining || this.transportBroken) return
     this.draining = true
@@ -80,13 +152,20 @@ export class EventDelivery {
       const target = this.window()
       if (!target || target.isDestroyed() || target.webContents.isDestroyed()) return
       while (this.queue.length && this.pending.size < EVENT_DELIVERY_LIMITS.inFlight) {
-        const next = this.queue.shift()!
+        const next = this.queue[0]
+        if (!next.charged) {
+          if (this.bytes + next.size > EVENT_DELIVERY_LIMITS.bytes - EVENT_DELIVERY_LIMITS.controlBytes) break
+          this.bytes += next.size
+          next.charged = true
+        }
+        this.queue.shift()
         const id = ++this.nextId
-        this.pending.set(id, { size: next.size, sentAt: Date.now() })
-        try { target.webContents.send(DESKTOP_IPC.event, { id, event: next.event }) }
+        next.ticket && (next.ticket.id = id)
+        this.pending.set(id, { size: next.size, sentAt: Date.now(), ticket: next.ticket })
+        try { target.webContents.send(next.channel, { id, ...next.payload }) }
         catch {
-          // A throwing transport may have accepted the packet. Retain its budget
-          // conservatively until renderer replacement, never loop/retry the send.
+          // A throwing transport may have accepted the packet. Retain its
+          // physical budget conservatively until renderer replacement.
           this.transportBroken = true
           this.fail()
           break
@@ -97,7 +176,6 @@ export class EventDelivery {
       this.armDeadline()
     }
   }
-
   private armDeadline(): void {
     clearTimeout(this.timer)
     this.timer = undefined
@@ -107,18 +185,20 @@ export class EventDelivery {
     this.timer = setTimeout(() => this.fail(), Math.max(0, oldest.sentAt + EVENT_DELIVERY_LIMITS.timeout - Date.now()))
     this.timer.unref()
   }
-
   private fail(): void {
     if (this.failed) return
     this.failed = true
     clearTimeout(this.timer)
     this.timer = undefined
-    // Recovery is now snapshot-based. Never pretend discarded frames were ACKed:
-    // already-sent messages still occupy the physical IPC window and byte budget.
-    for (const queued of this.queue) this.bytes -= queued.size
+    // Already-sent packets still occupy the physical window after failure.
+    for (const queued of this.queue) {
+      if (queued.charged) this.bytes -= queued.size
+      if (queued.ticket) { this.rejectTicket(queued.ticket, error('RENDERER_BACKPRESSURE', 'The renderer could not receive this bounded result.')); this.tickets.delete(queued.ticket.transferId) }
+    }
     this.queue = []
+    for (const pending of this.pending.values()) if (pending.ticket) this.rejectTicket(pending.ticket, error('RENDERER_BACKPRESSURE', 'The renderer did not acknowledge this bounded result.'))
     this.reportingFailure = true
-    try { this.overflow(new DesktopFailure('RENDERER_BACKPRESSURE', 'The window could not keep up with runtime events. Reconnect to recover an authoritative snapshot.')) }
+    try { this.overflow(error('RENDERER_BACKPRESSURE', 'The window could not keep up with runtime events. Reconnect to recover an authoritative snapshot.')) }
     finally { this.reportingFailure = false }
   }
 }

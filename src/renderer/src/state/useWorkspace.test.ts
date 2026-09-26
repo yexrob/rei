@@ -2,7 +2,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
-  BingoDesktopApi, ConnectionState, DesktopEvent, DesktopMethod, DesktopPreferences,
+  BingoDesktopApi, BoundedDelivery, ConnectionState, DesktopEvent, DesktopMethod, DesktopPreferences,
   DesktopRequest, Result
 } from '../../../shared/desktop'
 import type { Event, Frame, RpcMethods, SessionState } from '../../../shared/rpc'
@@ -16,7 +16,7 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 const ok = <T,>(value: T): Result<T> => ({ ok: true, value })
-const disconnected: ConnectionState = { status: 'disconnected', connectionId: null, workspace: null, binary: null }
+const disconnected: ConnectionState = { hostId: 'host:/work', busy: false, status: 'disconnected', connectionId: null, workspace: '/work', binary: '/bin/bingo' }
 const preferences: DesktopPreferences = { theme: 'system', workspace: null, binaryPath: null, recentWorkspaces: [] }
 const snapshot = (id = 'ses_1', seq = 10, text = 'Before', generation = 0): SessionState => ({
   ...rustInitial, seq, historyGeneration: generation,
@@ -30,8 +30,11 @@ const openReply = (state: SessionState) => ok({ session: state.summary.id, snaps
 function desktop() {
   const listeners = new Set<(event: DesktopEvent) => void>()
   const handlers = new Map<DesktopMethod, (input: DesktopRequest) => Promise<Result<unknown>>>()
+  const server = { protocol: 1, name: 'fixture', version: 'test', capabilities: { methods: ['session/listHeads', 'session/open', 'session/history', 'session/children', 'session/itemPart', 'session/fieldPart', 'session/eventPart'], notifications: ['eventRef', 'gateway/sessionHead'] } }
+  let bounded: ((delivery: BoundedDelivery) => Promise<void>) | undefined
   let generation = 0
   let connection: ConnectionState = disconnected
+  const hosts = new Map<string, ConnectionState>()
   const emit = (event: DesktopEvent) => listeners.forEach((listener) => listener(event))
   const emitFrame = (params: Frame, connectionId = connection.connectionId!) => emit({ type: 'rpc', connectionId, method: 'event', params })
   const request = vi.fn(async (input: DesktopRequest): Promise<Result<unknown>> => {
@@ -53,17 +56,41 @@ function desktop() {
     return ok({})
   })
   const api: BingoDesktopApi = {
-    bootstrap: vi.fn(async () => ok({ version: '0.1.0', platform: 'darwin', preferences, scratchWorkspace: '/scratch', binary: { path: null, source: 'missing' }, connection: disconnected })),
+    bootstrap: vi.fn(async () => ok({ version: '0.1.0', platform: 'darwin', preferences, scratchWorkspace: '/scratch', binary: { path: null, source: 'missing' }, connections: [], selection: null, agentPages: [] })),
     connect: vi.fn(async ({ workspace }) => {
-      // DesktopRuntime.connect closes even an initially empty transport.
-      emit({ type: 'connection', connection: disconnected })
-      connection = { status: 'connecting', connectionId: `connection-${++generation}`, workspace: workspace ?? '/scratch', binary: '/bin/bingo' }
+      const hostId = `host:${workspace ?? '/scratch'}`, existing = hosts.get(hostId)
+      if (existing?.status === 'ready') { connection = existing; return ok(existing) }
+      connection = { hostId, busy: false, status: 'connecting', connectionId: `connection-${++generation}`, workspace: workspace ?? '/scratch', binary: '/bin/bingo', server }
       emit({ type: 'connection', connection })
-      connection = { ...connection, status: 'ready' }
+      connection = { ...connection, status: 'ready' }; hosts.set(hostId, connection)
       emit({ type: 'connection', connection })
       return ok(connection)
     }),
+    reconnect: vi.fn(async ({ hostId }) => {
+      const previous = hosts.get(hostId)!
+      emit({ type: 'connection', connection: { ...previous, status: 'disconnected' } })
+      connection = { ...previous, connectionId: `connection-${++generation}`, status: 'ready' }; hosts.set(hostId, connection)
+      emit({ type: 'connection', connection }); return ok(connection)
+    }),
+    selectConversation: vi.fn(async () => ok(undefined)), closeHost: vi.fn(async () => ok(undefined)), openAgentPage: vi.fn(async () => ok(undefined)),
     request: request as BingoDesktopApi['request'],
+    requestBounded: vi.fn(async ({ transferId, request: input }) => {
+      if (!bounded) return { ok: false as const, error: { code: 'NO_CONSUMER', message: 'No bounded consumer.' } }
+      const host = [...hosts.values()].find(host => host.connectionId === input.connectionId)!
+      const raw = input.method === 'session/listHeads'
+        ? handlers.has('session/listHeads') ? await request(input) : await request({ connectionId: input.connectionId, method: 'session/list', params: { filter: { cwd: (input.params as RpcMethods['session/listHeads']['params']).filter?.cwd, limit: 500 } } })
+        : input.method === 'session/children' ? ok({ children: [], next: null }) : await request(input)
+      if (!raw.ok) return raw
+      const value = input.method === 'session/listHeads' && !handlers.has('session/listHeads')
+        ? { heads: (raw.value as RpcMethods['session/list']['result']).sessions.map(({ id, cwd, parent, driver, createdAt, updatedAt, busy, title, key, model, provider, messages }) => ({ id, cwd, parent, driver: driver ?? 'model', createdAt, updatedAt, busy: busy ?? false, title, key, model, provider, messages })), next: null }
+        : raw.value
+      const session = input.method === 'session/open' ? (value as RpcMethods['session/open']['result']).session : input.method === 'session/history' ? (input.params as RpcMethods['session/history']['params']).session : input.method === 'session/children' ? (input.params as RpcMethods['session/children']['params']).parent : null
+      await bounded({ kind: 'response', transferId, hostId: host.hostId, connectionId: input.connectionId, session, method: input.method, result: value } as BoundedDelivery)
+      return ok({ kind: 'response' as const, transferId, hostId: host.hostId, connectionId: input.connectionId, session, method: input.method, acceptedBytes: 512 })
+    }) as BingoDesktopApi['requestBounded'],
+    cancelBounded: vi.fn(async () => ok(undefined)),
+    readPart: vi.fn(async () => ({ ok: false as const, error: { code: 'UNSUPPORTED', message: 'Part fixture not configured.' } })),
+    cancelPart: vi.fn(async () => ok(undefined)), exportReference: vi.fn(async () => ok(false)), cancelExport: vi.fn(async () => ok(undefined)), onBounded: vi.fn(listener => { bounded = listener; return () => { bounded = undefined } }),
     onEvent: vi.fn((listener) => { listeners.add(listener); return () => { listeners.delete(listener) } }),
     savePreferences: vi.fn(async (patch) => ok({ ...preferences, ...patch })),
     chooseWorkspace: vi.fn(async () => ok('/work')),
@@ -223,7 +250,7 @@ describe('new conversation runtime selection', () => {
     })
     let sent!: Promise<string>
     await act(async () => { sent = result.current.send('Keep this draft', []) })
-    expect(bridge.request).toHaveBeenCalledWith(expect.objectContaining({ method: 'session/open', params: { selector: { kind: 'create', spec: { cwd: '/work', driver: 'model', provider: 'Road-anti', model: 'family/Model' } }, options: { children: true } } }))
+    expect(bridge.api.requestBounded).toHaveBeenCalledWith(expect.objectContaining({ request: expect.objectContaining({ method: 'session/open', params: { selector: { kind: 'create', spec: { cwd: '/work', driver: 'model', provider: 'Road-anti', model: 'family/Model' } }, options: { children: true, maxSnapshotBytes: 4 * 1024 * 1024, treeBackfill: 'liveOnly' } } }) }))
     expect(think.params).toMatchObject({ session: 'ses_new', input: { kind: 'action', action: { name: 'think', args: 'xhigh' } } })
     expect(bridge.request.mock.calls.filter(([input]) => input.method === 'session/submit')).toHaveLength(1)
     expect(result.current.runtimeSelection).toEqual({ model: 'Road-anti/family/Model', thinking: 'off' })
@@ -281,7 +308,7 @@ describe('new conversation runtime selection', () => {
     ])
   })
 
-  it('does not send text to a replacement connection when thinking setup finishes late', async () => {
+  it('finishes thinking and text on the captured host when foreground moves to another project', async () => {
     const { bridge, result } = await connected()
     const wire = deferred<Result<unknown>>()
     bridge.handlers.set('session/submit', async (input) => { bridge.ack(input, 11, { kind: 'applied', result: {} }); return wire.promise })
@@ -290,9 +317,12 @@ describe('new conversation runtime selection', () => {
     await act(async () => { sent = result.current.send('Do not misroute this draft', [], 'ses_new').catch((error: unknown) => error) })
     await act(async () => { await result.current.connect('/other') })
     await act(async () => { wire.resolve(ok({})); await sent })
-    expect(await sent).toEqual(new Error('Workspace changed before the message could be sent.'))
-    expect(bridge.request.mock.calls.filter(([input]) => input.method === 'session/submit')).toHaveLength(1)
+    expect(await sent).toBe('ses_new')
+    const submissions = bridge.request.mock.calls.filter(([input]) => input.method === 'session/submit')
+    expect(submissions).toHaveLength(2)
+    expect(new Set(submissions.map(([input]) => input.connectionId))).toEqual(new Set(['connection-1']))
     expect(result.current.activeId).toBeNull()
+    expect(result.current.connection.workspace).toBe('/other')
   })
 
   it('refuses a malformed catalog identity without replacing the previous draft choice', async () => {
@@ -319,7 +349,7 @@ describe('new conversation runtime selection', () => {
 describe('workspace runtime bootstrap', () => {
   it('automatically connects an available binary to personal space without choosing a project', async () => {
     const bridge = desktop()
-    vi.mocked(bridge.api.bootstrap).mockResolvedValue(ok({ version: '0.1.0', platform: 'darwin', preferences, scratchWorkspace: '/scratch', binary: { path: '/bin/bingo', source: 'bundled' }, connection: disconnected }))
+    vi.mocked(bridge.api.bootstrap).mockResolvedValue(ok({ version: '0.1.0', platform: 'darwin', preferences, scratchWorkspace: '/scratch', binary: { path: '/bin/bingo', source: 'bundled' }, connections: [], selection: null, agentPages: [] }))
     const { result } = renderHook(() => useWorkspace())
     await act(async () => { await Promise.resolve() })
     expect(bridge.api.connect).toHaveBeenCalledWith({ workspace: undefined, binary: '/bin/bingo' })
@@ -333,7 +363,7 @@ describe('workspace runtime bootstrap', () => {
 
   it('uses a saved project at startup rather than personal space', async () => {
     const bridge = desktop()
-    vi.mocked(bridge.api.bootstrap).mockResolvedValue(ok({ version: '0.1.0', platform: 'darwin', preferences: { ...preferences, workspace: '/saved' }, scratchWorkspace: '/scratch', binary: { path: '/bin/bingo', source: 'bundled' }, connection: disconnected }))
+    vi.mocked(bridge.api.bootstrap).mockResolvedValue(ok({ version: '0.1.0', platform: 'darwin', preferences: { ...preferences, workspace: '/saved' }, scratchWorkspace: '/scratch', binary: { path: '/bin/bingo', source: 'bundled' }, connections: [], selection: null, agentPages: [] }))
     const { result } = renderHook(() => useWorkspace())
     await act(async () => { await Promise.resolve() })
     expect(bridge.api.connect).toHaveBeenCalledWith({ workspace: '/saved', binary: '/bin/bingo' })
@@ -352,35 +382,35 @@ describe('workspace runtime bootstrap', () => {
 })
 
 describe('workspace connection errors', () => {
-  it('rejects pending intents during an intentional reconnect without a sticky transport banner', async () => {
+  it('rejects pending intents during a targeted reconnect and retains real per-session uncertainty', async () => {
     const { bridge, result } = await opened()
     let submitted!: DesktopRequest
     bridge.handlers.set('session/submit', async (input) => { submitted = input; return ok({}) })
     let rejected!: Promise<unknown>
     await act(async () => { rejected = result.current.send('hello', [], 'ses_1').catch((error: unknown) => error) })
-    await act(async () => { await result.current.connect('/work'); await rejected })
+    await act(async () => { await result.current.reconnect(); await rejected })
     expect(await rejected).toEqual(expect.objectContaining({ message: expect.stringContaining('request may have been accepted') }))
-    expect(result.current.error).toBe('')
+    expect(result.current.error).toContain('request may have been accepted')
     expect(result.current.connection.status).toBe('ready')
     await act(async () => {
       bridge.ack(submitted, 11, { kind: 'turnStarted', turn: 'old-turn' })
       bridge.emitFrame(frame(12, { type: 'notice', level: 'error', code: 'OLD', text: 'Old transport notice' }), submitted.connectionId)
     })
     expect(result.current.active?.snapshot.seq).toBe(10)
-    expect(result.current.error).toBe('')
+    expect(result.current.error).toContain('request may have been accepted')
   })
 
   it.each(['failed', 'disconnected'] as const)('reports a real %s event after the connect reset while the IPC reply is pending', async (status) => {
     const { bridge, result } = await connected()
     const reply = deferred<Result<ConnectionState>>()
     const next = { ...result.current.connection, status: 'connecting' as const, connectionId: 'replacement' }
-    vi.mocked(bridge.api.connect).mockImplementationOnce(() => {
+    vi.mocked(bridge.api.reconnect).mockImplementationOnce(() => {
       bridge.emit({ type: 'connection', connection: disconnected })
       bridge.emit({ type: 'connection', connection: next })
       return reply.promise
     })
-    let connecting!: Promise<void>
-    await act(async () => { connecting = result.current.connect('/work') })
+    let connecting!: Promise<unknown>
+    await act(async () => { connecting = result.current.reconnect().catch((error: unknown) => error) })
     expect(result.current.error).toBe('')
     const failure: ConnectionState = status === 'failed'
       ? { ...next, status, error: { code: 'PROCESS_EXITED', message: 'Runtime process exited' } }
@@ -412,7 +442,7 @@ describe('workspace connection errors', () => {
     await act(async () => { await result.current.connect('/work') })
     expect(result.current.error).toBe('Reconnect cancelled')
     await act(async () => { bridge.emit({ type: 'connection', connection: disconnected }) })
-    expect(result.current.error).toBe('bingo is not connected. Reconnect to continue.')
+    expect(result.current.error).toBe('Reconnect cancelled')
   })
 
   it('preserves application notices and reported errors across ready events', async () => {
@@ -536,15 +566,15 @@ describe('workspace snapshots and stream races', () => {
     expect(assistantText(result.current.active)).toBe('Before after snapshot')
   })
 
-  it('buffers while reopening an existing projection and shares concurrent open requests', async () => {
+  it('buffers while explicitly reopening an existing projection and shares concurrent open requests', async () => {
     const { bridge, result } = await opened()
     const reply = deferred<Result<unknown>>()
     bridge.handlers.set('session/open', () => reply.promise)
     bridge.request.mockClear()
     let first!: Promise<string>, second!: Promise<string>
     await act(async () => {
-      first = result.current.openSession('ses_1')
-      second = result.current.openSession('ses_1')
+      first = result.current.openSession('ses_1', true)
+      second = result.current.openSession('ses_1', true)
       bridge.emitFrame(delta(11, ' retained'))
     })
     expect(bridge.request.mock.calls.filter(([input]) => input.method === 'session/open')).toHaveLength(1)
@@ -562,7 +592,7 @@ describe('workspace snapshots and stream races', () => {
     bridge.request.mockClear()
     await act(async () => { bridge.emitFrame(delta(12, 'gap')) })
     expect(result.current.active?.resync).toEqual({ reason: 'gap', since: 10 })
-    expect(bridge.request).toHaveBeenCalledWith(expect.objectContaining({ method: 'session/open', params: { selector: { kind: 'byId', id: 'ses_1' }, options: { children: true } } }))
+    expect(bridge.api.requestBounded).toHaveBeenCalledWith(expect.objectContaining({ request: expect.objectContaining({ method: 'session/open', params: { selector: { kind: 'byId', id: 'ses_1' }, options: { children: true, maxSnapshotBytes: 4 * 1024 * 1024, treeBackfill: 'liveOnly' } } }) }))
     await act(async () => { bridge.emitFrame(delta(13, ' + live')); reply.resolve(openReply(snapshot('ses_1', 12, 'Repaired'))) })
     expect(result.current.active?.resync).toBeNull()
     expect(result.current.active?.snapshot.seq).toBe(13)
@@ -615,35 +645,36 @@ describe('workspace snapshots and stream races', () => {
     expect(result.current.sessions.map((entry) => entry.id)).toContain('first')
   })
 
-  it('rejects stale open replies and discards old connection frames after a workspace switch', async () => {
+  it('finishes a background host open without stealing the newer foreground project', async () => {
     const { bridge, result } = await connected()
     const reply = deferred<Result<unknown>>()
     bridge.handlers.set('session/open', () => reply.promise)
-    let rejected!: Promise<unknown>
-    await act(async () => { rejected = result.current.openSession('ses_1').catch((error: unknown) => error) })
+    let opening!: Promise<string>
+    await act(async () => { opening = result.current.openSession('ses_1') })
     await act(async () => { await result.current.connect('/other') })
     await act(async () => {
-      bridge.emitFrame(delta(11, 'stale'), 'connection-1')
+      bridge.emitFrame(delta(11, 'old host'), 'connection-1')
       reply.resolve(openReply(snapshot()))
-      await rejected
+      await opening
     })
-    expect(await rejected).toEqual(new Error('Workspace changed while opening the session.'))
+    expect(await opening).toBe('ses_1')
     expect(result.current.active).toBeNull()
     expect(result.current.sessions).toEqual([])
     expect(result.current.connection.workspace).toBe('/other')
+    expect(result.current.hosts['host:/work'].projections.ses_1).toBeDefined()
   })
 })
 
 describe('workspace history and gateway synchronization', () => {
   it('subscribes to gateway events on every connection and routes session create/remove updates', async () => {
     const { bridge, result } = await connected()
-    expect(bridge.request).toHaveBeenCalledWith({ connectionId: 'connection-1', method: 'gateway/subscribe', params: {} })
+    expect(bridge.request).toHaveBeenCalledWith({ connectionId: 'connection-1', method: 'gateway/subscribe', params: { maxBytes: 4 * 1024 * 1024 } })
     await act(async () => { bridge.emit({ type: 'rpc', connectionId: 'connection-1', method: 'gateway/event', params: { type: 'sessionCreated', summary: snapshot('external').summary } }) })
     expect(result.current.sessions.map((entry) => entry.id)).toEqual(['external'])
     await act(async () => { bridge.emit({ type: 'rpc', connectionId: 'connection-1', method: 'gateway/event', params: { type: 'sessionRemoved', session: 'external' } }) })
     expect(result.current.sessions).toEqual([])
     await act(async () => { await result.current.connect('/other') })
-    expect(bridge.request).toHaveBeenCalledWith({ connectionId: 'connection-2', method: 'gateway/subscribe', params: {} })
+    expect(bridge.request).toHaveBeenCalledWith({ connectionId: 'connection-2', method: 'gateway/subscribe', params: { maxBytes: 4 * 1024 * 1024 } })
   })
 
   it('refreshes the catalog named by a gateway event', async () => {
@@ -658,11 +689,22 @@ describe('workspace history and gateway synchronization', () => {
     bridge.handlers.set('session/history', async () => ok({ items: [], generation: 1 }))
     bridge.handlers.set('session/open', async () => openReply(snapshot('ses_1', 15, 'After compaction', 1)))
     await act(async () => { await result.current.loadHistory() })
-    expect(bridge.request).toHaveBeenCalledWith({ connectionId: 'connection-1', method: 'session/history', params: { session: 'ses_1', page: { before: 'ses_1-assistant', limit: 100 } } })
+    expect(bridge.api.requestBounded).toHaveBeenCalledWith(expect.objectContaining({ request: { connectionId: 'connection-1', method: 'session/history', params: { session: 'ses_1', page: { before: 'ses_1-assistant', limit: 100, maxBytes: 4 * 1024 * 1024, generation: 0 } } } }))
     expect(result.current.active?.snapshot.historyGeneration).toBe(1)
     expect(result.current.active?.snapshot.seq).toBe(15)
     expect(result.current.active?.resync).toBeNull()
     expect(assistantText(result.current.active)).toBe('After compaction')
+  })
+
+  it('recovers a bounded stale cursor after the server drops its item without replaying older pages', async () => {
+    const { bridge, result } = await opened()
+    bridge.handlers.set('session/history', async () => ({ ok: false, error: { code: 'STALE_GENERATION', message: 'The old cursor was removed.' } }))
+    bridge.handlers.set('session/open', async () => openReply(snapshot('ses_1', 15, 'Authoritative after cursor loss', 1)))
+    await act(async () => { await result.current.loadHistory() })
+    expect(result.current.active?.snapshot.seq).toBe(15)
+    expect(result.current.active?.snapshot.historyGeneration).toBe(1)
+    expect(assistantText(result.current.active)).toBe('Authoritative after cursor loss')
+    expect(bridge.api.requestBounded).toHaveBeenCalledWith(expect.objectContaining({ request: expect.objectContaining({ method: 'session/history', params: expect.objectContaining({ page: expect.objectContaining({ before: 'ses_1-assistant', maxBytes: 4 * 1024 * 1024 }) }) }) }))
   })
 
   it('does not make a history recovery steal selection from another session', async () => {
@@ -683,7 +725,7 @@ describe('workspace history and gateway synchronization', () => {
     bridge.handlers.set('session/submit', async (input) => { bridge.ack(input, 11, { kind: 'applied', result: { item: 'login-receipt' } }); return ok({}) })
     bridge.request.mockClear()
     await act(async () => { await result.current.signIn('codex') })
-    expect(bridge.request).toHaveBeenCalledWith(expect.objectContaining({ method: 'session/open', params: { selector: { kind: 'create', spec: { cwd: '/work', driver: 'log', title: 'Provider setup' } }, options: { children: false } } }))
+    expect(bridge.api.requestBounded).toHaveBeenCalledWith(expect.objectContaining({ request: expect.objectContaining({ method: 'session/open', params: { selector: { kind: 'create', spec: { cwd: '/work', driver: 'log', title: 'Provider setup' } }, options: { children: false, maxSnapshotBytes: 4 * 1024 * 1024 } } }) }))
     expect(bridge.request).toHaveBeenCalledWith(expect.objectContaining({ method: 'session/submit', params: expect.objectContaining({ session: 'ses_new', input: { kind: 'action', action: { name: 'login', args: 'codex browser' } } }) }))
     expect(bridge.request.mock.calls.at(-1)?.[0]).toMatchObject({ method: 'catalog/read', params: { kind: 'providers' } })
   })
@@ -702,7 +744,7 @@ const treeFrame = (seq: number, event: Event, session = 'child'): Frame => ({ ..
 describe('journal-driven collaboration subscriptions', () => {
   it('opens the main tree and hydrates sparse child replay without opening or selecting children', async () => {
     const { bridge, result } = await opened()
-    expect(bridge.request).toHaveBeenCalledWith(expect.objectContaining({ method: 'session/open', params: { selector: { kind: 'byId', id: 'ses_1' }, options: { children: true } } }))
+    expect(bridge.api.requestBounded).toHaveBeenCalledWith(expect.objectContaining({ request: expect.objectContaining({ method: 'session/open', params: { selector: { kind: 'byId', id: 'ses_1' }, options: { children: true, maxSnapshotBytes: 4 * 1024 * 1024, treeBackfill: 'liveOnly' } } }) }))
     bridge.request.mockClear()
     const child = childSnapshot()
     await act(async () => {
@@ -731,7 +773,7 @@ describe('journal-driven collaboration subscriptions', () => {
     expect(result.current.error).toBe('Parent error')
     bridge.handlers.set('session/open', async () => openReply(child))
     await act(async () => { await result.current.openSession('child') })
-    expect(result.current.error).toBe('')
+    expect(result.current.error).toBe('Child failure')
     let seq = 10
     bridge.handlers.set('session/submit', async (input) => { bridge.ack(input, ++seq, { kind: 'applied', result: {} }); return ok({}) })
     bridge.handlers.set('session/interrupt', async (input) => { bridge.ack(input, ++seq, { kind: 'applied', result: {} }); return ok({}) })
@@ -778,7 +820,7 @@ describe('journal-driven collaboration subscriptions', () => {
     })
     await act(async () => { await result.current.openSession('child') })
     bridge.request.mockClear()
-    await act(async () => { await result.current.connect('/work') })
+    await act(async () => { await result.current.reconnect() })
     expect(result.current.activeId).toBe('child')
     expect(result.current.collaboration.rootId).toBe('ses_1')
     const opens = bridge.request.mock.calls.filter(([input]) => input.method === 'session/open')
@@ -794,10 +836,10 @@ describe('journal-driven collaboration subscriptions', () => {
     bridge.handlers.set('session/list', () => list.promise)
     let reconnect!: Promise<void>
     await act(async () => { reconnect = result.current.connect('/other') })
-    const child = childSnapshot()
+    const child = childSnapshot(); child.summary.cwd = '/other'
     await act(async () => {
       bridge.emit({ type: 'rpc', connectionId: 'connection-2', method: 'gateway/event', params: { type: 'sessionCreated', summary: child.summary } })
-      list.resolve(ok({ sessions: [snapshot().summary] }))
+      list.resolve(ok({ sessions: [{ ...snapshot().summary, cwd: '/other' }] }))
       await reconnect
     })
     expect(result.current.sessions.map((summary) => summary.id)).toContain('child')

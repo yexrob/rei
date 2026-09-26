@@ -43,6 +43,17 @@ describe('desktop composer', () => {
     expect(p.stop).toHaveBeenCalledOnce()
   })
 
+  it('keeps conservative Stop available while uncertain state disables new submissions', () => {
+    const p = props(); render(<Composer {...p} busy submitReady={false} draft={{ text: 'Do not send', images: [] }} />)
+    const stop = screen.getByRole('button', { name: 'Stop generation' })
+    expect(stop.hasAttribute('disabled')).toBe(false)
+    expect(screen.getByRole('button', { name: 'Send follow-up' }).hasAttribute('disabled')).toBe(true)
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' })
+    expect(p.send).not.toHaveBeenCalled()
+    fireEvent.click(stop)
+    expect(p.stop).toHaveBeenCalledOnce()
+  })
+
   it('keeps the send target stable and explains idle, sending and working states', () => {
     const p = props(); const { rerender, container } = render(<Composer {...p} draft={{ text: 'A task', images: [] }} />)
     const send = screen.getByRole('button', { name: 'Send message' })

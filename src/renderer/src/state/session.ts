@@ -1,6 +1,6 @@
 import type {
-  ConfigView, ContentPart, Event, Frame, HistoryChunk, Interaction, Item, ItemBody,
-  SessionState, SessionSummary, TreeNode, Usage, View
+  ConfigView, ContentPart, Event, EventRefParams, Frame, HistoryChunk, HistoryResult, Interaction, Item, ItemBody,
+  OmittedField, OpenHistory, SessionState, SessionSummary, TreeNode, TreeSnapshot, Usage, View, WireOversizedItem
 } from '../../../shared/rpc'
 
 export type { Frame, HistoryChunk, Interaction, Item, SessionState, SessionSummary } from '../../../shared/rpc'
@@ -11,6 +11,15 @@ export interface SessionProjection {
   resync: { reason: 'gap' | 'lagged' | 'history-generation'; since: number } | null
   /** Last accepted activity event; row text/status are derived from the snapshot. */
   activityFrame?: Frame
+  /** Transport continuity can advance past a deferred event without applying its body. */
+  transportSeq?: number
+  provisional?: boolean
+  historyPending?: boolean
+  omittedFields?: OmittedField[]
+  tree?: TreeSnapshot
+  unloaded?: EventRefParams[]
+  unloadedHistory?: (WireOversizedItem & { generation: number })[]
+  rawPreview?: { id: string; text: string; totalBytes: number; nextOffset: number | null }
 }
 
 export type MessageItem = Item & { body: Extract<ItemBody, { kind: 'user' | 'assistant' }> }
@@ -21,16 +30,25 @@ const zeroUsage: Usage = {
   inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0
 }
 
-export function createSessionProjection(snapshot: SessionState): SessionProjection {
+export function createSessionProjection(snapshot: SessionState, history?: OpenHistory): SessionProjection {
   return {
     snapshot: {
       config: { kernel: null, plugins: {} }, historyGeneration: 0,
       queue: [], interactions: [], unread: false, closed: false,
       ...snapshot
     },
-    history: { before: snapshot.items[0]?.id, complete: snapshot.items.length === 0 },
+    history: history ? { before: history.before ?? undefined, complete: !history.hasMore } : { before: snapshot.items[0]?.id, complete: snapshot.items.length === 0 },
     resync: null
   }
+}
+
+/** A transport reference advances stream continuity, not the canonical fold. */
+export function projectEventReference(state: SessionProjection, ref: EventRefParams): SessionProjection {
+  if (ref.session !== state.snapshot.summary.id || state.resync) return state
+  const received = state.transportSeq ?? state.snapshot.seq
+  if (ref.seq <= received) return state
+  if (ref.seq > received + 1) return requireSnapshot(state, 'gap')
+  return { ...state, transportSeq: ref.seq, unloaded: [...state.unloaded ?? [], ref] }
 }
 
 /** Exact SDK SessionState::apply fold. Transport recovery belongs to projectFrame. */
@@ -52,8 +70,9 @@ export function projectFrame(
 ): SessionProjection {
   if (frame.session !== state.snapshot.summary.id || state.resync) return state
   if (frame.event.type === 'lagged') return requireSnapshot(state, 'lagged')
-  if (state.snapshot.seq !== 0 && frame.seq <= state.snapshot.seq) return state
-  if (mode === 'live' && frame.seq > state.snapshot.seq + 1) return requireSnapshot(state, 'gap')
+  const received = state.transportSeq ?? state.snapshot.seq
+  if (received !== 0 && frame.seq <= received) return state
+  if (mode === 'live' && frame.seq > received + 1) return requireSnapshot(state, 'gap')
   const snapshot = foldSessionFrame(state.snapshot, frame)
   if (snapshot === state.snapshot) return state
   const changedHistory = (snapshot.historyGeneration ?? 0) !== (state.snapshot.historyGeneration ?? 0)
@@ -61,6 +80,7 @@ export function projectFrame(
   const activity = changedHistory ? undefined : activityEvent(frame, snapshot.items !== state.snapshot.items) ? frame : activityFrame
   return {
     ...rest, snapshot,
+    ...(state.transportSeq !== undefined ? { transportSeq: frame.seq } : {}),
     ...(activity ? { activityFrame: activity } : {}),
     history: changedHistory
       ? { before: snapshot.items[0]?.id, complete: snapshot.items.length === 0 }
@@ -78,7 +98,7 @@ function requireSnapshot(state: SessionProjection, reason: NonNullable<SessionPr
 }
 
 /** Pass the before cursor captured when requesting this page, not the current cursor. */
-export function projectHistory(state: SessionProjection, chunk: HistoryChunk, requestedBefore?: string): SessionProjection {
+export function projectHistory(state: SessionProjection, chunk: HistoryResult, requestedBefore?: string): SessionProjection {
   if (state.resync) return state
   const generation = state.snapshot.historyGeneration ?? 0
   if (chunk.generation < generation) return state
@@ -87,7 +107,8 @@ export function projectHistory(state: SessionProjection, chunk: HistoryChunk, re
   return {
     ...state,
     snapshot: { ...state.snapshot, items: mergeHistory(state.snapshot.items, chunk.items, requestedBefore) },
-    history: { before: chunk.next ?? undefined, complete: chunk.next == null }
+    history: { before: chunk.next ?? undefined, complete: chunk.next == null },
+    ...(chunk.oversized ? { unloadedHistory: [...state.unloadedHistory ?? [], { ...chunk.oversized, generation: chunk.generation }] } : {})
   }
 }
 

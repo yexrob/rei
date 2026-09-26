@@ -14,9 +14,9 @@ export class PanelBrowser {
   private navigation = 0
   constructor(private readonly options: { window(): BrowserWindow | null; documentUrl: string; emit(event: PanelsEvent): void }) {}
   snapshot(): BrowserState { return { ...this.state } }
-  open(url: string): void {
+  open(url: string, announce = true): void {
     const safe = externalUrl(url)
-    this.options.emit({ type: 'browser-open', url: safe })
+    if (announce) this.options.emit({ type: 'browser-open', url: safe })
     this.navigate(safe)
   }
   navigate(url: string): void {

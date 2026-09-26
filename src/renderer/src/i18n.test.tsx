@@ -241,7 +241,7 @@ function settingsWorkspace() {
   return {
     connection: { status: 'ready', workspace: '/work', binary: '/bin/bingo' },
     preferences: { theme: 'light', recentWorkspaces: [] }, catalogs: {}, runtimeSelection: { model: null, thinking: null },
-    readCatalog: vi.fn(async () => {}), report: vi.fn(), savePreferences: vi.fn(async () => {}), connect: vi.fn(async () => {})
+    readCatalog: vi.fn(async () => {}), report: vi.fn(), savePreferences: vi.fn(async () => {}), connect: vi.fn(async () => {}), reconnect: vi.fn(async () => {})
   } as unknown as ReturnType<typeof useWorkspace>
 }
 async function selectOption(label: string, option: string) {
@@ -308,9 +308,11 @@ describe('localized settings and desktop controls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'English' }))
     expect(screen.getByRole('button', { name: 'Copied' })).toBeTruthy()
   })
-  it('localizes startup and optional-workspace onboarding without changing their behavior', () => {
+  it('localizes startup and optional-workspace onboarding while reconnecting the previewed host', () => {
     localStorage.setItem('rei.locale', 'zh-CN')
     const workspace = settingsWorkspace()
+    workspace.connection = { ...workspace.connection, hostId: 'host-a', connectionId: 'epoch-a', status: 'failed' }
+    workspace.preview = { hostId: 'host-a', connectionId: 'epoch-a', sessionId: null }
     const { container } = localized(<StartupTransition ready={false}><Onboarding workspace={workspace} openLink={noAction} /></StartupTransition>)
     expect(screen.getByText('正在打开你的空间')).toBeTruthy()
     expect(container.querySelector('.startup-stage')?.getAttribute('data-phase')).toBe('intro')
@@ -319,6 +321,7 @@ describe('localized settings and desktop controls', () => {
     expect(screen.getByRole('heading', { name: '连接 bingo' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '选择可执行文件' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '重新连接' }))
-    expect(workspace.connect).toHaveBeenCalledWith(undefined)
+    expect(workspace.reconnect).toHaveBeenCalledOnce()
+    expect(workspace.connect).not.toHaveBeenCalled()
   })
 })

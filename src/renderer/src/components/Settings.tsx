@@ -63,10 +63,11 @@ export function Onboarding({ workspace: w, openLink }: { workspace: Workspace; o
   const hasBinary = Boolean(w.connection.binary || w.bootstrap?.binary.path)
   const connecting = w.connection.status === 'connecting' || w.loading
   const chooseRuntime = async () => {
+    const workspace = w.preview ? w.connection.workspace ?? undefined : w.preferences?.workspace ?? undefined
     const binary = unwrap(await window.bingoDesktop.chooseBinary())
     if (!binary) return
     await w.savePreferences({ binaryPath: binary })
-    await w.connect(w.preferences?.workspace ?? undefined, binary)
+    await w.connect(workspace, binary)
   }
-  return <div className="onboarding"><h1>{t(connecting ? 'Opening your space' : 'Connect bingo')}</h1><p className="onboarding-description">{t('Rei uses its included bingo runtime by default. You can choose another executable if needed.')}</p><div className="button-row onboarding-actions">{hasBinary && <button className="primary" disabled={connecting} onClick={() => void w.connect(w.preferences?.workspace ?? undefined)}>{t(connecting ? 'Connecting…' : 'Reconnect')}</button>}<button disabled={connecting} onClick={() => { void chooseRuntime().catch(w.report) }}>{t('Choose executable')}</button></div><p className="onboarding-note">{t('Conversations use a private temporary folder until you attach a project.')}</p><button className="text-button" onClick={() => openLink('https://github.com/yexrob/bingo')}>{t('Runtime setup help')} <ArrowUpRight size={13} /></button></div>
+  return <div className="onboarding"><h1>{t(connecting ? 'Opening your space' : 'Connect bingo')}</h1><p className="onboarding-description">{t('Rei uses its included bingo runtime by default. You can choose another executable if needed.')}</p><div className="button-row onboarding-actions">{hasBinary && <button className="primary" disabled={connecting} onClick={() => void w.reconnect().catch(w.report)}>{t(connecting ? 'Connecting…' : 'Reconnect')}</button>}<button disabled={connecting} onClick={() => { void chooseRuntime().catch(w.report) }}>{t('Choose executable')}</button></div><p className="onboarding-note">{t('Conversations use a private temporary folder until you attach a project.')}</p><button className="text-button" onClick={() => openLink('https://github.com/yexrob/bingo')}>{t('Runtime setup help')} <ArrowUpRight size={13} /></button></div>
 }

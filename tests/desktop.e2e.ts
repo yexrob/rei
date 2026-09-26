@@ -147,8 +147,15 @@ test('sidebar preserves thread positions across selection, new threads and rende
   }
   const create = async (title: string) => {
     await page.getByRole('button', { name: 'New thread', exact: true }).click()
-    await page.getByRole('textbox', { name: 'Message bingo', exact: true }).fill(title)
-    await page.getByRole('button', { name: 'Send message', exact: true }).click()
+    await expect(page.locator('h1')).toHaveText('New thread')
+    const input = page.getByRole('textbox', { name: 'Message bingo', exact: true })
+    await expect(input).toBeEditable()
+    await expect(input).toHaveValue('')
+    await input.fill(title)
+    await expect(input).toHaveValue(title)
+    const send = page.getByRole('button', { name: 'Send message', exact: true })
+    await expect(send).toBeEnabled()
+    await send.click()
     await expect(page.getByText(`${title} response`, { exact: true })).toBeVisible()
   }
   try {

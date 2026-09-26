@@ -15,7 +15,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     if (mode === 'bad-json') return process.stdout.write('not json\n')
     if (mode === 'oversized') { process.stdout.write('x'.repeat(16 * 1024 * 1024 + 1)); return }
     if (mode === 'truncated') { process.stdout.write('{"jsonrpc":'); process.stdout.end(); return }
-    const result = { protocol: mode === 'wrong-protocol' ? 99 : 1, name: 'bingo', version: 'fixture', capabilities: { methods, notifications: ['event','gateway/event'] } }
+    const result = { protocol: mode === 'wrong-protocol' ? 99 : 1, name: 'bingo', version: 'fixture', capabilities: { methods, notifications: mode === 'bounded-notifications' ? ['event','gateway/event','eventRef','gateway/sessionHead'] : ['event','gateway/event'] } }
     if (mode === 'split') {
       const data = Buffer.from(JSON.stringify({ jsonrpc: '2.0', id: r.id, result: { ...result, version: '🧪fixture' } }) + '\n')
       const split = data.indexOf(Buffer.from('🧪')) + 2
@@ -36,11 +36,26 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     setTimeout(() => reply(r, { sessions: [{ ...summary, title: String(n) }] }), n === 1 ? 30 : 1)
   } else if (r.method === 'catalog/read') reply(r, { kind: r.params.kind, entries: [] })
   else if (r.method === 'session/open') {
-    reply(r, { session: summary.id, snapshot: { seq, summary, items: [] } })
-    frame({ type: 'notice', level: 'info', code: 'attached', text: 'Attached fixture.' })
-  } else if (r.method === 'session/history') reply(r, { items: [], generation: 0 })
-  else if (r.method === 'session/events') { reply(r, {}); frame({ type: 'notice', level: 'info', code: 'replay', text: 'Replay fixture.' }) }
-  else if (r.method === 'gateway/subscribe') { reply(r, {}); send({ jsonrpc: '2.0', method: 'gateway/event', params: { type: 'sessionCreated', summary } }) }
+    const bytes = mode === 'large-open-17' ? 17 * 1024 * 1024 : mode === 'large-open-15' ? 15 * 1024 * 1024 : 0
+    const item = bytes ? [{ id: 'recorded-item', round: 0, status: 'completed', startedAt: ts, completedAt: ts, body: { kind: 'assistant', text: 'x'.repeat(bytes) } }] : []
+    reply(r, { session: summary.id, snapshot: { seq, summary, items: item } })
+    if (!bytes) frame({ type: 'notice', level: 'info', code: 'attached', text: 'Attached fixture.' })
+  } else if (r.method === 'session/history') {
+    const item = { id: 'recorded-item', round: 0, status: 'completed', startedAt: ts, completedAt: ts, body: { kind: 'assistant', text: 'x'.repeat(17 * 1024 * 1024) } }
+    reply(r, { items: mode === 'large-history-17' ? [item] : [], generation: 0 })
+  } else if (r.method === 'session/events') {
+    reply(r, {})
+    if (mode === 'large-event-17') frame({ type: 'itemDelta', item: 'recorded-item', kind: 'text', n: 0, data: 'x'.repeat(17 * 1024 * 1024) })
+    else if (mode === 'bounded-notifications') {
+      send({ jsonrpc: '2.0', method: 'eventRef', params: { session: summary.id, seq: ++seq, messageId: 'ref-1', eventType: 'itemCompleted', item: 'recorded-item', stateUncertain: false, generation: 0, availability: { kind: 'available', token: 'fixture-token' }, totalBytes: 17 * 1024 * 1024, checksum: 'a6a4eddc16724d5c' } })
+      frame({ type: 'turnCompleted', turn: 'turn', status: { kind: 'completed' }, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 } })
+    } else frame({ type: 'notice', level: 'info', code: 'replay', text: 'Replay fixture.' })
+  }
+  else if (r.method === 'gateway/subscribe') {
+    reply(r, {})
+    if (mode === 'bounded-notifications') send({ jsonrpc: '2.0', method: 'gateway/sessionHead', params: { session: summary.id } })
+    else send({ jsonrpc: '2.0', method: 'gateway/event', params: { type: 'sessionCreated', summary } })
+  }
   else if (r.method === 'session/submit') { reply(r, {}); frame({ type: 'intentAck', intent: r.params.intent, outcome: { kind: 'applied', result: null } }) }
   else reply(r, {})
 })

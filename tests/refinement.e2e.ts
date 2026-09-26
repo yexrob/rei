@@ -120,8 +120,15 @@ test('desktop pickers repair a mixed-case provider, preserve the draft and apply
   const { app, page } = await launch(root)
   try {
     const initial = await page.evaluate(() => window.bingoDesktop.bootstrap())
-    expect(initial.ok && initial.value.preferences.workspace === null).toBe(true)
-    expect(initial.ok && initial.value.connection.workspace === initial.value.scratchWorkspace).toBe(true)
+    expect(initial.ok).toBe(true)
+    if (!initial.ok) throw new Error(initial.error.message)
+    expect(initial.value.preferences.workspace).toBeNull()
+    const selection = initial.value.selection
+    expect(selection?.hostId).toBeTruthy()
+    expect(selection?.connectionId).toBeTruthy()
+    const selected = initial.value.connections.find(connection => connection.hostId === selection?.hostId && connection.connectionId === selection?.connectionId)
+    expect(selected?.status).toBe('ready')
+    expect(selected?.workspace).toBe(initial.value.scratchWorkspace)
     await expect(page.getByRole('button', { name: 'Personal space', exact: true })).toBeVisible()
     await page.getByRole('textbox', { name: 'Message bingo' }).fill('Keep this exact draft while I choose a model.')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()

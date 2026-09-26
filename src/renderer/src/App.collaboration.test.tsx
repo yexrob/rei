@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BingoDesktopApi, DesktopEvent, DesktopRequest, Result } from '../../shared/desktop'
+import type { BingoDesktopApi, BoundedDelivery, DesktopEvent, DesktopRequest, Result } from '../../shared/desktop'
 import type { Event, Frame, GatewayEvent, IntentOutcome, RpcMethods, SessionState } from '../../shared/rpc'
 import App from './App'
 import { rustInitial } from './state/fixtures'
@@ -14,6 +14,8 @@ const childId = 'reviewer-session'
 
 function desktop() {
   let listener: (event: DesktopEvent) => void = () => {}
+  let bounded: ((delivery: BoundedDelivery) => Promise<void>) | undefined
+  const server = { protocol: 1, name: 'fixture', version: 'test', capabilities: { methods: ['session/listHeads', 'session/open', 'session/history', 'session/children', 'session/itemPart', 'session/fieldPart', 'session/eventPart'], notifications: ['eventRef', 'gateway/sessionHead'] } }
   const preferences = { theme: 'light' as const, workspace: '/work', binaryPath: '/bin/bingo', recentWorkspaces: ['/work'] }
   const root: SessionState = { ...rustInitial, summary: { ...rustInitial.summary, id: rootId, title: 'Main conversation', cwd: '/work' }, items: [], config: { kernel: { thinking: 'off' }, plugins: {} } }
   const child: SessionState = { ...root, summary: { ...root.summary, id: childId, title: 'reviewer', key: `agent/${rootId}/reviewer`, parent: { session: rootId } } }
@@ -48,9 +50,23 @@ function desktop() {
     return ok({})
   })
   const api: BingoDesktopApi = {
-    bootstrap: vi.fn(async () => ok({ version: '0.1.0', platform: 'linux', scratchWorkspace: '/scratch', preferences, binary: { path: '/bin/bingo', source: 'test' }, connection: { status: 'disconnected' as const, connectionId: null, workspace: null, binary: null } })),
-    connect: vi.fn(async () => ok({ status: 'ready' as const, connectionId: 'connection', workspace: '/work', binary: '/bin/bingo' })),
+    bootstrap: vi.fn(async () => ok({ version: '0.1.0', platform: 'linux', scratchWorkspace: '/scratch', preferences, binary: { path: '/bin/bingo', source: 'test' }, connections: [], selection: null, agentPages: [] })),
+    connect: vi.fn(async () => ok({ hostId: 'host', busy: false, status: 'ready' as const, connectionId: 'connection', workspace: '/work', binary: '/bin/bingo', server })),
+    reconnect: vi.fn(async () => ok({ hostId: 'host', busy: false, status: 'ready' as const, connectionId: 'connection', workspace: '/work', binary: '/bin/bingo', server })),
+    selectConversation: vi.fn(async () => ok(undefined)), closeHost: vi.fn(async () => ok(undefined)), openAgentPage: vi.fn(async () => ok(undefined)),
     request: request as BingoDesktopApi['request'],
+    requestBounded: vi.fn(async ({ transferId, request: input }) => {
+      if (!bounded) return { ok: false as const, error: { code: 'NO_CONSUMER', message: 'No bounded consumer.' } }
+      const raw = input.method === 'session/listHeads' ? await request({ connectionId: input.connectionId, method: 'session/list', params: { filter: { cwd: (input.params as RpcMethods['session/listHeads']['params']).filter?.cwd, limit: 500 } } }) : input.method === 'session/children' ? ok({ children: [], next: null }) : await request(input)
+      if (!raw.ok) return raw
+      const value = input.method === 'session/listHeads' ? { heads: (raw.value as RpcMethods['session/list']['result']).sessions.map(({ id, cwd, parent, driver, createdAt, updatedAt, busy, title, key, messages }) => ({ id, cwd, parent, driver: driver ?? 'model', createdAt, updatedAt, busy: busy ?? false, title, key, messages })), next: null } : raw.value
+      const session = input.method === 'session/open' ? (value as RpcMethods['session/open']['result']).session : input.method === 'session/history' ? (input.params as RpcMethods['session/history']['params']).session : input.method === 'session/children' ? (input.params as RpcMethods['session/children']['params']).parent : null
+      await bounded({ kind: 'response', transferId, hostId: 'host', connectionId: input.connectionId, session, method: input.method, result: value } as BoundedDelivery)
+      return ok({ kind: 'response' as const, transferId, hostId: 'host', connectionId: input.connectionId, session, method: input.method, acceptedBytes: 512 })
+    }) as BingoDesktopApi['requestBounded'],
+    cancelBounded: vi.fn(async () => ok(undefined)),
+    readPart: vi.fn(async () => ({ ok: false as const, error: { code: 'UNSUPPORTED', message: 'Part fixture not configured.' } })),
+    cancelPart: vi.fn(async () => ok(undefined)), exportReference: vi.fn(async () => ok(false)), cancelExport: vi.fn(async () => ok(undefined)), onBounded: vi.fn(next => { bounded = next; return () => { bounded = undefined } }),
     onEvent: vi.fn((next) => { listener = next; return () => { listener = () => {} } }),
     chooseWorkspace: vi.fn(async () => ok('/work')),
     chooseBinary: vi.fn(async () => ok('/bin/bingo')),
@@ -121,7 +137,7 @@ describe('collaboration recipient and async presentation isolation', () => {
     expect(bridge.submitted[0].params).toMatchObject({ session: childId, input: { kind: 'text', text: 'Only the reviewer receives this', origin: { surface: 'desktop' } } })
     await act(async () => { bridge.ack(0, { kind: 'applied', result: {} }) })
     await waitFor(() => expect(message('Message reviewer').value).toBe(''))
-    await waitFor(() => expect(JSON.parse(localStorage.getItem('rei.drafts.v1') ?? '{}')[`/work:${rootId}`]).toBe('Unsent main draft'))
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('rei.drafts.v1') ?? '{}')[JSON.stringify(['host', rootId])]).toBe('Unsent main draft'))
   })
 
   it('keeps independent drafts and does not display a late child rejection in the main conversation', async () => {

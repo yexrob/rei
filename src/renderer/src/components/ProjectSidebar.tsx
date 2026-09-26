@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Blocks, ChevronDown, ChevronRight, Clock3, Folder, PanelLeft, Plus, ReiMark, Search, Settings2, SquarePen } from './icons'
+import { Blocks, ChevronDown, ChevronRight, Clock3, Folder, PanelLeft, Plus, ReiMark, Search, Settings2, SquarePen, X } from './icons'
 import type { SessionSummary } from '../../../shared/rpc'
+import type { ConnectionState } from '../../../shared/desktop'
 import { useI18n } from '../i18n'
 import { basename, IconButton } from './primitives'
 
@@ -20,7 +21,10 @@ function updatedTime(value: string, locale: string): string {
   return format.format(-Math.floor(minutes / 1440), 'day')
 }
 
+export type SidebarProject = { connection: ConnectionState; sessions: { summary: SessionSummary; status: string; unread: boolean; titleOmitted?: boolean }[] }
 type Props = {
+  projects?: SidebarProject[]; activeHostId?: string; onHostProject?: (hostId: string) => void; onHostSession?: (hostId: string, sessionId: string) => void; onCloseHost?: (hostId: string) => void;
+  agentPages?: { key: string; name: string; title: string; open: () => void }[];
   visible: boolean; platform: string; page: WorkspacePage; workspace: string | null; scratchWorkspace?: string;
   recentWorkspaces: string[]; sessions: SessionSummary[]; activeId: string | null;
   ready: boolean; connecting: boolean; loading: boolean;
@@ -49,12 +53,23 @@ export function ProjectSidebar(p: Props): React.JSX.Element {
     </div>
     <div className="session-heading"><span>{t('Threads')}</span><IconButton label="Add project" onClick={p.onChooseProject}><Plus size={15} /></IconButton></div>
     <div className="project-list">
-      {paths.map((path) => {
+      {p.projects?.map(project => {
+        const connection = project.connection, id = connection.hostId, current = id === p.activeHostId
+        const expanded = !collapsed.includes(id), name = label(connection.workspace ?? '')
+        return <section className="project-group" key={id} data-host-id={id}>
+          <div className="project-heading-row"><button className="project-heading" title={connection.workspace ?? name} aria-label={t(current ? expanded ? 'Collapse project {name}' : 'Expand project {name}' : 'Open project {name}', { name })} aria-expanded={expanded} onClick={() => current ? toggle(id) : p.onHostProject?.(id)}><Folder size={15} /><span>{name}</span>{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</button>{p.onCloseHost && <IconButton label={t('Close idle project {name}', { name })} disabled={connection.busy} onClick={() => p.onCloseHost?.(id)}><X size={13} /></IconButton>}</div>
+          {expanded && <nav className="session-list" aria-label={t('Sessions')}>
+            {project.sessions.map(({ summary: session, status, unread, titleOmitted }) => <button key={session.id} className={`session-row ${current && p.page === 'thread' && session.id === p.activeId ? 'selected' : ''}`} aria-current={current && p.page === 'thread' && session.id === p.activeId ? 'page' : undefined} onClick={() => p.onHostSession?.(id, session.id)}><span className="session-row-title">{titleOmitted ? t('Title not loaded') : session.title || t('Untitled session')}</span><span className="session-row-state">{status === 'waiting' ? t('Needs attention') : status === 'failed' ? t('Failed') : ['working', 'retrying', 'resyncing'].includes(status) ? t('Running') : ''}{unread && <span className="session-unread">{t('Unread')}</span>}</span><time dateTime={session.updatedAt}>{updatedTime(session.updatedAt, locale)}</time></button>)}
+            {!project.sessions.length && <p className="sidebar-empty">{t(connection.status === 'ready' ? 'No threads yet. Start something new.' : 'Preparing your workspace…')}</p>}
+          </nav>}
+        </section>
+      })}
+      {(p.projects ? paths.filter(path => !p.projects?.some(project => project.connection.workspace === path)) : paths).map((path) => {
         const current = path === p.workspace
         const expanded = current && !collapsed.includes(path)
         const name = label(path)
         return <section className="project-group" key={path}>
-          <button className="project-heading" title={path === p.scratchWorkspace ? t('Personal space') : path} aria-label={t(current ? expanded ? 'Collapse project {name}' : 'Expand project {name}' : 'Open project {name}', { name })} aria-expanded={current ? expanded : undefined} disabled={!current && p.loading} onClick={() => current ? toggle(path) : p.onProject(path)}>
+          <button className="project-heading" title={path === p.scratchWorkspace ? t('Personal space') : path} aria-label={t(current ? expanded ? 'Collapse project {name}' : 'Expand project {name}' : 'Open project {name}', { name })} aria-expanded={current ? expanded : undefined} onClick={() => current ? toggle(path) : p.onProject(path)}>
             <Folder size={15} /><span>{name}</span>{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </button>
           {expanded && <nav className="session-list" aria-label={t('Sessions')}>
@@ -65,7 +80,8 @@ export function ProjectSidebar(p: Props): React.JSX.Element {
           </nav>}
         </section>
       })}
-      {!paths.length && <p className="sidebar-empty">{t('Preparing your workspace…')}</p>}
+      {!paths.length && !p.projects?.length && <p className="sidebar-empty">{t('Preparing your workspace…')}</p>}
+      {Boolean(p.agentPages?.length) && <section className="agent-page-notices" aria-label={t('Agent pages')}>{p.agentPages?.map(page => <button key={page.key} onClick={page.open} aria-label={t('Open page from {name}', { name: page.name })}><span>{page.title}</span><small>{page.name}</small></button>)}</section>}
     </div>
     <div className="sidebar-bottom">
       <div className="sidebar-settings-row"><button onClick={p.onSettings}><Settings2 size={16} />{t('Settings')}</button><span className="sidebar-wordmark">bingo</span></div>

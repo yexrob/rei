@@ -1,13 +1,17 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { RPC_PROTOCOL, type EventParams, type GatewayEvent, type InitializeResult, type RpcMethod, type RpcMethods } from '../../shared/rpc'
+import { RPC_PROTOCOL, type EventParams, type EventRefParams, type GatewayEvent, type GatewaySessionHeadParams, type InitializeResult, type RpcMethod, type RpcMethods } from '../../shared/rpc'
 import { rpcNotificationSchemas, rpcParamsSchemas, rpcResultSchemas } from './rpc-validation'
 
 export class DesktopFailure extends Error {
   constructor(readonly code: string, message: string) { super(message); this.name = 'DesktopFailure' }
 }
-export type RpcNotification = { method: 'event'; params: EventParams } | { method: 'gateway/event'; params: GatewayEvent }
+export type RpcNotification =
+  | { method: 'event'; params: EventParams }
+  | { method: 'eventRef'; params: EventRefParams }
+  | { method: 'gateway/event'; params: GatewayEvent }
+  | { method: 'gateway/sessionHead'; params: GatewaySessionHeadParams }
 export const RPC_LIMITS = { line: 16 * 1024 * 1024, pending: 32, writes: 32 * 1024 * 1024, timeout: 30_000 } as const
 const envelope = z.looseObject({ jsonrpc: z.literal('2.0') })
 const rpcError = z.looseObject({ code: z.number().int(), message: z.string(), data: z.looseObject({ code: z.string().optional() }).optional() })
@@ -27,6 +31,9 @@ export class RpcClient {
   private exited: Promise<void> = Promise.resolve()
   private exitObserved = false
   private server: InitializeResult | null = null
+
+  /** Only an observed child close releases a live-host slot. */
+  get alive(): boolean { return this.child !== null && !this.exitObserved }
 
   constructor(private readonly options: Options, private readonly notify: (value: RpcNotification) => void, private readonly failed: (error: DesktopFailure) => void, private readonly replied?: (method: RpcMethod, result: unknown) => void) {}
 
@@ -129,8 +136,14 @@ export class RpcClient {
         }
       } else if (message.method === 'event') {
         this.notify({ method: 'event', params: rpcNotificationSchemas.event.parse(message.params) as EventParams })
+      } else if (message.method === 'eventRef') {
+        if (!this.server?.capabilities.notifications.includes('eventRef')) throw new Error('Unnegotiated event reference')
+        this.notify({ method: 'eventRef', params: rpcNotificationSchemas.eventRef.parse(message.params) as EventRefParams })
       } else if (message.method === 'gateway/event') {
         this.notify({ method: 'gateway/event', params: rpcNotificationSchemas['gateway/event'].parse(message.params) as GatewayEvent })
+      } else if (message.method === 'gateway/sessionHead') {
+        if (!this.server?.capabilities.notifications.includes('gateway/sessionHead')) throw new Error('Unnegotiated gateway head')
+        this.notify({ method: 'gateway/sessionHead', params: rpcNotificationSchemas['gateway/sessionHead'].parse(message.params) as GatewaySessionHeadParams })
       } else throw new Error('Unknown notification')
     } catch {
       this.fail(new DesktopFailure('INVALID_PROTOCOL', 'bingo returned an invalid or incompatible RPC message. Update the runtime and reconnect.'))

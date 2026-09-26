@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { DesktopIpc, confirmStop } from './desktop/ipc'
 import { EventDelivery } from './desktop/event-delivery'
 import { PreferencesStore, restoreBounds } from './desktop/preferences'
-import { DesktopRuntime } from './desktop/runtime'
+import { RuntimePool } from './desktop/runtime-pool'
 import { Panels } from './desktop/panels'
 import { Review } from './desktop/review'
 import { AgentBrowser } from './desktop/agent-browser'
@@ -21,12 +21,17 @@ if (backgroundTest) installBackgroundTestGuards(app, dialog)
 
 let window: BrowserWindow | null = null
 let preferences: PreferencesStore | null = null
-let runtime: DesktopRuntime | null = null
+let runtime: RuntimePool | null = null
 let delivery: EventDelivery | null = null
 let desktopIpc: DesktopIpc | null = null
 let panels: Panels | null = null
 let review: Review | null = null
-const agentBrowser = new AgentBrowser()
+const agentBrowser = new AgentBrowser({
+  connection: id => { try { return runtime?.getConnection(id) ?? null } catch { return null } },
+  selection: () => runtime?.selection ?? null,
+  emit,
+  open: url => panels?.openBrowser(url, false)
+})
 let quitting = false
 let quitPending = false
 const rendererFile = join(__dirname, '../renderer/index.html')
@@ -34,8 +39,8 @@ const documentUrl = !app.isPackaged && process.env.ELECTRON_RENDERER_URL ? proce
 
 function emit(event: DesktopEvent): void {
   delivery?.send(event)
-  const url = agentBrowser.route(event)
-  if (url) panels?.openBrowser(url)
+  desktopIpc?.observeRuntimeEvent(event)
+  agentBrowser.route(event)
 }
 
 function createWindow(): void {
@@ -62,15 +67,36 @@ function createWindow(): void {
   created.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   created.webContents.on('will-navigate', (event, url) => { if (!sameDocument(url, documentUrl)) event.preventDefault() })
   created.webContents.on('will-attach-webview', (event) => event.preventDefault())
+  let navigating = false, navigationFailed = false
+  const restoreSurvivingDocument = (): void => {
+    if (!navigating || !navigationFailed || created.webContents.isDestroyed() || created.webContents.isLoadingMainFrame()) return
+    if (!sameDocument(created.webContents.mainFrame.url, documentUrl)) return
+    navigating = false; navigationFailed = false
+    // No document was replaced: reopen admission with a new generation, but
+    // never erase the surviving renderer's actual unacknowledged IPC budget.
+    desktopIpc?.rendererReady()
+  }
+  const navigationFailure = (_event: Electron.Event, _code: number, _description: string, _url: string, mainFrame: boolean): void => {
+    if (!mainFrame || !navigating) return
+    navigationFailed = true
+    restoreSurvivingDocument()
+  }
+  created.webContents.on('did-fail-load', navigationFailure)
+  created.webContents.on('did-fail-provisional-load', navigationFailure)
+  created.webContents.on('did-stop-loading', restoreSurvivingDocument)
   created.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
     if (!isMainFrame || isInPlace) return
+    navigating = true; navigationFailed = false
+    desktopIpc?.invalidateRenderer()
     // Stop old stdout at navigation start, but retain its IPC budget: a
     // cancelled/failed navigation may leave the current document alive.
     void runtime?.close()
   })
   // did-navigate is main-frame cross-document commit (not an in-page change).
-  created.webContents.on('did-navigate', () => delivery?.reset())
+  created.webContents.on('did-navigate', () => { navigating = false; navigationFailed = false; delivery?.reset(); desktopIpc?.rendererReady() })
   created.webContents.on('render-process-gone', () => {
+    navigating = false; navigationFailed = false
+    desktopIpc?.invalidateRenderer()
     void runtime?.close()
     delivery?.reset()
     if (!quitting) void dialog.showMessageBox(created, { type: 'error', message: 'The conversation window stopped.', detail: 'The native runtime has been disconnected. Reload the window and reconnect to recover saved history.', buttons: ['Reload', 'Quit'] }).then((result) => { if (result.response === 0) created.reload(); else app.quit() })
@@ -127,7 +153,7 @@ async function quit(): Promise<void> {
     if (runtime?.busy || desktopIpc?.busy || panels?.busy) {
       panels?.setBrowserOccluded(true)
       try {
-        if (!(await confirmStop(window, 'Quit Rei and stop running work?', 'Active turns, tools and the local terminal will stop. An in-progress provider save will finish before quitting. Saved history remains in bingo.'))) return
+        if (!(await confirmStop(window, 'Quit Rei and stop running work?', 'Active turns, tools and the local terminal will stop. An in-progress provider save will finish before quitting; an unfinished raw JSON export will be cancelled without replacing its chosen file. Saved history remains in bingo.'))) return
       } finally { panels?.setBrowserOccluded(false) }
     }
     quitting = true
@@ -135,6 +161,7 @@ async function quit(): Promise<void> {
     await panels?.close()
     await desktopIpc?.shutdown()
     await runtime?.close()
+    await desktopIpc?.flushExports()
     await preferences?.flush()
     review?.close()
     app.quit()
@@ -160,9 +187,9 @@ else {
     preferences = new PreferencesStore(app.getPath('userData'))
     await preferences.load().catch((error: Error) => dialog.showErrorBox('Desktop preferences unavailable', error.message))
     nativeTheme.themeSource = preferences.preferences.theme
-    runtime = new DesktopRuntime(emit, () => delivery?.recover())
+    runtime = new RuntimePool(emit, () => delivery?.recover())
     delivery = new EventDelivery(() => window, documentUrl, (error) => runtime?.abort(error))
-    desktopIpc = new DesktopIpc({ window: () => window, documentUrl, preferences, runtime, onDialogChange: (open) => panels?.setBrowserOccluded(open) })
+    desktopIpc = new DesktopIpc({ window: () => window, documentUrl, preferences, runtime, delivery, emit, agentPages: () => agentBrowser.snapshot(), openAgentPage: input => agentBrowser.open(input), onDialogChange: (open) => panels?.setBrowserOccluded(open) })
     await desktopIpc.initialize()
     panels = new Panels({ window: () => window, documentUrl, workspace: () => desktopIpc?.currentWorkspace ?? null })
     review = new Review({ window: () => window, documentUrl, workspace: () => desktopIpc?.currentWorkspace ?? null })

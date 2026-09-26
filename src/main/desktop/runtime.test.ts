@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { EventParams, OpenResult } from '../../shared/rpc'
+import type { EventParams, EventRefParams, OpenResult } from '../../shared/rpc'
 const calls = vi.hoisted(() => ({ methods: [] as string[], clients: [] as Array<{ notify: (value: unknown) => void; fail: (error: unknown) => void; request: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }> }))
 vi.mock('./rpc-client', async (original) => {
   const actual = await original<typeof import('./rpc-client')>()
@@ -27,6 +27,45 @@ describe('runtime connection ownership', () => {
     await expect(runtime.request({ connectionId: old.connectionId!, method: 'session/list', params: {} })).rejects.toMatchObject({ code: 'STALE_CONNECTION' })
     await runtime.request({ connectionId: next.connectionId!, method: 'session/list', params: {} })
     expect(calls.clients[1].request).toHaveBeenCalledOnce()
+  })
+  it('holds uncertain permission/lifecycle references through later small completion until a current authoritative snapshot', async () => {
+    const emit = vi.fn(), runtime = new DesktopRuntime(emit)
+    const connection = await runtime.connect('/bin/bingo', '/project')
+    const ref: EventRefParams = { session: 's', seq: 1, messageId: 'pending-int-1', eventType: 'interactionOpened', interaction: 'int-1', stateUncertain: true, generation: 0, availability: { kind: 'available', token: 'token' }, totalBytes: 17 * 1024 * 1024, checksum: 'a6a4eddc16724d5c' }
+    calls.clients[0].notify({ method: 'eventRef', params: ref })
+    expect(runtime.busy).toBe(true)
+    await expect(runtime.request({ connectionId: connection.connectionId!, method: 'session/answer', params: { session: 's', interaction: 'int-1', intent: 'answer-1', answer: { kind: 'allowOnce' }, activation: 'pointer' } })).rejects.toMatchObject({ code: 'SESSION_UNCERTAIN' })
+    calls.clients[0].notify(frame({ type: 'turnCompleted', turn: 'turn', status: { kind: 'completed' }, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 } }, 2))
+    expect(runtime.busy).toBe(true)
+    const direct = emit.mock.calls.map(([event]) => event).filter(event => event.type === 'rpc')
+    expect(direct.map(event => event.method)).toEqual(['eventRef', 'event'])
+    calls.clients[0].request.mockResolvedValueOnce({ ...snapshot, snapshot: { ...snapshot.snapshot, seq: 2 } })
+    await runtime.request({ connectionId: connection.connectionId!, method: 'session/open', params: { selector: { kind: 'byId', id: 's' } } })
+    expect(runtime.busy).toBe(false)
+  })
+  it('allows a captured direct-turn Stop through a critical deferred ref but still blocks submit/permission and auto retry', async () => {
+    const runtime = new DesktopRuntime(() => {})
+    const conn = await runtime.connect('/bin/bingo', '/project')
+    calls.clients[0].notify(frame({ type: 'turnStarted', turn: 'known-turn', inputs: [], origin: 'submit' }, 1))
+    const ref: EventRefParams = { session: 's', seq: 2, messageId: 'permission-ref', eventType: 'interactionOpened', interaction: 'i', stateUncertain: true, generation: 0, availability: { kind: 'available', token: 'pin' }, totalBytes: 17 * 1024 * 1024, checksum: 'a6a4eddc16724d5c' }
+    calls.clients[0].notify({ method: 'eventRef', params: ref })
+    await expect(runtime.request({ connectionId: conn.connectionId!, method: 'session/submit', params: { session: 's', intent: 'submit-unsafe', input: { kind: 'text', text: 'unsafe', origin: { surface: 'desktop' } } } })).rejects.toMatchObject({ code: 'SESSION_UNCERTAIN' })
+    await expect(runtime.request({ connectionId: conn.connectionId!, method: 'session/answer', params: { session: 's', intent: 'answer-unsafe', interaction: 'i', answer: { kind: 'allowOnce' }, activation: 'pointer' } })).rejects.toMatchObject({ code: 'SESSION_UNCERTAIN' })
+    const target = { connectionId: conn.connectionId!, method: 'session/interrupt' as const, params: { session: 's', intent: 'stop-once', scope: { kind: 'turn' as const, turn: 'known-turn' } } }
+    await runtime.request(target)
+    expect(calls.clients[0].request.mock.calls).toEqual([['session/interrupt', target.params]])
+    expect(runtime.busy).toBe(true) // No authoritative ack/ref hydration was fabricated.
+  })
+  it('never treats omitted critical snapshot fields as empty permission or queue state', async () => {
+    const runtime = new DesktopRuntime(() => {})
+    const connection = await runtime.connect('/bin/bingo', '/project')
+    calls.clients[0].request.mockResolvedValueOnce({ ...snapshot, snapshot: { ...snapshot.snapshot, seq: 3 }, omittedFields: [{ path: ['interactions'], availability: { kind: 'available', token: 'pin' }, totalBytes: 17 * 1024 * 1024, checksum: 'a6a4eddc16724d5c' }] })
+    await runtime.request({ connectionId: connection.connectionId!, method: 'session/open', params: { selector: { kind: 'byId', id: 's' } } })
+    expect(runtime.busy).toBe(true)
+    await expect(runtime.request({ connectionId: connection.connectionId!, method: 'session/answer', params: { session: 's', interaction: 'perhaps-login', intent: 'answer', answer: { kind: 'text', text: 'must-not-send' }, activation: 'pointer' } })).rejects.toMatchObject({ code: 'SESSION_UNCERTAIN' })
+    calls.clients[0].request.mockResolvedValueOnce({ ...snapshot, snapshot: { ...snapshot.snapshot, seq: 4 } })
+    await runtime.request({ connectionId: connection.connectionId!, method: 'session/open', params: { selector: { kind: 'byId', id: 's' } } })
+    expect(runtime.busy).toBe(false)
   })
   it('ignores same-connection event and gateway tails after abort', async () => {
     const emit = vi.fn(), runtime = new DesktopRuntime(emit)
@@ -109,6 +148,26 @@ describe('runtime connection ownership', () => {
     expect(runtime.busy).toBe(true)
     await runtime.close()
     expect(runtime.busy).toBe(false)
+  })
+  it('counts pending non-submit RPC work as busy until its response settles', async () => {
+    const runtime = new DesktopRuntime(() => {})
+    const connection = await runtime.connect('/bin/bingo', '/project')
+    let resolve!: (value: unknown) => void
+    calls.clients[0].request.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+    const pending = runtime.request({ connectionId: connection.connectionId!, method: 'session/list', params: {} })
+    expect(runtime.busy).toBe(true)
+    resolve({ sessions: [] }); await pending
+    expect(runtime.busy).toBe(false)
+  })
+  it('rejects an old snapshot response after abort instead of mutating live activity', async () => {
+    const runtime = new DesktopRuntime(() => {})
+    const connection = await runtime.connect('/bin/bingo', '/project')
+    let resolve!: (value: unknown) => void
+    calls.clients[0].request.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+    const pending = runtime.request({ connectionId: connection.connectionId!, method: 'session/open', params: { selector: { kind: 'byId', id: 's' } } })
+    runtime.abort(new DesktopFailure('PROCESS_EXITED', 'gone'))
+    resolve(snapshot)
+    await expect(pending).rejects.toMatchObject({ code: 'STALE_CONNECTION' })
   })
   it('refuses pasted login secrets before any session/answer RPC write', async () => {
     const runtime = new DesktopRuntime(() => {})

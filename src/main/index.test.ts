@@ -1,12 +1,12 @@
 import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ background: false, contents: undefined as unknown as EventEmitter, window: undefined as unknown as EventEmitter, options: {} as Electron.BrowserWindowConstructorOptions, handlers: new Map<string, () => void>(), reset: vi.fn(), close: vi.fn(async () => {}), show: vi.fn(), focus: vi.fn(), maximize: vi.fn(), guard: vi.fn() }))
+const state = vi.hoisted(() => ({ background: false, loadingMainFrame: false, trustedDocument: true, ipcReady: vi.fn(), ipcInvalidated: vi.fn(), contents: undefined as unknown as EventEmitter, window: undefined as unknown as EventEmitter, options: {} as Electron.BrowserWindowConstructorOptions, handlers: new Map<string, () => void>(), reset: vi.fn(), close: vi.fn(async () => {}), show: vi.fn(), focus: vi.fn(), maximize: vi.fn(), guard: vi.fn() }))
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events')
   return {
     app: { isPackaged: true, requestSingleInstanceLock: () => true, on: (name: string, fn: () => void) => state.handlers.set(name, fn), isReady: () => true, whenReady: () => Promise.resolve(), getPath: () => '/isolated', name: 'Rei' },
     BrowserWindow: class extends EventEmitter {
-      webContents = Object.assign(new EventEmitter(), { session: { setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn() }, setWindowOpenHandler: vi.fn() })
+      webContents = Object.assign(new EventEmitter(), { mainFrame: { url: 'file:///app/index.html' }, isDestroyed: () => false, isLoadingMainFrame: () => state.loadingMainFrame, session: { setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn() }, setWindowOpenHandler: vi.fn() })
       constructor(options: Electron.BrowserWindowConstructorOptions) { super(); state.contents = this.webContents; state.window = this; state.options = options }
       loadURL = async () => {}
       isDestroyed = () => false
@@ -22,16 +22,16 @@ vi.mock('electron', async () => {
 })
 vi.mock('./background-test-mode', async original => ({ ...await original<typeof import('./background-test-mode')>(), backgroundTestEnabled: () => state.background, installBackgroundTestGuards: state.guard }))
 vi.mock('./desktop/event-delivery', () => ({ EventDelivery: class { reset = state.reset; send = vi.fn(); recover = vi.fn() } }))
-vi.mock('./desktop/runtime', () => ({ DesktopRuntime: class { close = state.close } }))
+vi.mock('./desktop/runtime-pool', () => ({ RuntimePool: class { close = state.close } }))
 vi.mock('./desktop/preferences', () => ({ restoreBounds: () => ({ width: 1200, height: 900, x: 0, y: 0, maximized: true }), PreferencesStore: class { preferences = { theme: 'system' }; load = async () => {} } }))
-vi.mock('./desktop/security', () => ({ allowsClipboardWrite: vi.fn(() => true), externalUrl: vi.fn(), sameDocument: () => true }))
-vi.mock('./desktop/ipc', () => ({ DesktopIpc: class { initialize = async () => {} }, confirmStop: vi.fn() }))
+vi.mock('./desktop/security', () => ({ allowsClipboardWrite: vi.fn(() => true), externalUrl: vi.fn(), sameDocument: () => state.trustedDocument }))
+vi.mock('./desktop/ipc', () => ({ DesktopIpc: class { initialize = async () => {}; flushExports = async () => {}; invalidateRenderer = state.ipcInvalidated; rendererReady = state.ipcReady; observeRuntimeEvent = vi.fn() }, confirmStop: vi.fn() }))
 vi.mock('./desktop/panels', () => ({ Panels: class {} }))
 vi.mock('./desktop/review', () => ({ Review: class {} }))
 vi.mock('./desktop/agent-browser', () => ({ AgentBrowser: class {} }))
 
 async function boot(background: boolean) {
-  vi.resetModules(); vi.clearAllMocks(); state.handlers.clear(); state.background = background
+  vi.resetModules(); vi.clearAllMocks(); state.handlers.clear(); state.background = background; state.loadingMainFrame = false; state.trustedDocument = true
   state.contents = undefined as unknown as EventEmitter
   await import('./index')
   await vi.waitFor(() => expect(state.contents).toBeDefined())
@@ -42,6 +42,33 @@ describe('renderer lifetime', () => {
     state.contents.emit('did-start-navigation', {}, 'file:///app/index.html', false, true)
     state.contents.emit('did-fail-load', {}, -3, 'ERR_ABORTED', 'file:///app/index.html', true)
     expect(state.close).toHaveBeenCalledOnce()
+    expect(state.reset).not.toHaveBeenCalled()
+    expect(state.ipcInvalidated).toHaveBeenCalledOnce()
+    expect(state.ipcReady).toHaveBeenCalledOnce()
+  })
+  it('waits until failed provisional navigation stops loading before restoring the old document admission', () => {
+    state.loadingMainFrame = true
+    state.contents.emit('did-start-navigation', {}, 'file:///app/index.html', false, true)
+    state.contents.emit('did-fail-provisional-load', {}, -3, 'ERR_ABORTED', 'file:///app/index.html', true)
+    state.contents.emit('did-stop-loading')
+    expect(state.ipcReady).not.toHaveBeenCalled()
+    state.loadingMainFrame = false
+    state.contents.emit('did-stop-loading')
+    expect(state.ipcReady).toHaveBeenCalledOnce()
+    expect(state.reset).not.toHaveBeenCalled()
+  })
+  it('does not restore admission for a redirect still navigating or an untrusted surviving document', () => {
+    state.loadingMainFrame = true
+    state.contents.emit('did-start-navigation', {}, 'file:///app/index.html', false, true)
+    state.contents.emit('did-fail-provisional-load', {}, -3, 'ERR_ABORTED', 'file:///app/index.html', true)
+    state.contents.emit('did-start-navigation', {}, 'file:///app/index.html?next', false, true)
+    state.loadingMainFrame = false
+    state.contents.emit('did-stop-loading')
+    expect(state.ipcReady).not.toHaveBeenCalled()
+    state.trustedDocument = false
+    state.contents.emit('did-fail-load', {}, -2, 'FAILED', 'file:///app/index.html?next', true)
+    state.contents.emit('did-stop-loading')
+    expect(state.ipcReady).not.toHaveBeenCalled()
     expect(state.reset).not.toHaveBeenCalled()
   })
   it('resets only when a new main-frame document commits, not in-page or subframe navigation', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { allowsClipboardWrite, connectSchema, deletionSchema, externalUrl, preferencesPatchSchema, requestSchema, sameDocument, suggestedFilename, trustedSender } from './security'
+import { allowsClipboardWrite, boundedRequestSchema, connectSchema, deletionSchema, exportReferenceSchema, externalUrl, partRequestSchema, preferencesPatchSchema, requestSchema, sameDocument, suggestedFilename, transferCancelSchema, trustedSender } from './security'
 import { rpcNotificationSchemas, rpcParamsSchemas } from './rpc-validation'
 
 describe('desktop trust boundary', () => {
@@ -51,6 +51,20 @@ describe('desktop trust boundary', () => {
     expect(connectSchema.safeParse({ workspace: '/safe\0evil' }).success).toBe(false)
     expect(preferencesPatchSchema.safeParse({ providers: { key: 'never' } }).success).toBe(false)
     expect(deletionSchema.safeParse({ connectionId: 'c', session: 's', confirmed: true }).success).toBe(false)
+  })
+  it('uses strict source/part/export contracts without renderer-supplied paths or unbounded methods', () => {
+    const bounded = { transferId: 'request-1', hostId: 'host-a', request: { connectionId: 'epoch-a', method: 'session/open', params: { selector: { kind: 'byId', id: 's' }, options: { maxSnapshotBytes: 4 * 1024 * 1024 } } } }
+    expect(boundedRequestSchema.safeParse(bounded).success).toBe(true)
+    expect(boundedRequestSchema.safeParse({ ...bounded, hostId: null }).success).toBe(false)
+    expect(boundedRequestSchema.safeParse({ ...bounded, request: { ...bounded.request, method: 'session/submit' } }).success).toBe(false)
+    const part = { transferId: 'part-1', hostId: 'host-a', connectionId: 'epoch-a', session: 's', kind: 'item', item: 'i', generation: 0, token: 'opaque', offset: 0, maxBytes: 256 * 1024 }
+    expect(partRequestSchema.safeParse(part).success).toBe(true)
+    for (const input of [{ ...part, maxBytes: 256 * 1024 + 1 }, { ...part, offset: -1 }, { ...part, kind: 'event' }, { ...part, path: '/etc/passwd' }, { ...part, item: undefined }]) expect(partRequestSchema.safeParse(input).success).toBe(false)
+    const exportRef = { transferId: 'export-1', hostId: 'host-a', connectionId: 'epoch-a', session: 's', kind: 'item', item: 'i', generation: 0, token: 'opaque', totalBytes: 5, checksum: 'a430d84680aabd0b', suggestedName: 'recorded.json' }
+    expect(exportReferenceSchema.safeParse(exportRef).success).toBe(true)
+    for (const input of [{ ...exportRef, destination: '/private/path' }, { ...exportRef, checksum: 'wrong' }, { ...exportRef, kind: 'field' }, { ...exportRef, totalBytes: -1 }]) expect(exportReferenceSchema.safeParse(input).success).toBe(false)
+    expect(transferCancelSchema.safeParse({ transferId: 'export-1', connectionId: 'epoch-a', session: 's' }).success).toBe(true)
+    expect(transferCancelSchema.safeParse({ transferId: 'export-1', connectionId: 'epoch-a', session: 's', hostId: 'forged' }).success).toBe(false)
   })
   it('uses canonical deep request validation including nested answers', () => {
     const answer = { session: 's', intent: 'i', interaction: 'q', activation: 'pointer', answer: { kind: 'form', answers: [{ kind: 'choice', ids: ['one'] }] } }

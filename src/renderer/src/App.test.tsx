@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BingoDesktopApi, DesktopEvent, DesktopRequest } from '../../shared/desktop'
+import type { BingoDesktopApi, BoundedDelivery, DesktopEvent, DesktopRequest, Result } from '../../shared/desktop'
+import { hostA, hostB, multiHostBootstrap, restartedHostA } from '../../shared/desktop.fixtures'
 import type { Event, RpcMethods, SessionState } from '../../shared/rpc'
 import App from './App'
 import { rustInitial } from './state/fixtures'
@@ -10,14 +11,21 @@ import { InteractionPanel } from './components/InteractionPanel'
 const time = '2026-09-05T10:00:00Z'
 function desktop({ welcome = false, reject = false } = {}) {
   let listener: (event: DesktopEvent) => void = () => {}
+  let bounded: ((delivery: BoundedDelivery) => Promise<void>) | undefined
+  const server = { protocol: 1, name: 'fixture', version: 'test', capabilities: { methods: ['session/listHeads', 'session/open', 'session/history', 'session/children', 'session/itemPart', 'session/fieldPart', 'session/eventPart'], notifications: ['eventRef', 'gateway/sessionHead'] } }
   let seq = 0
+  let connectionId = 'connection'
   let preferences = { theme: 'light' as 'light' | 'dark' | 'system', workspace: welcome ? null : '/work', binaryPath: '/bin/bingo', recentWorkspaces: [] as string[] }
   const summary = { ...rustInitial.summary, id: 'session-one', title: 'Review the workspace', cwd: '/work', provider: 'custom', model: 'same-model', createdAt: time, updatedAt: time }
   const state: SessionState = { ...rustInitial, seq: 0, summary, items: [], config: { kernel: { thinking: 'xHigh' }, plugins: { 'bingo.permissions': { mode: 'plan' } } } }
-  const emit = (event: Event) => listener({ type: 'rpc', connectionId: 'connection', method: 'event', params: { session: summary.id, ts: time, seq: ++seq, event } })
+  const emit = (event: Event) => listener({ type: 'rpc', connectionId, method: 'event', params: { session: summary.id, ts: time, seq: ++seq, event } })
   const api: BingoDesktopApi = {
-    bootstrap: vi.fn(async () => ({ ok: true as const, value: { version: '0.1.0', platform: 'linux', scratchWorkspace: '/scratch', preferences, binary: { path: '/bin/bingo', source: 'test' }, connection: { status: 'disconnected' as const, connectionId: null, workspace: null, binary: null } } })),
-    connect: vi.fn(async ({ workspace = '/scratch' }) => ({ ok: true as const, value: { status: 'ready' as const, connectionId: 'connection', workspace, binary: '/bin/bingo' } })),
+    bootstrap: vi.fn(async () => ({ ok: true as const, value: { version: '0.1.0', platform: 'linux', scratchWorkspace: '/scratch', preferences, binary: { path: '/bin/bingo', source: 'test' }, connections: [], selection: null, agentPages: [] } })),
+    connect: vi.fn(async ({ workspace = '/scratch' }) => ({ ok: true as const, value: { hostId: 'host', busy: false, status: 'ready' as const, connectionId: 'connection', workspace, binary: '/bin/bingo', server } })),
+    reconnect: vi.fn(async () => { connectionId = 'connection-next'; return { ok: true as const, value: { hostId: 'host', busy: false, status: 'ready' as const, connectionId, workspace: '/work', binary: '/bin/bingo', server } } }),
+    selectConversation: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    closeHost: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    openAgentPage: vi.fn(async () => ({ ok: true as const, value: undefined })),
     request: vi.fn(async (input: DesktopRequest) => {
       if (input.method === 'session/list') return { ok: true as const, value: { sessions: [summary] } }
       if (input.method === 'session/open') return { ok: true as const, value: { session: summary.id, snapshot: { ...state, seq } } }
@@ -36,6 +44,21 @@ function desktop({ welcome = false, reject = false } = {}) {
       }
       return { ok: true as const, value: {} }
     }) as BingoDesktopApi['request'],
+    requestBounded: vi.fn(async ({ transferId, request: input }) => {
+      if (!bounded) return { ok: false as const, error: { code: 'NO_CONSUMER', message: 'No bounded consumer.' } }
+      const raw = input.method === 'session/listHeads' ? await (api.request as (input: DesktopRequest) => Promise<Result<unknown>>)({ connectionId: input.connectionId, method: 'session/list', params: { filter: { cwd: (input.params as RpcMethods['session/listHeads']['params']).filter?.cwd, limit: 500 } } }) : input.method === 'session/children' ? { ok: true as const, value: { children: [], next: null } } : await (api.request as (input: DesktopRequest) => Promise<Result<unknown>>)(input)
+      if (!raw.ok) return raw
+      const value = input.method === 'session/listHeads' ? { heads: (raw.value as RpcMethods['session/list']['result']).sessions.filter(summary => summary.cwd === (input.params as RpcMethods['session/listHeads']['params']).filter?.cwd).map(({ id, cwd, parent, driver, createdAt, updatedAt, busy, title }) => ({ id, cwd, parent, driver: driver ?? 'model', createdAt, updatedAt, busy: busy ?? false, title })).sort((a, b) => a.id.localeCompare(b.id)), next: null } : raw.value
+      const session = input.method === 'session/open' ? (value as RpcMethods['session/open']['result']).session : input.method === 'session/history' ? (input.params as RpcMethods['session/history']['params']).session : input.method === 'session/children' ? (input.params as RpcMethods['session/children']['params']).parent : null
+      const hostId = input.connectionId === 'epoch-a-other' ? 'host-a-other-binary' : input.connectionId.startsWith('epoch-a') ? hostA.hostId : input.connectionId.startsWith('epoch-b') ? hostB.hostId : 'host'
+      await bounded({ kind: 'response', transferId, hostId, connectionId: input.connectionId, session, method: input.method, result: value } as BoundedDelivery)
+      return { ok: true as const, value: { kind: 'response' as const, transferId, hostId, connectionId: input.connectionId, session, method: input.method, acceptedBytes: 512 } }
+    }) as BingoDesktopApi['requestBounded'],
+    cancelBounded: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    readPart: vi.fn(async () => ({ ok: false as const, error: { code: 'UNSUPPORTED', message: 'Part fixture not configured.' } })),
+    cancelPart: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    exportReference: vi.fn(async () => ({ ok: true as const, value: false })), cancelExport: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    onBounded: vi.fn((next) => { bounded = next; return () => { bounded = undefined } }),
     onEvent: vi.fn((next) => { listener = next; return () => { listener = () => {} } }),
     chooseWorkspace: vi.fn(async () => ({ ok: true as const, value: '/work' })),
     chooseBinary: vi.fn(async () => ({ ok: true as const, value: '/bin/bingo' })),
@@ -47,7 +70,7 @@ function desktop({ welcome = false, reject = false } = {}) {
     configureProvider: vi.fn(async () => ({ ok: true as const, value: undefined }))
   }
   window.bingoDesktop = api
-  return { api, emit, state, emitDesktop: (event: DesktopEvent) => listener(event) }
+  return { api, emit, state, server, emitDesktop: (event: DesktopEvent) => listener(event) }
 }
 
 beforeEach(() => {
@@ -107,7 +130,101 @@ describe('desktop user journeys', () => {
     expect(screen.queryByRole('heading', { name: 'What would you like to work on?' })).toBeNull()
     expect(document.querySelector('.empty-conversation')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'New thread' }))
-    expect(screen.getByRole('heading', { name: 'What would you like to work on?' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'What would you like to work on?' })).toBeTruthy()
+  })
+  it('restarts a failed draft host through the onboarding Reconnect button without resending an intent', async () => {
+    const { api, emitDesktop } = desktop()
+    render(<App />); await ready()
+    expect(vi.mocked(api.request).mock.calls.some(([call]) => call.method === 'session/open')).toBe(false)
+    const failed = { hostId: 'host', busy: false, status: 'failed' as const, connectionId: 'connection', workspace: '/work', binary: '/bin/bingo', error: { code: 'EXITED', message: 'Runtime stopped.' } }
+    await act(async () => emitDesktop({ type: 'connection', connection: failed }))
+    const onboarding = document.querySelector('.onboarding') as HTMLElement
+    expect(onboarding).toBeTruthy()
+    vi.mocked(api.connect).mockResolvedValueOnce({ ok: true, value: failed }) // Ensure cannot restart an existing failed epoch.
+    fireEvent.click(within(onboarding).getByRole('button', { name: 'Reconnect' }))
+    await waitFor(() => expect(api.reconnect).toHaveBeenCalledWith({ hostId: 'host', connectionId: 'connection' }))
+    expect(api.connect).toHaveBeenCalledTimes(1)
+    const input = await screen.findByRole('textbox', { name: 'Message bingo' })
+    fireEvent.change(input, { target: { value: 'A new unsent message' } })
+    expect(screen.getByRole('button', { name: 'Send message' }).hasAttribute('disabled')).toBe(false)
+    expect(vi.mocked(api.request).mock.calls.some(([call]) => call.method === 'session/submit')).toBe(false)
+  })
+  it('ensures a closed draft host without an epoch from the onboarding Reconnect button', async () => {
+    const { api, emitDesktop, server } = desktop()
+    render(<App />); await ready()
+    await act(async () => emitDesktop({ type: 'connection', connection: { hostId: 'host', busy: false, status: 'disconnected', connectionId: null, workspace: '/work', binary: '/bin/bingo' } }))
+    const onboarding = document.querySelector('.onboarding') as HTMLElement
+    expect(onboarding).toBeTruthy()
+    vi.mocked(api.connect).mockResolvedValueOnce({ ok: true, value: { hostId: 'host', busy: false, status: 'ready', connectionId: 'connection-next', workspace: '/work', binary: '/bin/bingo', server } })
+    fireEvent.click(within(onboarding).getByRole('button', { name: 'Reconnect' }))
+    await waitFor(() => expect(api.connect).toHaveBeenCalledTimes(2))
+    expect(api.reconnect).not.toHaveBeenCalled()
+    expect(await screen.findByRole('textbox', { name: 'Message bingo' })).toBeTruthy()
+    expect(vi.mocked(api.request).mock.calls.some(([call]) => call.method === 'session/submit')).toBe(false)
+  })
+  it.each(['failed', 'disconnected'] as const)('routes onboarding Reconnect to previewed A, not saved B, when A is %s', async status => {
+    const { api, emitDesktop, server } = desktop()
+    const a = status === 'failed' ? { ...hostA, status, error: { code: 'EXITED', message: 'A stopped' }, server } : { ...hostA, server }
+    vi.mocked(api.bootstrap).mockResolvedValueOnce({ ok: true, value: { ...multiHostBootstrap, connections: [a, { ...hostB, server }], selection: { hostId: status === 'failed' ? hostB.hostId : hostA.hostId, connectionId: status === 'failed' ? hostB.connectionId : hostA.connectionId, sessionId: null } } })
+    vi.mocked(api.reconnect).mockResolvedValueOnce({ ok: true, value: { ...restartedHostA, server } })
+    vi.mocked(api.connect).mockResolvedValueOnce({ ok: true, value: { ...restartedHostA, server } })
+    render(<App />)
+    await screen.findByText('Connected locally')
+    if (status === 'failed') fireEvent.click(screen.getByRole('button', { name: 'Open project project-a' }))
+    else await act(async () => emitDesktop({ type: 'connection', connection: { ...hostA, status: 'disconnected', connectionId: null } }))
+    await waitFor(() => expect(document.querySelector('.onboarding')).toBeTruthy())
+    fireEvent.click(within(document.querySelector('.onboarding') as HTMLElement).getByRole('button', { name: 'Reconnect' }))
+    if (status === 'failed') {
+      await waitFor(() => expect(api.reconnect).toHaveBeenCalledWith({ hostId: hostA.hostId, connectionId: hostA.connectionId }))
+      expect(api.connect).not.toHaveBeenCalled()
+    } else {
+      await waitFor(() => expect(api.connect).toHaveBeenCalledWith({ workspace: hostA.workspace, binary: hostA.binary }))
+      expect(api.reconnect).not.toHaveBeenCalled()
+    }
+    expect(await screen.findByRole('textbox', { name: 'Message bingo' })).toBeTruthy()
+    expect(vi.mocked(api.request).mock.calls.some(([call]) => call.method === 'session/submit')).toBe(false)
+  })
+  it('uses previewed A workspace when choosing another executable while B is the saved project', async () => {
+    const { api, server } = desktop()
+    vi.mocked(api.bootstrap).mockResolvedValueOnce({ ok: true, value: { ...multiHostBootstrap, connections: [{ ...hostA, status: 'failed', error: { code: 'EXITED', message: 'A stopped' }, server }, { ...hostB, server }], selection: { hostId: hostB.hostId, connectionId: hostB.connectionId, sessionId: null } } })
+    vi.mocked(api.chooseBinary).mockResolvedValueOnce({ ok: true, value: '/approved/other-bingo' })
+    vi.mocked(api.connect).mockResolvedValueOnce({ ok: true, value: { ...hostA, hostId: 'host-a-other-binary', connectionId: 'epoch-a-other', binary: '/approved/other-bingo', server } })
+    render(<App />)
+    await screen.findByText('Connected locally')
+    fireEvent.click(screen.getByRole('button', { name: 'Open project project-a' }))
+    await waitFor(() => expect(document.querySelector('.onboarding')).toBeTruthy())
+    fireEvent.click(within(document.querySelector('.onboarding') as HTMLElement).getByRole('button', { name: 'Choose executable' }))
+    await waitFor(() => expect(api.connect).toHaveBeenCalledWith({ workspace: hostA.workspace, binary: '/approved/other-bingo' }))
+    expect(api.savePreferences).toHaveBeenCalledWith({ binaryPath: '/approved/other-bingo' })
+    expect(api.reconnect).not.toHaveBeenCalled()
+  })
+  it('retains unread activity while the OS window is hidden and marks read only after visible focus or explicit selection', async () => {
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+    const { emit } = desktop()
+    render(<App />); await ready()
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /Review the workspace/ }))
+    await screen.findByRole('heading', { name: 'Review the workspace' })
+    const saved = () => JSON.parse(localStorage.getItem('rei.read.v1') ?? '{}')[JSON.stringify(['host', 'session-one'])]
+    await waitFor(() => expect(saved()).toBe(0))
+    visibility.mockReturnValue('hidden')
+    await act(async () => emit({ type: 'notice', level: 'info', code: 'BACKGROUND', text: 'Finished while away' }))
+    expect(saved()).toBe(0)
+    expect(document.querySelector('.session-unread')).toBeTruthy()
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /Review the workspace/ }))
+    expect(saved()).toBe(0) // Synthetic click does not prove the OS window became visible.
+    visibility.mockReturnValue('visible'); focus.mockReturnValue(false)
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    expect(saved()).toBe(0)
+    focus.mockReturnValue(true)
+    await act(async () => window.dispatchEvent(new Event('focus')))
+    await waitFor(() => expect(saved()).toBe(1))
+    expect(document.querySelector('.session-unread')).toBeNull()
+    visibility.mockReturnValue('hidden')
+    await act(async () => emit({ type: 'notice', level: 'info', code: 'BACKGROUND_2', text: 'Another background update' }))
+    visibility.mockReturnValue('visible')
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /Review the workspace/ }))
+    await waitFor(() => expect(saved()).toBe(2))
   })
   it('pauses stale retry presentation on disconnect while retaining history, error and editable drafts', async () => {
     const { api, emit, emitDesktop, state } = desktop(); render(<App />); await ready()
@@ -123,7 +240,7 @@ describe('desktop user journeys', () => {
     expect(screen.getByRole('button', { name: 'Stop generation' })).toBeTruthy()
     const input = screen.getByRole('textbox', { name: 'Message bingo' })
     fireEvent.change(input, { target: { value: 'Unsent direction' } })
-    await act(async () => emitDesktop({ type: 'connection', connection: { status: 'failed', connectionId: 'connection', workspace: '/work', binary: '/bin/bingo', error: { code: 'TRANSPORT_CLOSED', message: 'Runtime disconnected.' } } }))
+    await act(async () => emitDesktop({ type: 'connection', connection: { hostId: 'host', busy: false, status: 'failed', connectionId: 'connection', workspace: '/work', binary: '/bin/bingo', error: { code: 'TRANSPORT_CLOSED', message: 'Runtime disconnected.' } } }))
     expect(document.querySelector('.session-status.disconnected')?.textContent).toBe('Not connected')
     expect(document.querySelector('.live-working')).toBeNull()
     expect(screen.queryByText('Retrying · attempt 1 of 3')).toBeNull()
@@ -137,7 +254,7 @@ describe('desktop user journeys', () => {
     // Only a fresh authoritative open after reconnect may present a live turn again.
     state.turn = { id: 'fresh-turn', startedAt: time, origin: 'submit' }
     fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }))
-    await waitFor(() => expect(api.connect).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(api.reconnect).toHaveBeenCalledOnce())
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button'))
     await waitFor(() => expect(document.querySelector('.session-status.working')).toBeTruthy())
     expect(document.querySelector('.live-working')?.textContent).toBe('Working…')
@@ -149,6 +266,16 @@ describe('desktop user journeys', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
     expect(await screen.findByRole('heading', { name: 'Answer' })).toBeTruthy()
     await waitFor(() => expect((screen.getByRole('textbox', { name: 'Message bingo' }) as HTMLTextAreaElement).value).toBe(''))
+  })
+  it('does not copy a created session rejection back into the next blank draft', async () => {
+    desktop({ reject: true }); render(<App />); await ready()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message bingo' }), { target: { value: 'A rejected draft' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+    await screen.findByText('The runtime rejected this message.')
+    fireEvent.click(screen.getByRole('button', { name: 'New thread' }))
+    await screen.findByRole('heading', { name: 'What would you like to work on?' })
+    expect(screen.queryByText('The runtime rejected this message.')).toBeNull()
+    expect((screen.getByRole('textbox', { name: 'Message bingo' }) as HTMLTextAreaElement).value).toBe('')
   })
   it('keeps a rejected first draft visible in its newly created session', async () => {
     desktop({ reject: true }); render(<App />); await ready()
@@ -173,7 +300,7 @@ describe('desktop user journeys', () => {
     await screen.findByRole('heading', { name: 'Review the workspace' })
     expect((screen.getByRole('textbox', { name: 'Message bingo' }) as HTMLTextAreaElement).value).toBe('')
     fireEvent.click(screen.getByRole('button', { name: 'New thread' }))
-    expect((screen.getByRole('textbox', { name: 'Message bingo' }) as HTMLTextAreaElement).value).toBe('Unsent new draft')
+    await waitFor(() => expect((screen.getByRole('textbox', { name: 'Message bingo' }) as HTMLTextAreaElement).value).toBe('Unsent new draft'))
   })
   it('shows provider-qualified model identity and authoritative live permission mode', async () => {
     desktop(); render(<App />); await ready()

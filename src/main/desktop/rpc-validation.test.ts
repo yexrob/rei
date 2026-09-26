@@ -1,5 +1,13 @@
 import { expect, it } from 'vitest'
-import { rpcResultSchemas } from './rpc-validation'
+import { rpcResultSchemas, rpcNotificationSchemas, rpcParamsSchemas } from './rpc-validation'
+import { interleavedHostEvents, hostARestartEvents, stopA, answerB } from '../../shared/desktop.fixtures'
+
+it('keeps every canonical RPC fixture valid against the generated core schema', () => {
+  for (const event of [...interleavedHostEvents, ...hostARestartEvents]) {
+    if (event.type === 'rpc') expect(rpcNotificationSchemas[event.method].safeParse(event.params).success).toBe(true)
+  }
+  for (const request of [stopA, answerB]) expect(rpcParamsSchemas[request.method].safeParse(request.params).success).toBe(true)
+})
 
 // Shape captured from an isolated real bingo-improve serve --stdio session after
 // a fake-provider turn and Write permission answer, then session/open by ID.

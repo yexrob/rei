@@ -1,5 +1,6 @@
 import { Fragment, memo, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { ArrowDown, MessageSquare, PanelRight, Pin } from './icons'
+import type { ExportProgress } from '../../../shared/desktop'
 import type { Item, SessionSummary } from '../../../shared/rpc'
 import { contentText, type SessionProjection } from '../state/session'
 import { roomMetadata } from '../state/collaboration'
@@ -12,7 +13,7 @@ import { JournalMediaProvider, JournalPictures as RoomPictures } from './media/J
 
 type RoomProps = {
   projection: SessionProjection; sessions: SessionSummary[]; onSelectAgent: (id: string) => void;
-  openLink: OpenLink; runAction: RunAction; loadHistory: () => void; loading: boolean; composer?: ReactNode
+  openLink: OpenLink; runAction: RunAction; loadHistory: () => void; loading: boolean; previewReference?: (kind: 'event' | 'history' | 'field', id: string) => void; saveReference?: (kind: 'event' | 'history' | 'field', id: string) => void; exportProgress?: ExportProgress | null; cancelExport?: () => void; composer?: ReactNode
 }
 
 function postAuthor(item: Item, t: Translator): string {
@@ -68,7 +69,7 @@ function RoomDetails({ projection, sessions, onSelectAgent, id }: Pick<RoomProps
   </aside>
 }
 
-function RoomStream({ projection, openLink, runAction, loadHistory, loading, sessions, onSelectAgent }: Pick<RoomProps, 'projection' | 'openLink' | 'runAction' | 'loadHistory' | 'loading' | 'sessions' | 'onSelectAgent'>): React.JSX.Element {
+function RoomStream({ projection, openLink, runAction, loadHistory, loading, sessions, onSelectAgent, previewReference, saveReference, exportProgress, cancelExport }: Pick<RoomProps, 'projection' | 'openLink' | 'runAction' | 'loadHistory' | 'loading' | 'sessions' | 'onSelectAgent' | 'previewReference' | 'saveReference' | 'exportProgress' | 'cancelExport'>): React.JSX.Element {
   const { t, locale } = useI18n()
   const scroll = useRef<HTMLDivElement>(null)
   const following = useRef(true)
@@ -87,13 +88,21 @@ function RoomStream({ projection, openLink, runAction, loadHistory, loading, ses
     following.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100
     setShowLatest(!following.current)
   }}>
+    {Boolean((!items.length && !projection.history.complete) || projection.unloaded?.length || projection.unloadedHistory?.length || projection.omittedFields?.length || projection.historyPending) && <section className="unloaded-content" role="status"><strong>{t('Some content is not loaded.')}</strong>
+      {!items.length && !projection.history.complete && <p>{t('Earlier history is not loaded.')}</p>}
+      {projection.unloaded?.map(ref => <p key={ref.messageId}>{t('Recorded event {name} is not loaded ({bytes} bytes).', { name: ref.item ?? ref.eventType, bytes: ref.totalBytes })} {ref.availability.kind === 'available' && previewReference && <button onClick={() => previewReference('event', ref.messageId)}>{t('Preview raw event {name}', { name: ref.item ?? ref.eventType })}</button>}{ref.availability.kind === 'available' && saveReference && <button disabled={exportProgress?.status === 'running'} onClick={() => saveReference('event', ref.messageId)}>{t('Save full raw JSON for {name}…', { name: ref.item ?? ref.eventType })}</button>}{ref.availability.kind === 'unavailable' && ref.availability.reason}</p>)}
+      {projection.unloadedHistory?.map(ref => <p className="unloaded-history-item" data-item-id={ref.id} key={`${ref.generation}:${ref.id}`}>{t('Historical item {name} is not loaded ({bytes} bytes).', { name: ref.id, bytes: ref.totalBytes })} {ref.availability.kind === 'available' && previewReference && <button onClick={() => previewReference('history', ref.id)}>{t('Preview raw item {name}', { name: ref.id })}</button>}{ref.availability.kind === 'available' && saveReference && <button disabled={exportProgress?.status === 'running'} onClick={() => saveReference('history', ref.id)}>{t('Save full raw JSON for {name}…', { name: ref.id })}</button>}{ref.availability.kind === 'unavailable' && ref.availability.reason}</p>)}
+      {projection.omittedFields?.map(ref => { const name = ref.path.join('.'); return <p key={name}>{t('Snapshot field {name} is not loaded ({bytes} bytes).', { name, bytes: ref.totalBytes })} {ref.availability.kind === 'available' && previewReference && <button onClick={() => previewReference('field', name)}>{t('Preview raw field {name}', { name })}</button>}{ref.availability.kind === 'available' && saveReference && <button disabled={exportProgress?.status === 'running'} onClick={() => saveReference('field', name)}>{t('Save full raw JSON for {name}…', { name })}</button>}{ref.availability.kind === 'unavailable' && ref.availability.reason}</p> })}
+      {projection.rawPreview && <div className="unloaded-preview"><p>{t('{loaded} of {total} bytes previewed; incomplete and unverified.', { loaded: projection.rawPreview.nextOffset ?? projection.rawPreview.totalBytes, total: projection.rawPreview.totalBytes })}</p><pre>{projection.rawPreview.text}</pre></div>}
+      {exportProgress && <p className="reference-export-progress" aria-live="polite">{t(exportProgress.status === 'completed' ? 'Full raw JSON was saved.' : exportProgress.status === 'cancelled' ? 'Save was cancelled.' : exportProgress.status === 'failed' ? 'Saving raw JSON failed.' : 'Saving raw JSON… {done}/{total} bytes', { done: exportProgress.doneBytes, total: exportProgress.totalBytes })}{exportProgress.status === 'running' && cancelExport && <button onClick={cancelExport}>{t('Cancel save')}</button>}</p>}
+    </section>}
     {!projection.history.complete && <button className="history-button" disabled={loading} onClick={() => { following.current = false; previousHeight.current = scroll.current?.scrollHeight ?? null; loadHistory() }}>{t(loading ? 'Loading history…' : 'Load earlier messages')}</button>}
     {items.map((item, index) => {
       const day = validDate(item.startedAt)?.toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' })
       const previous = index ? validDate(items[index - 1].startedAt)?.toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' }) : undefined
       return <Fragment key={item.id}>{day && day !== previous && <div className="room-date"><span>{day}</span></div>}<RoomPost item={item} openLink={openLink} runAction={runAction} sessionId={projection.snapshot.summary.id} sessions={sessions} onSelectSession={onSelectAgent} /></Fragment>
     })}
-    {!items.length && <p className="room-empty">{t('No messages yet')}</p>}
+    {!items.length && projection.history.complete && !projection.unloaded?.length && !projection.unloadedHistory?.length && <p className="room-empty">{t('No messages yet')}</p>}
   </div>{showLatest && <button className="latest-button" onClick={() => { following.current = true; if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; setShowLatest(false) }}><ArrowDown size={14} />{t('Jump to latest')}</button>}</div>
 }
 

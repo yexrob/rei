@@ -118,6 +118,15 @@ kbd { font-size: 11px; color: var(--secondary); font-weight: 400; }
 .project-heading { width: 100%; justify-content: flex-start; padding: 6px 10px; min-height: 30px; border: 0; background: transparent; color: var(--secondary); }
 .project-heading > span { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-heading > svg:last-child { margin-inline-start: auto; }
+.project-heading-row { display: flex; align-items: center; min-width: 0; }
+.project-heading-row .project-heading { min-width: 0; flex: 1; }
+.session-row-state { display: inline-flex; align-items: center; gap: 5px; margin-inline-start: auto; font-size: 11px; flex-shrink: 0; }
+.session-row-state:empty { display: none; }
+.session-unread { font-weight: 600; color: var(--text); }
+.agent-page-notices { display: grid; gap: 5px; margin: 12px 4px; }
+.agent-page-notices button { display: grid; justify-content: stretch; text-align: start; gap: 3px; font-size: 12px; min-width: 0; }
+.agent-page-notices span, .agent-page-notices small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-page-notices small { color: var(--secondary); font-size: 11px; }
 .sidebar-settings-row { display: flex; align-items: center; padding-inline-end: 10px; }
 .sidebar-settings-row button { justify-content: flex-start; border: 0; background: transparent; padding-inline: 10px; }
 .sidebar-actions button.selected { background: var(--selected); }
@@ -138,6 +147,8 @@ kbd { font-size: 11px; color: var(--secondary); font-weight: 400; }
 .session-list { min-height: 0; }
 .session-row { width: 100%; min-height: 34px; justify-content: flex-start; text-align: start; gap: 6px; padding: 7px 10px 7px 32px; margin-block-end: 2px; border: 0; background: transparent; color: var(--secondary); font-size: 12px; font-weight: 400; }
 .session-row-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.session-row:has(.session-row-state:not(:empty)) { flex-wrap: wrap; row-gap: 2px; }
+.session-row:has(.session-row-state:not(:empty)) .session-row-title { flex: 1 1 44px; min-width: 44px; }
 .session-row:has(.running) { padding-inline-start: 21px; }
 .session-row.selected { background: var(--selected); color: var(--text); font-weight: 550; }
 .session-row time { margin-inline-start: auto; flex-shrink: 0; font-size: 11px; color: var(--secondary); }
@@ -199,6 +210,12 @@ kbd { font-size: 11px; color: var(--secondary); font-weight: 400; }
 .timeline-wrap { position: relative; flex: 1; min-height: 0; }
 .timeline { height: 100%; overflow-y: auto; overflow-x: hidden; padding: 24px 36px; scroll-padding-block: 24px; }
 .transcript { max-width: 720px; margin-inline: auto; }
+.unloaded-content { margin-block-end: 20px; padding: 12px 0; border-block: 1px solid var(--line); color: var(--secondary); font-size: 12px; overflow-wrap: anywhere; }
+.unloaded-content strong { color: var(--text); font-weight: 600; }
+.unloaded-content p { margin: 6px 0 0; }
+.unloaded-content button { min-height: 26px; padding: 3px 6px; border: 0; background: transparent; font-size: 11px; text-decoration: underline; }
+.unloaded-content small { margin-inline-start: 8px; }
+.unloaded-preview pre { max-height: 180px; overflow: auto; overflow-wrap: anywhere; white-space: pre-wrap; }
 .message { margin-block: 16px 32px; line-height: 1.75; overflow-wrap: anywhere; }
 .message-label { display: flex; gap: 9px; align-items: center; min-height: 24px; margin-block-end: 14px; font-weight: 600; font-size: 12px; }
 .user-message { width: fit-content; max-width: 84%; margin: 8px 0 28px auto; padding: 14px 18px; background: var(--sidebar); border-radius: 16px; line-height: 1.65; }

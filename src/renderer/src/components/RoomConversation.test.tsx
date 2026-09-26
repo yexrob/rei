@@ -61,6 +61,17 @@ describe('room journal presentation', () => {
     expect(actions.loadHistory).toHaveBeenCalled()
   })
 
+  it('does not call a bounded empty room complete while an older oversized item remains unread', () => {
+    const state = projection()
+    state.history = { before: undefined, complete: false }
+    state.unloadedHistory = [{ id: 'room-huge', generation: 0, totalBytes: 17_000_000, checksum: 'a6a4eddc16724d5c', availability: { kind: 'unavailable', reason: 'pinBudgetExceeded' } }]
+    const { container } = render(<RoomConversation projection={state} sessions={[root, room]} {...actions} />)
+    expect(screen.queryByText('No messages yet')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Load earlier messages' })).toBeTruthy()
+    expect(container.querySelector('.unloaded-history-item')?.textContent).toContain('room-huge')
+    expect(container.querySelector('.unloaded-content')?.textContent).toContain('pinBudgetExceeded')
+  })
+
   it('renders supported local images and no remote image URLs', () => {
     const item = post('picture', { surface: 'desktop' }, 'Image attached')
     if (item.body.kind === 'user') item.body.parts.push({ type: 'image', mediaType: 'image/png', data: 'aGVsbG8=' }, { type: 'image', mediaType: 'image/svg+xml', data: 'unsafe' })

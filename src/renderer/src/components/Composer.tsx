@@ -27,9 +27,9 @@ const permissionOptions: PickerOption[] = [
 
 export type Draft = { text: string; images: Image[] }
 export const emptyDraft: Draft = { text: '', images: [] }
-export function Composer({ draft, setDraft, send, stop, attach, ready, busy, sending, model, thinking, permission, models, command, commands, inputRef, queue = [], workspaceName, chooseProject, recipient }: {
+export function Composer({ draft, setDraft, send, stop, attach, ready, submitReady = ready, busy, sending, model, thinking, permission, models, command, commands, inputRef, queue = [], workspaceName, chooseProject, recipient }: {
   draft: Draft; setDraft: (draft: Draft) => void; send: () => void; stop: () => void; attach: () => void;
-  ready: boolean; busy: boolean; sending: boolean; model: string; thinking: string; permission: string;
+  ready: boolean; submitReady?: boolean; busy: boolean; sending: boolean; model: string; thinking: string; permission: string;
   models: CatalogEntry[]; command: (name: string, value: string) => void; commands: CatalogEntry[];
   inputRef: React.RefObject<HTMLTextAreaElement | null>; queue?: QueueEntry[];
   workspaceName?: string; chooseProject?: () => void; recipient?: { name: string; role: 'main' | 'agent' }
@@ -56,17 +56,17 @@ export function Composer({ draft, setDraft, send, stop, attach, ready, busy, sen
           else chooseCommand(candidates[suggestion]?.id ?? candidates[0].id)
           return
         }
-        if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (ready && !sending && (draft.text.trim() || draft.images.length)) send() }
+        if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (submitReady && !sending && (draft.text.trim() || draft.images.length)) send() }
       }} />
       <div className="composer-toolbar"><div className="composer-tools">
-        <IconButton label="Attach images" disabled={!ready || sending || draft.images.length >= DESKTOP_IMAGE_LIMITS.count} onClick={attach}><Plus size={19} /></IconButton>
-        <ModelPicker value={model} models={models} disabled={!ready || sending} onValueChange={(value) => command('model', value)} />
-        <Picker label={t('Thinking effort')} value={thinking.toLowerCase()} options={thinkingOptions.filter((option) => option.value !== '__default' || thinking === '__default').map(localizeOption)} disabled={!ready || sending} onValueChange={(value) => command('think', value)} compact side="top" icon={<Brain size={14} />} />
-      </div><div className="send-controls"><span className="composer-send-hint" aria-hidden="true">{t(sending ? 'Sending…' : busy ? 'Esc to stop' : 'Enter to send')}</span>{busy && <IconButton label="Stop generation" className="stop-button" disabled={!ready} onClick={stop}><Square size={13} fill="currentColor" /></IconButton>}{(!busy || draft.text.trim() || draft.images.length > 0) && <IconButton label={busy ? 'Send follow-up' : 'Send message'} className="send-button" disabled={!ready || sending || (!draft.text.trim() && !draft.images.length)} onClick={send}><span className="send-symbol" key={sending ? 'sending' : 'send'}>{sending ? <LoaderCircle size={18} className="spin" /> : <ArrowUp size={19} />}</span></IconButton>}</div></div>
+        <IconButton label="Attach images" disabled={!submitReady || sending || draft.images.length >= DESKTOP_IMAGE_LIMITS.count} onClick={attach}><Plus size={19} /></IconButton>
+        <ModelPicker value={model} models={models} disabled={!submitReady || sending} onValueChange={(value) => command('model', value)} />
+        <Picker label={t('Thinking effort')} value={thinking.toLowerCase()} options={thinkingOptions.filter((option) => option.value !== '__default' || thinking === '__default').map(localizeOption)} disabled={!submitReady || sending} onValueChange={(value) => command('think', value)} compact side="top" icon={<Brain size={14} />} />
+      </div><div className="send-controls"><span className="composer-send-hint" aria-hidden="true">{t(sending ? 'Sending…' : busy ? 'Esc to stop' : 'Enter to send')}</span>{busy && <IconButton label="Stop generation" className="stop-button" disabled={!ready} onClick={stop}><Square size={13} fill="currentColor" /></IconButton>}{(!busy || draft.text.trim() || draft.images.length > 0) && <IconButton label={busy ? 'Send follow-up' : 'Send message'} className="send-button" disabled={!submitReady || sending || (!draft.text.trim() && !draft.images.length)} onClick={send}><span className="send-symbol" key={sending ? 'sending' : 'send'}>{sending ? <LoaderCircle size={18} className="spin" /> : <ArrowUp size={19} />}</span></IconButton>}</div></div>
     </div>
     <div className="composer-footer">
       <div className="composer-context"><span className="local-context"><Monitor size={13} />{t('Local')}</span>{workspaceName && <button className="composer-project" onClick={chooseProject} title={workspaceName}><Folder size={13} /><span>{workspaceName}</span><ChevronDown size={11} /></button>}</div>
-      <Picker label={t('Permission mode')} value={permission} options={permissionOptions.filter((option) => option.value !== '__default' || permission === '__default').map(localizeOption)} disabled={!ready || sending} onValueChange={(value) => command('permission', value)} compact side="top" icon={<Shield size={12} />} />
+      <Picker label={t('Permission mode')} value={permission} options={permissionOptions.filter((option) => option.value !== '__default' || permission === '__default').map(localizeOption)} disabled={!submitReady || sending} onValueChange={(value) => command('permission', value)} compact side="top" icon={<Shield size={12} />} />
       <span id="composer-hint" className="sr-only">{t(sending ? 'Sending…' : busy ? 'Esc to stop' : 'Enter to send · Shift Enter for a new line')}</span>
     </div>
   </div>

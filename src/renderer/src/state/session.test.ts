@@ -85,6 +85,27 @@ describe('SDK reducer parity', () => {
   })
 })
 
+describe('bounded session previews', () => {
+  it('keeps an empty initial window explicitly incomplete so older history remains reachable', () => {
+    const projection = createSessionProjection({ ...rustInitial, seq: 42, items: [] }, { before: null, hasMore: true, generation: 0 })
+    expect(projection.history).toEqual({ before: undefined, complete: false })
+    const loaded = projectHistory(projection, { items: [item('older')], next: null, generation: 0 })
+    expect(loaded.snapshot.items.map(entry => entry.id)).toEqual(['older'])
+    expect(loaded.history.complete).toBe(true)
+  })
+  it('keeps an oversized item visibly unloaded while continuing exclusive older pages', () => {
+    const recent = base({ seq: 42, items: [item('recent')] })
+    const oversized = { id: 'huge', generation: 0, totalBytes: 17_000_000, checksum: 'a6a4eddc16724d5c', availability: { kind: 'available' as const, token: 'pinned-huge' } }
+    const pending = projectHistory(recent, { items: [], next: 'huge', generation: 0, oversized }, 'recent')
+    expect(pending.unloadedHistory).toEqual([oversized])
+    expect(pending.snapshot.items.map(entry => entry.id)).toEqual(['recent'])
+    expect(pending.history).toEqual({ before: 'huge', complete: false })
+    const older = projectHistory(pending, { items: [item('oldest')], next: null, generation: 0 }, 'huge')
+    expect(older.snapshot.items.map(entry => entry.id)).toEqual(['oldest', 'recent'])
+    expect(older.unloadedHistory).toEqual([oversized])
+  })
+})
+
 describe('streaming transcript', () => {
   it('appends prose/reasoning, replaces tool tails, and trusts authoritative completion over all deltas', () => {
     const state = run([
