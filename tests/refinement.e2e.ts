@@ -77,20 +77,30 @@ async function exerciseTerminalTabs(page: Page): Promise<string> {
   const firstRows = firstView.locator('.xterm-accessibility-tree')
   await expect(firstRows).toContainText('REI_HIDDEN_TERMINAL_OK')
   // xterm 6 owns a virtual scrollbar: setting .xterm-viewport.scrollTop is a no-op.
-  // Wheel gestures are capped per event; Alt uses xterm's fast-scroll gesture.
-  await firstView.locator('.xterm-screen').hover()
-  await page.keyboard.down('Alt')
+  // Its track maps pointer positions directly, without platform wheel normalization.
+  const scrollbar = firstView.locator('.xterm-scrollable-element > .scrollbar.vertical')
+  await scrollbar.hover()
+  const track = await scrollbar.evaluate(element => ({ width: element.clientWidth, height: element.clientHeight }))
+  expect(track.width).toBeGreaterThan(0)
+  expect(track.height).toBeGreaterThan(2)
+  const inspectScroll = async (label: string) => console.info(label, await firstView.evaluate(element => {
+    const rows = element.querySelectorAll('.xterm-accessibility-tree [role="listitem"]')
+    const bounds = (selector: string) => element.querySelector(selector)?.getBoundingClientRect().toJSON()
+    return {
+      viewport: [innerWidth, innerHeight], firstRow: rows[0]?.getAttribute('aria-posinset'),
+      lastRow: rows[rows.length - 1]?.getAttribute('aria-posinset'), totalRows: rows[0]?.getAttribute('aria-setsize'),
+      track: bounds('.scrollbar.vertical'), slider: bounds('.scrollbar.vertical > .slider')
+    }
+  }).catch(error => ({ unavailable: String(error) })))
+  await inspectScroll('Terminal scrollback before track click:')
   try {
-    await expect.poll(async () => {
-      await page.mouse.wheel(0, -1_000_000)
-      return firstRows.getByRole('listitem').first().getAttribute('aria-posinset')
-    }, { intervals: [50] }).toBe('1')
+    await scrollbar.click({ position: { x: track.width / 2, y: 1 } })
+    await expect(firstRows.getByRole('listitem').first()).toHaveAttribute('aria-posinset', '1')
+    await inspectScroll('Terminal scrollback at top:')
     await expect(firstRows).toContainText('REI_FIRST_TERMINAL_OK')
-    await expect.poll(async () => {
-      await page.mouse.wheel(0, 1_000_000)
-      return firstRows.textContent()
-    }, { intervals: [50] }).toContain('REI_HIDDEN_TERMINAL_OK')
-  } finally { await page.keyboard.up('Alt') }
+    await scrollbar.click({ position: { x: track.width / 2, y: track.height - 1 } })
+    await expect(firstRows).toContainText('REI_HIDDEN_TERMINAL_OK')
+  } finally { await inspectScroll('Terminal scrollback after track clicks:') }
   await typeInTerminal(page, first, 'exit 7')
   await expect.poll(async () => (await terminals(page)).map(terminalId)).toEqual([second])
   await expect(page.locator(`#terminal-tab-${first}`)).toHaveCount(0)
