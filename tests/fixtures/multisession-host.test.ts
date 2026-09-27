@@ -16,7 +16,7 @@ afterEach(async () => {
     child.once('exit', () => done()); child.kill('SIGTERM')
   })))
 })
-async function host(root?: string, project = 'P') {
+async function host(root?: string, project = 'P', responseTimeout = 3000) {
   const home = root ?? await mkdtemp(join(tmpdir(), 'rei-multi-fixture-'))
   const projectPath = join(home, project), control = join(home, 'control')
   await mkdir(projectPath, { recursive: true })
@@ -41,7 +41,7 @@ async function host(root?: string, project = 'P') {
   })
   const wait = (predicate: (message: any) => boolean) => new Promise<any>((yes, no) => {
     const inspect = () => { if (wireErrors.length) { clearTimeout(timer); changed.off('message', inspect); no(wireErrors[0]); return }; const value = messages.find(predicate); if (value) { clearTimeout(timer); changed.off('message', inspect); yes(value) } }
-    const timer = setTimeout(() => { changed.off('message', inspect); no(new Error(`Fixture message not received. stderr: ${stderr}`)) }, 3000)
+    const timer = setTimeout(() => { changed.off('message', inspect); no(new Error(`Fixture message not received within ${responseTimeout}ms. stderr: ${stderr}`)) }, responseTimeout)
     changed.on('message', inspect); inspect()
   })
   const wire = (method: string, params: unknown = {}) => { const requestId = ++id; child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: requestId, method, params }) + '\n'); return wait(message => message.id === requestId) }
@@ -123,7 +123,9 @@ describe('deterministic multisession acceptance host', () => {
   }, 30000)
 
   it('bounds a 17MiB title before direct open while the legacy list explicitly refuses its line', async () => {
-    const runtime = await host()
+    // The JS fixture hashes 17MiB with BigInt; the Intel runner exceeds 3s.
+    // Keep the 30s case deadline and all byte/checksum/cursor assertions.
+    const runtime = await host(undefined, 'P', 10000)
     await runtime.command({ op: 'oversizeSummary', session: 'a', field: 'title' })
     const legacy = await runtime.wire('session/list')
     expect(legacy.error.data.code).toBe('PROTOCOL_LIMIT')
@@ -163,7 +165,7 @@ describe('deterministic multisession acceptance host', () => {
   })
 
   it('represents a 17MiB history item with an empty first window, exact part, and advancing exclusive cursor', async () => {
-    const runtime = await host()
+    const runtime = await host(undefined, 'P', 10000)
     await runtime.command({ op: 'oversizeHistory', session: 'a' })
     expect((await runtime.wire('session/open', { selector: { kind: 'byId', id: 'a' } })).error.data.code).toBe('PROTOCOL_LIMIT')
     const opened = await runtime.wire('session/open', { selector: { kind: 'byId', id: 'a' }, options: { maxSnapshotBytes: 4 * 1024 * 1024 } })
@@ -188,7 +190,7 @@ describe('deterministic multisession acceptance host', () => {
   }, 30000)
 
   it('defers a 17MiB live item but still delivers its next small lifecycle frame', async () => {
-    const runtime = await host()
+    const runtime = await host(undefined, 'P', 10000)
     const opened = await runtime.wire('session/open', { selector: { kind: 'byId', id: 'a' }, options: { children: true, maxSnapshotBytes: 4 * 1024 * 1024, treeBackfill: 'liveOnly' } })
     expect(opened.result.tree).toEqual({ backfill: 'liveOnly', descendantsComplete: false })
     await runtime.command({ op: 'oversizeEvent', session: 'a' })

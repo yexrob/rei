@@ -14,14 +14,15 @@ async function collaborationFixture() {
   await mkdir(workspace)
   await writeFile(join(home, '.bingo/settings.toml'), 'provider = "fake"\nmodel = "fake-1"\n[permissions]\ndefaultMode = "bypassPermissions"\n')
   const script = join(home, 'responses.json')
+  // Held fake turns outlive the 120s journey; only explicit test actions stop them.
   await writeFile(script, JSON.stringify({ responses: [
     { when: { contains: 'COLLABORATION_ROOT_START' }, steps: [
       { toolCall: { name: 'SpawnAgent', input: { name: 'Planner', standby: true, prompt: 'Wait for planning work.', thinking: 'off' } } },
       { toolCall: { name: 'SpawnAgent', input: { name: 'Reviewer', standby: true, model: 'fake-child', prompt: 'Wait for review work.', thinking: 'off' } } },
       { toolCall: { name: 'OpenRoom', input: { name: 'search-review', purpose: 'Review local session search.', members: ['parent', 'Planner', 'Reviewer'], listeners: [{ name: 'parent', patience_s: 3600 }, { name: 'Planner', patience_s: 3600 }, { name: 'Reviewer', patience_s: 3600 }] } } }
     ] },
-    { when: { contains: 'COLLABORATION_ROOT_START' }, steps: [{ text: 'TEAM_READY: I am still working while you collaborate.' }, { delay: { ms: 60000 } }] },
-    { when: { contains: 'REVIEWER_DIRECT_ONLY' }, steps: [{ text: 'REVIEWER_ACTIVITY_START: checking search edge cases.' }, { delay: { ms: 60000 } }] },
+    { when: { contains: 'COLLABORATION_ROOT_START' }, steps: [{ text: 'TEAM_READY: I am still working while you collaborate.' }, { delay: { ms: 180000 } }] },
+    { when: { contains: 'REVIEWER_DIRECT_ONLY' }, steps: [{ text: 'REVIEWER_ACTIVITY_START: checking search edge cases.' }, { delay: { ms: 180000 } }] },
     { when: { contains: 'ROOM_POST_ONLY' }, steps: [{ toolCall: { name: 'SendMessage', input: { to: '#search-review', text: 'Room reply from Reviewer: the workspace boundary needs a regression test.' } } }] },
     { when: { contains: 'ROOM_POST_ONLY' }, steps: [{ text: 'ROOM_REPLY_DONE' }] }
   ] }))
@@ -57,6 +58,9 @@ async function close(app: ElectronApplication) {
 }
 
 test('collaboration: stacked live journals, child routing, independent drafts, room posts and closed rooms', async ({}, info) => {
+  // Linux software rendering reached the second axe pass at ~48s, then hit
+  // the 60s overall limit. Keep every journey/assertion with a bounded budget.
+  test.setTimeout(120000)
   const { app, page } = await launch()
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
@@ -167,21 +171,23 @@ test('collaboration: stacked live journals, child routing, independent drafts, r
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
     await page.keyboard.press('Escape')
     await page.screenshot({ animations: 'disabled', path: info.outputPath('room-dark.png') })
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(740, 600))
-    await expect.poll(() => page.evaluate(() => window.matchMedia('(max-width: 759px)').matches)).toBe(true)
-    await expect(page.getByRole('button', { name: 'Close navigation', exact: true })).toBeVisible()
-    await page.getByRole('button', { name: 'Hide sidebar', exact: true }).click()
-    await expect(page.getByRole('button', { name: 'Close navigation', exact: true })).toHaveCount(0)
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
-    await expect(page.getByRole('button', { name: 'Back to Bingo' })).toBeVisible()
-    const narrowRoster = await openCollaborators(page)
-    const rosterBounds = await narrowRoster.boundingBox()
-    expect(rosterBounds).not.toBeNull()
-    const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
-    expect(rosterBounds!.x).toBeGreaterThanOrEqual(0)
-    expect(rosterBounds!.x + rosterBounds!.width).toBeLessThanOrEqual(viewport.width)
-    expect(rosterBounds!.y + rosterBounds!.height).toBeLessThanOrEqual(viewport.height)
-    await page.screenshot({ animations: 'disabled', path: info.outputPath('environment-narrow-dark.png') })
+    await test.step('narrow room navigation and collaborator bounds', async () => {
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(740, 600))
+      await expect.poll(() => page.evaluate(() => window.matchMedia('(max-width: 759px)').matches)).toBe(true)
+      await expect(page.getByRole('button', { name: 'Close navigation', exact: true })).toBeVisible()
+      await page.getByRole('button', { name: 'Hide sidebar', exact: true }).click()
+      await expect(page.getByRole('button', { name: 'Close navigation', exact: true })).toHaveCount(0)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+      await expect(page.getByRole('button', { name: 'Back to Bingo' })).toBeVisible()
+      const narrowRoster = await openCollaborators(page)
+      const rosterBounds = await narrowRoster.boundingBox()
+      expect(rosterBounds).not.toBeNull()
+      const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
+      expect(rosterBounds!.x).toBeGreaterThanOrEqual(0)
+      expect(rosterBounds!.x + rosterBounds!.width).toBeLessThanOrEqual(viewport.width)
+      expect(rosterBounds!.y + rosterBounds!.height).toBeLessThanOrEqual(viewport.height)
+      await page.screenshot({ animations: 'disabled', path: info.outputPath('environment-narrow-dark.png') })
+    })
     expect(errors).toEqual([])
     console.info('Collaboration visual evidence:', info.outputDir)
   } finally { await close(app) }

@@ -7,7 +7,7 @@ const mock = vi.hoisted(() => ({ launch: vi.fn() }))
 vi.mock('@playwright/test', () => ({ _electron: { launch: mock.launch }, expect }))
 const roots: string[] = []
 beforeEach(() => { vi.resetModules(); mock.launch.mockReset(); vi.stubEnv('REI_E2E_FOREGROUND', '0') })
-afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
+afterEach(() => { vi.unstubAllEnvs(); vi.doUnmock('node:path'); vi.doUnmock('@electron/asar'); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
 function fixture(source = '// built guard: REI_E2E_MODE __reiBackgroundTestAudit') {
   const home = mkdtempSync(join(tmpdir(), 'rei-launcher-unit-')); roots.push(home)
   const entry = join(home, 'main.cjs'), data = join(home, 'desktop')
@@ -62,6 +62,23 @@ it.each([true, false])('checks the packaged main archive before hidden launch (g
     await expect(launch).rejects.toThrow('no background guard')
     expect(mock.launch).not.toHaveBeenCalled()
   }
+})
+it('normalizes a manifest main path for the Windows asar traversal before checking its guard', async () => {
+  // Reproduce Windows separators even when this unit suite runs on macOS/Linux.
+  vi.doMock('node:path', async () => {
+    const path = await vi.importActual<typeof import('node:path')>('node:path')
+    return { ...path, normalize: path.win32.normalize }
+  })
+  const extractFile = vi.fn((_archive: string, file: string) => {
+    if (file === 'package.json') return Buffer.from('{"main":"out/main/index.js"}')
+    if (file === 'out\\main\\index.js') return Buffer.from('REI_E2E_MODE __reiBackgroundTestAudit')
+    throw new Error(`Archive entry not found: ${file}`)
+  })
+  vi.doMock('@electron/asar', () => ({ extractFile }))
+  const { electron } = await import('./electron')
+  const f = fixture(); fakeApplication()
+  await (await electron.launch({ executablePath: join(f.home, 'Rei.exe'), env: f.options.env })).close()
+  expect(extractFile).toHaveBeenLastCalledWith(expect.any(String), 'out\\main\\index.js')
 })
 it.each([{ exitCode: 1, signalCode: null }, { exitCode: null, signalCode: 'SIGTERM' }])('rejects guard exits or abnormal signals during teardown: %j', async result => {
   const { electron } = await import('./electron')

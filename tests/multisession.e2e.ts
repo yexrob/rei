@@ -258,6 +258,9 @@ test('late project initialization never hijacks a newer foreground selection', a
 test('background ShowPage cannot navigate the foreground browser and completed source identities are rejected', async () => {
   const f = await multisessionFixture()
   try {
+    // Reproduce the CI work-area width that collapses navigation when Browser opens.
+    await f.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1000, 700))
+    await expect.poll(() => f.page.evaluate(() => innerWidth)).toBe(1000)
     await observeDesktopEvents(f.page)
     await selectSession(f.page, 'P A'); await sendMessage(f.page, 'P page work')
     await selectProject(f.page, 'Q'); await selectSession(f.page, 'Q A'); await sendMessage(f.page, 'Q browser work')

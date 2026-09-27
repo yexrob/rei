@@ -1,6 +1,6 @@
 import { _electron, expect, type ElectronApplication, type Page } from '@playwright/test'
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
-import { dirname, isAbsolute, join, relative, sep } from 'node:path'
+import { dirname, isAbsolute, join, normalize, relative, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { extractFile } from '@electron/asar'
@@ -53,7 +53,8 @@ export const electron = {
         const resources = process.platform === 'darwin' ? join(dirname(options.executablePath), '..', 'Resources') : join(dirname(options.executablePath), 'resources')
         const archive = join(resources, 'app.asar')
         const manifest = JSON.parse(extractFile(archive, 'package.json').toString('utf8')) as { main: string }
-        bundle = extractFile(archive, manifest.main).toString('utf8')
+        // asar 3.x traverses with the host path separator, while package.json uses '/'.
+        bundle = extractFile(archive, normalize(manifest.main)).toString('utf8')
       } else {
         const entry = options.args?.find(arg => !arg.startsWith('-'))
         if (!entry || !isAbsolute(entry)) throw new Error('Background E2E requires the absolute built main entry point.')

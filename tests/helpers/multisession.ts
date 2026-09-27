@@ -42,6 +42,9 @@ export async function selectSession(page: Page, title: string) {
   await expect(page.locator('h1')).toHaveText(title)
 }
 export async function selectProject(page: Page, name: string) {
+  // Opening Browser can collapse navigation at the CI runner's narrower size.
+  const showSidebar = page.getByRole('button', { name: 'Show sidebar', exact: true })
+  if (await showSidebar.isVisible()) await showSidebar.click()
   const heading = page.locator('.project-heading').filter({ hasText: new RegExp(`^${name}$`) })
   const label = await heading.getAttribute('aria-label')
   if (label === `Open project ${name}` || label === `Expand project ${name}`) await heading.click()
