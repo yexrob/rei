@@ -18,6 +18,9 @@ export type ConversationSelection = HostEpoch & { sessionId: string | null }
 export type AgentPageTarget = { hostId: string; connectionId: string; sessionId: string; itemId: string }
 export type AgentPageState = AgentPageTarget & { title: string; status: 'available' | 'opened' | 'invalidated' }
 export type ConnectionState = {
+  // Main-pool publication order, shared by invoke snapshots and event delivery.
+  // Optional only for legacy desktop fixtures; a versioned host never downgrades.
+  revision?: number
   // Stable across app restarts for the same approved canonical workspace/binary.
   hostId: string
   status: 'disconnected' | 'connecting' | 'ready' | 'failed'

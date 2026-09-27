@@ -8,7 +8,7 @@ export const MAX_RUNTIME_HOSTS = 8
 export const DEFAULT_BOUNDED_BYTES = 4 * 1024 * 1024
 const MIN_BOUNDED_BYTES = 1024
 export function hostIdentity(binary: string, workspace: string): string { return createHash('sha256').update(JSON.stringify([workspace, binary])).digest('hex') }
-type Host = { id: string; binary: string; workspace: string; runtime: DesktopRuntime; starting: Promise<ConnectionState> | null; operations: number; closing: boolean }
+type Host = { id: string; binary: string; workspace: string; runtime: DesktopRuntime; starting: Promise<ConnectionState> | null; operations: number; closing: boolean; revision: number }
 type Owner = { hostId: string; connectionId: string }
 type OwnedReference = Owner & { session: string; kind: PartRequest['kind']; token: string; totalBytes: number; checksum: string; item?: string; generation?: number }
 
@@ -20,6 +20,8 @@ export class RuntimePool {
   private readonly references = new Map<string, OwnedReference>()
   private selected: ConversationSelection | null = null
   private invalidated = false
+  // Pool-wide so closing/recreating the same canonical host never resets its order.
+  private revision = 0
   private closing: Promise<void> | null = null
   constructor(private readonly emit: (event: DesktopEvent) => void, private readonly beforeConnect: () => void = () => {}) {}
   async waitForClose(): Promise<void> { await this.closing }
@@ -69,7 +71,7 @@ export class RuntimePool {
         const notifications = ['eventRef', 'gateway/sessionHead']
         if (methods.some(method => !server.capabilities.methods.includes(method)) || notifications.some(method => !server.capabilities.notifications.includes(method))) throw new DesktopFailure('RUNTIME_UPDATE_REQUIRED', 'This bingo runtime cannot load large sessions safely. Update the bundled bingo binary, then reconnect; saved history has not been changed.')
       })
-      host = { id, binary, workspace, runtime, starting: null, operations: 0, closing: false }
+      host = { id, binary, workspace, runtime, starting: null, operations: 0, closing: false, revision: ++this.revision }
       this.hosts.set(id, host)
     }
     return this.start(host)
@@ -171,7 +173,7 @@ export class RuntimePool {
   }
   private state(host: Host): ConnectionState {
     const connection = host.runtime.connection
-    return { ...connection, hostId: host.id, binary: host.binary, workspace: host.workspace, busy: host.closing || host.operations > 0 || host.runtime.hasPending || (host.runtime.live && connection.busy) }
+    return { ...connection, revision: host.revision, hostId: host.id, binary: host.binary, workspace: host.workspace, busy: host.closing || host.operations > 0 || host.runtime.hasPending || (host.runtime.live && connection.busy) }
   }
   private epoch(input: HostEpoch): Host {
     const host = this.hosts.get(input.hostId)
@@ -287,7 +289,10 @@ export class RuntimePool {
     if (!previous && this.references.size >= 32 * MAX_RUNTIME_HOSTS) throw new DesktopFailure('PROTOCOL_LIMIT', 'The runtime exceeded its bounded reference budget.')
     this.references.set(key, ref)
   }
-  private emitState(host: Host): void { if (!this.invalidated) this.emit({ type: 'connection', connection: this.state(host) }) }
+  private emitState(host: Host): void {
+    host.revision = ++this.revision
+    if (!this.invalidated) this.emit({ type: 'connection', connection: this.state(host) })
+  }
   private receive(id: string, event: DesktopEvent): void {
     const host = this.hosts.get(id)
     if (!host || this.invalidated) return

@@ -115,6 +115,9 @@ export function useWorkspace() {
   }, [reportFor])
   const adoptConnection = useCallback((incoming: ConnectionState) => {
     const previous = hostsRef.current[incoming.hostId]
+    // invoke replies and queued notifications can arrive in either order. Once
+    // versioned, even an unversioned notice must not retire the current epoch.
+    if (previous?.connection.revision !== undefined && (incoming.revision === undefined || incoming.revision <= previous.connection.revision)) return
     const expectedStop = expectedStops.current.has(incoming.hostId) && expectedStops.current.get(incoming.hostId) === previous?.connection.connectionId
     const connection = incoming.status === 'disconnected' && !incoming.error && !expectedStop && previous && (previous.connection.status !== 'disconnected' || previous.connection.error)
       ? { ...incoming, error: { code: 'DISCONNECTED', message: 'bingo is not connected. Reconnect to continue.' } }
@@ -525,7 +528,9 @@ export function useWorkspace() {
     return () => { unsubscribe(); unsubscribeBounded() }
   }, [adoptConnection, setSelection, initializeHost, reportFor, live, openFor, connect])
   useEffect(() => {
-    for (const host of Object.values(hosts)) {
+    // Passive effects may run after an IPC callback invalidated the render's
+    // ready snapshot. Only the current ref may authorize epoch work.
+    for (const host of Object.values(hostsRef.current)) {
       if (host.connection.status !== 'ready') continue
       const scope = host.connection, store = epochCache(scope)
       for (const [id, projection] of Object.entries(host.projections)) {
@@ -539,7 +544,9 @@ export function useWorkspace() {
   }, [hosts, epochCache, openFor, reportFor])
   useEffect(() => {
     if (!target?.sessionId || !live(target)) return
-    const host = hosts[target.hostId], store = epochCache(target)
+    const host = hostsRef.current[target.hostId]
+    if (host.connection.status !== 'ready') return
+    const store = epochCache(target)
     const ancestor = treeAttachmentTarget(host.sessions, target.sessionId)
     if (!ancestor || store.attachments.has(ancestor) || store.opening.has(ancestor) || store.ancestors.has(ancestor)) return
     store.ancestors.add(ancestor)
@@ -547,8 +554,8 @@ export function useWorkspace() {
   }, [target, hosts, live, epochCache, openFor, reportFor])
   useEffect(() => {
     if (!target?.sessionId || !live(target)) return
-    const host = hosts[target.hostId], projection = host?.projections[target.sessionId]
-    if (!projection || projection.provisional || host.projectionEpochs[target.sessionId] !== target.connectionId) return
+    const host = hostsRef.current[target.hostId], projection = host?.projections[target.sessionId]
+    if (host?.connection.status !== 'ready' || !projection || projection.provisional || host.projectionEpochs[target.sessionId] !== target.connectionId) return
     const root = treeAttachmentTarget(host.sessions, target.sessionId)
     const incomplete = projection.tree?.descendantsComplete === false || Boolean(host.sessions.find(summary => summary.id === target.sessionId)?.parent && root && host.projections[root]?.tree?.descendantsComplete === false)
     if (incomplete) void discoverChildrenFor(target, target.sessionId)

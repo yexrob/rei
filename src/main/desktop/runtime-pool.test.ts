@@ -36,6 +36,24 @@ async function setup() {
 }
 beforeEach(() => { calls.clients = []; calls.legacy = false })
 describe('multi-host runtime ownership', () => {
+  it('orders connection events and invoke snapshots with revisions that survive closing and reopening a host', async () => {
+    const events: DesktopEvent[] = [], pool = new RuntimePool(event => events.push(event))
+    const first = await pool.connect(hostA.binary!, hostA.workspace!)
+    const published = () => events.flatMap(event => event.type === 'connection' ? [event.connection] : []) as Array<typeof first & { revision: number }>
+    expect(published().map(state => state.status)).toEqual(['disconnected', 'connecting', 'ready'])
+    const versions = published().map(state => state.revision)
+    expect(versions.every((revision, index) => Number.isSafeInteger(revision) && revision > (versions[index - 1] ?? 0))).toBe(true)
+    expect(first).toEqual(published().at(-1))
+    expect(pool.connections[0]).toEqual(first)
+    const release = pool.holdDelivery(first)
+    expect((pool.connections[0] as typeof first & { revision: number }).revision).toBeGreaterThan(versions.at(-1)!)
+    release()
+    await pool.closeHost(first)
+    const closedRevision = published().at(-1)!.revision
+    const reopened = await pool.connect(hostA.binary!, hostA.workspace!)
+    expect((reopened as typeof first & { revision: number }).revision).toBeGreaterThan(closedRevision)
+    expect(reopened.connectionId).not.toBe(first.connectionId)
+  })
   it('fails closed with an actionable update error when old Core lacks bounded methods and notifications', async () => {
     calls.legacy = true
     const pool = new RuntimePool(() => {})

@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from '@testing-library/react'
+import { useLayoutEffect } from 'react'
+import { orderedStartupConnections } from '../../../shared/desktop.fixtures'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   BingoDesktopApi, BoundedDelivery, ConnectionState, DesktopEvent, DesktopMethod, DesktopPreferences,
@@ -129,6 +131,79 @@ function assistantText(state: ReturnType<typeof useWorkspace>['active']): string
 }
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
+
+describe('native connection publication ordering', () => {
+  it.each([0, 1, 2])('keeps an invoke-ready snapshot ahead of delayed startup event %s', async index => {
+    const { bridge, result } = await connected()
+    const connection = result.current.connection
+    const states = orderedStartupConnections.map(state => ({ ...state, hostId: connection.hostId, connectionId: state.connectionId === null ? null : connection.connectionId, workspace: connection.workspace, server: connection.server }))
+    await act(async () => { bridge.emit({ type: 'connection', connection: states[2] }) })
+    expect(result.current.ready).toBe(true)
+    const late: ConnectionState = index === 2 ? { ...connection, status: 'disconnected', connectionId: null } : states[index]
+    await act(async () => { bridge.emit({ type: 'connection', connection: late }) })
+    expect(result.current.connection).toMatchObject({ status: 'ready', connectionId: connection.connectionId, revision: 3 })
+    expect(result.current.ready).toBe(true)
+    expect(result.current.error).toBe('')
+    // A genuinely newer failure still disconnects; stale ready cannot revive it.
+    await act(async () => { bridge.emit({ type: 'connection', connection: states[3] }); bridge.emit({ type: 'connection', connection: states[2] }) })
+    expect(result.current.hosts[connection.hostId].connection).toMatchObject({ status: 'failed', revision: 4 })
+    expect(result.current.ready).toBe(false)
+    await act(async () => { bridge.emit({ type: 'connection', connection: { ...states[0], revision: 5, busy: false } }) })
+    expect(result.current.hosts[connection.hostId].connection).toMatchObject({ status: 'disconnected', revision: 5, connectionId: null })
+  })
+
+  it('does not crash a passive effect whose ready render was invalidated by an earlier layout effect', async () => {
+    const bridge = desktop()
+    let invalidate = false
+    const hook = renderHook(() => {
+      const workspace = useWorkspace()
+      useLayoutEffect(() => {
+        if (!invalidate || workspace.connection.status !== 'ready') return
+        invalidate = false
+        bridge.emit({ type: 'connection', connection: { ...workspace.connection, status: 'failed', error: { code: 'PROCESS_EXITED', message: 'Stopped before passive effects' } } })
+      })
+      return workspace
+    })
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await hook.result.current.connect('/work') })
+    expect(hook.result.current.ready).toBe(true)
+    invalidate = true
+    await act(async () => { bridge.emit({ type: 'connection', connection: { ...hook.result.current.connection, busy: true } }) })
+    expect(hook.result.current.ready).toBe(false)
+    expect(hook.result.current.hosts['host:/work'].connection.status).toBe('failed')
+  })
+})
+
+describe('cross-host passive invalidation', () => {
+  it('keeps Q projecting frames when P fails between a ready render and passive effects', async () => {
+    const bridge = desktop()
+    let invalidateP = false
+    const hook = renderHook(() => {
+      const workspace = useWorkspace()
+      useLayoutEffect(() => {
+        const p = workspace.hosts['host:/work']?.connection
+        if (!invalidateP || p?.status !== 'ready') return
+        invalidateP = false
+        bridge.emit({ type: 'connection', connection: { ...p, status: 'failed', error: { code: 'PROCESS_EXITED', message: 'P stopped' } } })
+      })
+      return workspace
+    })
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await hook.result.current.connect('/work') })
+    await act(async () => { await hook.result.current.connect('/other') })
+    bridge.handlers.set('session/open', async () => {
+      const state = snapshot('q'); state.summary.cwd = '/other'; return openReply(state)
+    })
+    await act(async () => { await hook.result.current.openSession('q') })
+    const q = hook.result.current.connection.connectionId!
+    invalidateP = true
+    await act(async () => { bridge.emit({ type: 'connection', connection: { ...hook.result.current.hosts['host:/work'].connection, busy: true } }) })
+    await act(async () => { bridge.emitFrame(delta(11, ' |Q survives P failure|', 'q'), q) })
+    expect(hook.result.current.hosts['host:/work'].connection.status).toBe('failed')
+    expect(hook.result.current.connection).toMatchObject({ status: 'ready', connectionId: q })
+    expect(assistantText(hook.result.current.active)).toBe('Before |Q survives P failure|')
+  })
+})
 
 describe('correlated action views', () => {
   it('uses a reusable background log session without selecting or abandoning the unsent thread', async () => {

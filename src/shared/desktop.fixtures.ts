@@ -8,6 +8,14 @@ export const hostB: ConnectionState = { hostId: 'host-project-b', connectionId: 
 export const restartedHostA: ConnectionState = { ...hostA, connectionId: 'epoch-a-2' }
 export const disconnectedHostA: ConnectionState = { ...hostA, connectionId: null, status: 'disconnected' }
 export const failedHostA: ConnectionState = { ...hostA, status: 'failed', busy: true, error: { code: 'PROCESS_EXITED', message: 'The project A runtime stopped.' } }
+// Main's invoke reply may overtake earlier lifecycle notifications. A native
+// revision orders both channels, including disconnected(null) before startup.
+export const orderedStartupConnections: Array<ConnectionState & { revision: number }> = [
+  { ...hostA, revision: 1, status: 'disconnected', connectionId: null, busy: true },
+  { ...hostA, revision: 2, status: 'connecting', busy: true },
+  { ...hostA, revision: 3, status: 'ready' },
+  { ...failedHostA, revision: 4 }
+]
 export const epochA: HostEpoch = { hostId: hostA.hostId, connectionId: hostA.connectionId }
 export const epochB: HostEpoch = { hostId: hostB.hostId, connectionId: hostB.connectionId }
 export const selectionA: ConversationSelection = { ...epochA, sessionId: 'session-a' }
