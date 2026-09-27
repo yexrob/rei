@@ -11,10 +11,9 @@ function inside(parent: string, child: string): boolean {
   return path !== '' && !isAbsolute(path) && path !== '..' && !path.startsWith(`..${sep}`)
 }
 
-/** Fail closed: a flag alone must never change a real or packaged user's app. */
-export function backgroundTestEnabled(packaged: boolean, env: NodeJS.ProcessEnv = process.env): boolean {
+/** Fail closed: development and packaged verification require the same isolated launcher proof. */
+export function backgroundTestEnabled(_packaged: boolean, env: NodeJS.ProcessEnv = process.env): boolean {
   if (env.REI_E2E_MODE !== 'background') return false
-  if (packaged) throw new Error('Background E2E mode is unavailable in packaged applications.')
   const home = env.HOME, data = env.BINGO_GUI_USER_DATA, token = env.REI_E2E_TOKEN
   if (!home || !data || !isAbsolute(home) || !isAbsolute(data) || !token || !/^[a-f0-9-]{36}$/.test(token)) throw new Error('Background E2E requires an isolated HOME, userData and launcher token.')
   const actualHome = realpathSync(home), actualData = realpathSync(data)

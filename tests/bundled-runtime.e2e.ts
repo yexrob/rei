@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { electron, foregroundEnabled } from './helpers/electron'
+import { electron } from './helpers/electron'
 import { access, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
@@ -7,7 +7,6 @@ import { isAbsolute, join, relative } from 'node:path'
 const executablePath = process.env.BINGO_TEST_PACKAGED_APP
 
 test('packaged app connects and streams using only its bundled runtime', async ({}, info) => {
-  test.skip(!foregroundEnabled, 'Packaged apps have no test-only hidden mode. Requires explicit REI_E2E_FOREGROUND=1 and user approval.')
   test.skip(!executablePath, 'Set BINGO_TEST_PACKAGED_APP to the unpacked native application executable.')
   await access(executablePath!)
   const home = await mkdtemp(join(tmpdir(), 'rei-packaged-e2e-'))
@@ -21,7 +20,7 @@ test('packaged app connects and streams using only its bundled runtime', async (
   const app = await electron.launch({
     executablePath,
     args: [`--user-data-dir=${userData}`],
-    env: { ...inherited, HOME: home, USERPROFILE: home, APPDATA: home, LOCALAPPDATA: home, XDG_CONFIG_HOME: home, XDG_DATA_HOME: home, BINGO_FAKE_SCRIPT: script }
+    env: { ...inherited, HOME: home, USERPROFILE: home, APPDATA: home, LOCALAPPDATA: home, XDG_CONFIG_HOME: home, XDG_DATA_HOME: home, BINGO_GUI_USER_DATA: userData, BINGO_FAKE_SCRIPT: script }
   })
   try {
     const native = await app.evaluate(({ app }) => ({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, userData: app.getPath('userData'), home: app.getPath('home'), binaryOverride: process.env.BINGO_GUI_BINARY }))
@@ -44,6 +43,21 @@ test('packaged app connects and streams using only its bundled runtime', async (
     await page.getByRole('textbox', { name: 'Message bingo' }).fill('Verify the packaged runtime.')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Bundled runtime verified' })).toBeVisible()
+    // Exercise the unpacked native addon and spawn-helper, not only Rust RPC.
+    await page.evaluate(() => {
+      const state = window as typeof window & { __packagedPty: string }
+      state.__packagedPty = ''
+      window.bingoPanels.onEvent(event => { if (event.type === 'terminal-data') state.__packagedPty += event.data })
+    })
+    const terminal = await page.evaluate(() => window.bingoPanels.terminalStart())
+    expect(terminal.ok).toBe(true)
+    if (!terminal.ok) throw new Error(terminal.error.message)
+    expect(terminal.value.status).toBe('running')
+    const terminalId = terminal.value.id!
+    const command = process.platform === 'win32' ? 'echo REI_PTY_22\r' : "printf 'REI_PTY_%s\\n' 22\r"
+    expect(await page.evaluate(({ id, data }) => window.bingoPanels.terminalWrite({ id, data }), { id: terminalId, data: command })).toMatchObject({ ok: true })
+    await expect.poll(() => page.evaluate(() => (window as typeof window & { __packagedPty: string }).__packagedPty)).toContain('REI_PTY_22')
+    await page.evaluate(id => window.bingoPanels.terminalStop(id), terminalId)
     await page.screenshot({ animations: 'disabled', path: info.outputPath('bundled-runtime.png') })
     expect(errors).toEqual([])
     console.info('Packaged runtime verified:', JSON.stringify({ executablePath, binary, source: bootstrap.value.binary.source, userData: native.userData, screenshot: info.outputPath('bundled-runtime.png') }))

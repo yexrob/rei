@@ -3,6 +3,7 @@ import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
+import { extractFile } from '@electron/asar'
 import { BACKGROUND_TEST_MARKER, type BackgroundTestAudit } from '../../src/main/background-test-mode'
 
 export const foregroundEnabled = process.env.REI_E2E_FOREGROUND === '1'
@@ -46,10 +47,18 @@ export const electron = {
   async launch(options: LaunchOptions): Promise<ElectronApplication> {
     let env = options.env
     if (!foregroundEnabled) {
-      if (options.executablePath) throw new Error('Packaged/native application testing requires explicit REI_E2E_FOREGROUND=1.')
-      const entry = options.args?.find(arg => !arg.startsWith('-'))
-      if (!entry || !isAbsolute(entry)) throw new Error('Background E2E requires the absolute built main entry point.')
-      const bundle = await readFile(entry, 'utf8')
+      let bundle: string
+      if (options.executablePath) {
+        if (!isAbsolute(options.executablePath)) throw new Error('Background packaged E2E requires an absolute executable path.')
+        const resources = process.platform === 'darwin' ? join(dirname(options.executablePath), '..', 'Resources') : join(dirname(options.executablePath), 'resources')
+        const archive = join(resources, 'app.asar')
+        const manifest = JSON.parse(extractFile(archive, 'package.json').toString('utf8')) as { main: string }
+        bundle = extractFile(archive, manifest.main).toString('utf8')
+      } else {
+        const entry = options.args?.find(arg => !arg.startsWith('-'))
+        if (!entry || !isAbsolute(entry)) throw new Error('Background E2E requires the absolute built main entry point.')
+        bundle = await readFile(entry, 'utf8')
+      }
       if (!bundle.includes('__reiBackgroundTestAudit') || !bundle.includes('REI_E2E_MODE')) throw new Error('The main bundle has no background guard. Run npm run build before E2E; refusing to launch a stale visible build.')
       const home = env?.HOME, data = env?.BINGO_GUI_USER_DATA
       if (!home || !data || !isAbsolute(home) || !isAbsolute(data)) throw new Error('Every E2E launch requires its own absolute HOME and BINGO_GUI_USER_DATA.')

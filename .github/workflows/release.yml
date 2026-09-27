@@ -6,11 +6,11 @@ on:
       tag:
         description: Preview release tag (must match package.json)
         required: true
-        default: v0.1.0
+        default: v0.1.1
       runtime_ref:
         description: Full bingo commit SHA to bundle
         required: true
-        default: 13b62ef4f9faf7cd186cca61a18945de2bc08d0b
+        default: e036efe2e029bcbef9c191a326fafc126d935a99
 
 permissions:
   contents: read
@@ -46,6 +46,7 @@ jobs:
       RELEASE_TAG: ${{ inputs.tag }}
       RUNTIME_REF: ${{ inputs.runtime_ref }}
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      REI_E2E_FOREGROUND: '0'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,7 +57,7 @@ jobs:
           cache: npm
       - name: Validate release identity
         run: |
-          node -e 'const p=require("./package.json"); if(process.env.RELEASE_TAG!==`v${p.version}` || !/^[0-9a-f]{40}$/.test(process.env.RUNTIME_REF)) process.exit(1)'
+          node -e 'const p=require("./package.json"); if(process.env.RELEASE_TAG!==`v${p.version}` || !/^[0-9a-f]{40}$/.test(process.env.RUNTIME_REF)) process.exit(1); if(!require("node:fs").readFileSync(`.github/release-notes/${process.env.RELEASE_TAG}.md`, "utf8").includes(process.env.RUNTIME_REF)) throw new Error("runtime_ref must match the source pinned in the release notes")'
       - uses: actions/checkout@v4
         with:
           repository: yexrob/bingo
@@ -77,7 +78,8 @@ jobs:
         run: |
           binary="$GITHUB_WORKSPACE/_runtime/target/release/bingo"
           if [[ "$RUNNER_OS" == 'Windows' ]]; then binary="$binary.exe"; fi
-          "$binary" --version
+          test "$(git -C _runtime rev-parse HEAD)" = "$RUNTIME_REF"
+          test "$("$binary" --version)" = 'bingo 0.6.5'
           echo "BINGO_BUNDLE_BINARY=$binary" >> "$GITHUB_ENV"
           echo "BINGO_E2E_BINARY=$binary" >> "$GITHUB_ENV"
       - name: Install Linux desktop dependencies
@@ -109,6 +111,7 @@ jobs:
             macOS)
               folder=mac
               if [[ "$(node -p process.arch)" == 'arm64' ]]; then folder=mac-arm64; fi
+              node scripts/verify-mac-signature.cjs "$GITHUB_WORKSPACE/dist/$folder/Rei.app"
               export BINGO_TEST_PACKAGED_APP="$GITHUB_WORKSPACE/dist/$folder/Rei.app/Contents/MacOS/Rei"
               export BINGO_TEST_PACKAGED_RESOURCES="$GITHUB_WORKSPACE/dist/$folder/Rei.app/Contents/Resources"
               ;;
@@ -172,6 +175,6 @@ jobs:
             exit 1
           fi
           (cd release-assets && sha256sum * > SHA256SUMS.txt)
-          cp .github/release-notes/v0.1.0.md "$RUNNER_TEMP/release-notes.md"
+          cp ".github/release-notes/$RELEASE_TAG.md" "$RUNNER_TEMP/release-notes.md"
           printf '\nGUI source: `%s`\n\nBundled bingo source: `%s`\n' "$GITHUB_SHA" "$RUNTIME_REF" >> "$RUNNER_TEMP/release-notes.md"
           gh release create "$RELEASE_TAG" release-assets/* --title "Rei $RELEASE_TAG — Preview" --prerelease --target "$GITHUB_SHA" --notes-file "$RUNNER_TEMP/release-notes.md"

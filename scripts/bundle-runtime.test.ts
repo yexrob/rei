@@ -79,6 +79,8 @@ describe('mandatory native runtime bundle', () => {
   it('keeps preparation and verification mandatory on direct builder calls', () => {
     const config = require('../electron-builder.cjs')
     expect(typeof config.beforePack).toBe('function'); expect(typeof config.afterPack).toBe('function')
+    expect(typeof config.afterSign).toBe('function')
+    expect(config.mac).toMatchObject({ identity: '-', hardenedRuntime: true, notarize: false, strictVerify: true })
     expect(config.extraResources).toEqual([{ from: 'out/bundled-runtime/${os}-${arch}', to: 'bin' }])
   })
 })

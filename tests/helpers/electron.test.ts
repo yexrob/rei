@@ -1,6 +1,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createPackage } from '@electron/asar'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 const mock = vi.hoisted(() => ({ launch: vi.fn() }))
 vi.mock('@playwright/test', () => ({ _electron: { launch: mock.launch }, expect }))
@@ -32,14 +33,35 @@ it('does not launch Electron for a missing entry or a stale pre-guard bundle', a
   await expect(electron.launch({ ...stale.options, args: ['relative/main.js'] })).rejects.toThrow('absolute built main')
   expect(mock.launch).not.toHaveBeenCalled()
 })
-it('rejects packaged paths and escaped profile symlinks without launching Electron', async () => {
+it('rejects missing packaged archives and escaped profile symlinks without launching Electron', async () => {
   const { electron } = await import('./electron')
   const fixtureA = fixture(), fixtureB = fixture()
-  await expect(electron.launch({ ...fixtureA.options, executablePath: '/some/native/app' })).rejects.toThrow('explicit REI_E2E_FOREGROUND')
+  await expect(electron.launch({ ...fixtureA.options, executablePath: '/some/native/app' })).rejects.toThrow()
   mkdirSync(fixtureB.data)
   symlinkSync(fixtureB.data, fixtureA.data, 'junction')
   await expect(electron.launch(fixtureA.options)).rejects.toThrow('symlink')
   expect(mock.launch).not.toHaveBeenCalled()
+})
+it.each([true, false])('checks the packaged main archive before hidden launch (guard: %s)', async guarded => {
+  const f = fixture()
+  const resources = join(f.home, ...(process.platform === 'darwin' ? ['Rei.app', 'Contents', 'Resources'] : ['resources']))
+  const executablePath = process.platform === 'darwin' ? join(resources, '..', 'MacOS', 'Rei') : join(f.home, 'Rei.exe')
+  const source = join(f.home, 'source')
+  mkdirSync(join(source, 'out/main'), { recursive: true }); mkdirSync(resources, { recursive: true })
+  writeFileSync(join(source, 'package.json'), JSON.stringify({ main: 'out/main/index.js' }))
+  writeFileSync(join(source, 'out/main/index.js'), guarded ? '// REI_E2E_MODE __reiBackgroundTestAudit' : '// old visible bundle')
+  await createPackage(source, join(resources, 'app.asar'))
+  const { electron } = await import('./electron')
+  const fake = fakeApplication()
+  const launch = electron.launch({ executablePath, args: [], env: f.options.env })
+  if (guarded) {
+    await (await launch).close()
+    expect(mock.launch).toHaveBeenCalledWith(expect.objectContaining({ env: expect.objectContaining({ REI_E2E_MODE: 'background' }) }))
+    expect(fake.close).toHaveBeenCalledOnce()
+  } else {
+    await expect(launch).rejects.toThrow('no background guard')
+    expect(mock.launch).not.toHaveBeenCalled()
+  }
 })
 it.each([{ exitCode: 1, signalCode: null }, { exitCode: null, signalCode: 'SIGTERM' }])('rejects guard exits or abnormal signals during teardown: %j', async result => {
   const { electron } = await import('./electron')

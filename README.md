@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/yexrob/rei/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/yexrob/rei/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-0.1.0-171612">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.1.1-171612">
   <img alt="Electron" src="https://img.shields.io/badge/Electron-44-171612?logo=electron&logoColor=eeeae2">
   <img alt="Protocol" src="https://img.shields.io/badge/bingo_protocol-v1-6f5a92">
 </p>
@@ -60,7 +60,7 @@ The browser/terminal image combines actual Electron chrome and native WebContent
 - macOS, Linux, or Windows with a desktop environment
 - A provider configured in bingo for live model turns; setup is available in Settings
 
-[Preview installers](https://github.com/yexrob/rei/releases) include the matching bingo runtime. Installed users do not need Node.js, Rust or a separately installed CLI. These previews are unsigned and not notarized; verify the published checksums and read the release notes before installing.
+[Preview installers](https://github.com/yexrob/rei/releases) include the matching bingo runtime. Installed users do not need Node.js, Rust or a separately installed CLI. macOS v0.1.1 previews are ad-hoc signed, not Developer ID signed or notarized; Windows previews are not publisher-signed. Verify the published checksums and read the release notes before installing. Downloaded macOS copies still require per-app approval in System Settings → Privacy & Security → Open Anyway; never disable system security globally.
 
 Running from source additionally requires [Node.js](https://nodejs.org/) 24.15 or newer on the 24.x line, or Node.js 26+, npm, and a `bingo-improve` binary supporting `bingo serve --stdio` (JSON-RPC protocol 1).
 
@@ -109,7 +109,7 @@ npm run package   # current-platform installers
 
 `BINGO_E2E_BINARY` overrides the binary used by end-to-end tests. Tests use deterministic fake/loopback providers and synthetic credentials, never live provider accounts. Agent-page tests require a current `bingo-improve` build supporting `BINGO_BROWSER_MODE=client`; Rei sets that mode on its child process.
 
-Electron E2E runs **hidden and non-activating by default**, not merely as a background shell job. The shared launcher supplies a temporary isolated HOME/userData and matching test marker; the non-packaged app keeps a real painting renderer, sandbox/context isolation/web security, and audits native visibility/focus. On macOS the test app uses the `prohibited` activation policy. Unexpected native dialogs fail instead of appearing; teardown explicitly authorizes stopping only the isolated fixture. Renderer copy actions use an in-memory test sink: exact copied text is checked, but this is **not OS clipboard coverage** and never replaces your clipboard.
+Electron E2E runs **hidden and non-activating by default**, not merely as a background shell job. The shared launcher supplies a temporary isolated HOME/userData and matching test marker; development and packaged verification keep a real painting renderer, sandbox/context isolation/web security, and audits native visibility/focus. On macOS the test app uses the `prohibited` activation policy. Unexpected native dialogs fail instead of appearing; teardown explicitly authorizes stopping only the isolated fixture. Renderer copy actions use an in-memory test sink: exact copied text is checked, but this is **not OS clipboard coverage** and never replaces your clipboard.
 
 ```bash
 BINGO_E2E_BINARY=/absolute/path/to/bingo npm run test:e2e
@@ -117,7 +117,7 @@ BINGO_E2E_BINARY=/absolute/path/to/bingo npm run test:e2e
 npx playwright test tests/background.e2e.ts tests/event-delivery.e2e.ts
 ```
 
-The packaged-app smoke test and the native WebContentsView/`sendInputEvent` interaction test are skipped by default: the former cannot enable development-only guards, and the latter requires OS-focused input. After obtaining permission to use the foreground, set `REI_E2E_FOREGROUND=1` and select those tests explicitly. That opt-in can show windows and take focus; do not enable it on someone's active desktop without agreement. DOM clicks are not substituted for native input. Screenshots from the default mode are real hidden Chromium renders, not OS-level window captures. Finite UI animations are allowed to settle before visual/accessibility checks; indefinite working animations are not awaited.
+The native WebContentsView/`sendInputEvent` interaction test is skipped by default because it requires OS-focused input. After obtaining permission to use the foreground, set `REI_E2E_FOREGROUND=1` and select that test explicitly. That opt-in can show windows and take focus; do not enable it on someone's active desktop without agreement. DOM clicks are not substituted for native input. Screenshots from the default mode are real hidden Chromium renders, not OS-level window captures. Finite UI animations are allowed to settle before visual/accessibility checks; indefinite working animations are not awaited.
 
 ### Packaging includes bingo
 
@@ -131,7 +131,9 @@ BINGO_BUNDLE_BINARY=/absolute/path/to/bingo npm run package:dir
 BINGO_BUNDLE_BINARY=/absolute/path/to/bingo npm run bundle:prepare
 ```
 
-To smoke-test the actual unpacked application with an isolated fake-provider profile and no external binary override, set `BINGO_TEST_PACKAGED_APP` to its native application executable and, with explicit foreground permission, run `REI_E2E_FOREGROUND=1 npx playwright test tests/bundled-runtime.e2e.ts`. On macOS the executable is typically `dist/mac-arm64/Rei.app/Contents/MacOS/Rei`. The test checks bundled discovery, connection, and a streamed response; it is skipped unless explicitly enabled.
+To smoke-test the actual unpacked application with an isolated fake-provider profile and no external binary override, set `BINGO_TEST_PACKAGED_APP` to its native application executable and run `REI_E2E_FOREGROUND=0 npx playwright test tests/bundled-runtime.e2e.ts`. On macOS the executable is typically `dist/mac-arm64/Rei.app/Contents/MacOS/Rei`. The launcher checks the packaged main entry for the hidden guard before starting; older packages without it are refused. The test checks bundled discovery, connection, a streamed response and the native terminal without showing or focusing windows. It is skipped only when no packaged executable is supplied.
+
+macOS packaging uses electron-builder's built-in ad-hoc signing (`identity: '-'`) with its scoped Electron entitlements and no notarization. The `afterSign` hook verifies every native component and the sealed app; recheck an existing bundle with `node scripts/verify-mac-signature.cjs /absolute/path/to/Rei.app`.
 
 The hook rejects missing files, scripts, wrong operating systems/architectures, and unsupported targets before packaging. On a matching native host it also verifies `bingo serve --stdio` initialization (protocol 1 and desktop session methods) and clean shutdown in a temporary, isolated home directory. The unpacked application is checked again after copying, including executable permissions. Failure stops packaging rather than shipping a runtime-less app. Windows uses `bingo.exe`; each installer targets one architecture. Cross-target packaging requires an explicit matching binary and only validates its native header locally—run protocol and end-to-end checks on that target's native runner before release. Universal macOS bundles are not supported by this preparation path.
 
@@ -173,7 +175,7 @@ Historical milestone records (not the active RPC contract):
 
 The v0.1 implementation covers the core chat loop, tool visibility, session management, runtime settings, error states, and light/dark visual polish. The repository includes automated tests and milestone evidence under `docs/`.
 
-Rei is preview software, not a signed stable release. The release workflow builds and checks macOS ARM64/Intel, Windows x64 and Linux x64 before publishing installers. Code signing, macOS notarization, an auto-updater, live OAuth/account testing and hands-on screen-reader/device testing are not provided by this preview.
+Rei is preview software, not a signed stable release. The release workflow builds and checks macOS ARM64/Intel, Windows x64 and Linux x64 before publishing installers. macOS uses verified ad-hoc signatures only. Developer ID/publisher signing, macOS notarization, an auto-updater, live OAuth/account testing and hands-on screen-reader/device testing are not provided by this preview.
 
 ---
 

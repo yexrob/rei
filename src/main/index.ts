@@ -171,7 +171,7 @@ async function quit(): Promise<void> {
   } finally { quitPending = false }
 }
 
-if (!app.isPackaged && process.env.BINGO_GUI_USER_DATA) {
+if ((!app.isPackaged || backgroundTest) && process.env.BINGO_GUI_USER_DATA) {
   if (!isAbsolute(process.env.BINGO_GUI_USER_DATA)) throw new Error('BINGO_GUI_USER_DATA must be an absolute directory.')
   mkdirSync(process.env.BINGO_GUI_USER_DATA, { recursive: true })
   app.setPath('userData', process.env.BINGO_GUI_USER_DATA)

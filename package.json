@@ -1,6 +1,6 @@
 {
   "name": "bingo-gui",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "A focused desktop workspace for bingo",
   "author": "bingo",
@@ -41,6 +41,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@electron/asar": "3.4.1",
     "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",

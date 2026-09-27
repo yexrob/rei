@@ -18,10 +18,12 @@ it('leaves normal development and packaged launches untouched unless explicitly 
   expect(backgroundTestEnabled(false, {})).toBe(false)
   expect(backgroundTestEnabled(true, {})).toBe(false)
 })
-it('requires non-packaged mode and a matching marker in a temporary isolated HOME', () => {
+it('requires a matching marker in a temporary isolated HOME, including packaged verification', () => {
   const env = environment()
   expect(backgroundTestEnabled(false, env)).toBe(true)
-  expect(() => backgroundTestEnabled(true, env)).toThrow('packaged')
+  expect(backgroundTestEnabled(true, env)).toBe(true)
+  expect(() => backgroundTestEnabled(true, { ...env, REI_E2E_TOKEN: randomUUID() })).toThrow('does not match')
+  expect(() => backgroundTestEnabled(true, { REI_E2E_MODE: 'background' })).toThrow('isolated')
   expect(() => backgroundTestEnabled(false, { ...env, REI_E2E_TOKEN: randomUUID() })).toThrow('does not match')
   expect(() => backgroundTestEnabled(false, { ...env, BINGO_GUI_USER_DATA: env.HOME })).toThrow('inside')
   expect(() => backgroundTestEnabled(false, { ...env, HOME: tmpdir() })).toThrow('inside')
