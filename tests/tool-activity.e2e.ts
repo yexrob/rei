@@ -64,8 +64,11 @@ lines.on('close',()=>process.exit(0));`)
     const firstToggle = run.locator('.tool-card-toggle').first()
     await expect(firstToggle).toBeVisible()
     await expect(run.locator('.tool-activity-toggle')).toHaveCount(0)
-    await firstToggle.click()
+    // This assertion tests state retention across run growth, not pointer
+    // targeting while the new group header moves the row between down/up.
     await firstToggle.evaluate(el => { el.setAttribute('data-mount-probe', 'original') })
+    await firstToggle.press('Enter')
+    await expect(firstToggle).toHaveAttribute('aria-expanded', 'true')
     await expect(run.locator('.tool-card')).toHaveCount(4)
     await expect(firstToggle).toHaveAttribute('data-mount-probe', 'original')
     await expect(firstToggle).toHaveAttribute('aria-expanded', 'true')
