@@ -73,11 +73,24 @@ async function exerciseTerminalTabs(page: Page): Promise<string> {
   await toggle.click(); await expect(secondTab).toHaveAttribute('aria-selected', 'true')
   expect((await terminals(page)).map(terminalId)).toEqual([first, second])
   await page.locator(`#terminal-tab-${first}`).click()
-  // xterm virtualizes visible rows. The 70KB burst moves the first marker into
-  // scrollback; inspect it there rather than assuming it remains in the DOM.
-  await firstView.locator('.xterm-viewport').evaluate(viewport => { viewport.scrollTop = 0 })
-  await expect(firstView).toContainText('REI_FIRST_TERMINAL_OK')
-  await firstView.locator('.xterm-viewport').evaluate(viewport => { viewport.scrollTop = viewport.scrollHeight })
+  // Inspect rendered rows, not the live-region's potentially stale announcements.
+  const firstRows = firstView.locator('.xterm-accessibility-tree')
+  await expect(firstRows).toContainText('REI_HIDDEN_TERMINAL_OK')
+  // xterm 6 owns a virtual scrollbar: setting .xterm-viewport.scrollTop is a no-op.
+  // Wheel gestures are capped per event; Alt uses xterm's fast-scroll gesture.
+  await firstView.locator('.xterm-screen').hover()
+  await page.keyboard.down('Alt')
+  try {
+    await expect.poll(async () => {
+      await page.mouse.wheel(0, -1_000_000)
+      return firstRows.getByRole('listitem').first().getAttribute('aria-posinset')
+    }, { intervals: [50] }).toBe('1')
+    await expect(firstRows).toContainText('REI_FIRST_TERMINAL_OK')
+    await expect.poll(async () => {
+      await page.mouse.wheel(0, 1_000_000)
+      return firstRows.textContent()
+    }, { intervals: [50] }).toContain('REI_HIDDEN_TERMINAL_OK')
+  } finally { await page.keyboard.up('Alt') }
   await typeInTerminal(page, first, 'exit 7')
   await expect.poll(async () => (await terminals(page)).map(terminalId)).toEqual([second])
   await expect(page.locator(`#terminal-tab-${first}`)).toHaveCount(0)

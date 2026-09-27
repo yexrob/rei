@@ -1,5 +1,5 @@
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
-import { electron, copiedText, settledMotion } from './helpers/electron'
+import { electron, copiedText, settledMotion, waitForDesktopReady } from './helpers/electron'
 import AxeBuilder from '@axe-core/playwright'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -24,8 +24,8 @@ async function launch(collaboration = false) {
   const env = Object.fromEntries(['PATH', 'SystemRoot', 'WINDIR', 'DISPLAY', 'XAUTHORITY', 'TMPDIR', 'TEMP', 'TMP'].flatMap((key) => process.env[key] ? [[key, process.env[key]!]] : []))
   const app = await electron.launch({ args: [resolve('out/main/index.js')], env: { ...env, HOME: home, USERPROFILE: home, BINGO_GUI_USER_DATA: join(home, 'desktop'), BINGO_GUI_CWD: workspace, BINGO_GUI_BINARY: binary, BINGO_FAKE_SCRIPT: script } })
   const page = await app.firstWindow()
-  await expect(page.locator('.startup-stage')).toHaveAttribute('data-phase', 'settled')
-  await expect(page.getByText('Connected locally')).toBeVisible()
+  try { await waitForDesktopReady(app, page) }
+  catch (error) { await app.close().catch(closeError => console.error('Startup cleanup failed:', closeError)); throw error }
   return { app, page }
 }
 async function close(app: ElectronApplication) {
@@ -38,7 +38,8 @@ async function axe(page: Page) {
   expect(result.violations).toEqual([])
 }
 async function resize(app: ElectronApplication, width: number, height: number) {
-  await app.evaluate(({ BrowserWindow }, size) => { const w = BrowserWindow.getAllWindows()[0]; w.setMinimumSize(360, 360); w.setSize(size[0], size[1]) }, [width, height])
+  const contentWidth = await app.evaluate(({ BrowserWindow }, size) => { const w = BrowserWindow.getAllWindows()[0]; w.setMinimumSize(360, 360); w.setSize(size[0], size[1]); return w.getContentSize()[0] }, [width, height])
+  await expect.poll(() => app.firstWindow().then(page => page.evaluate(() => innerWidth))).toBe(contentWidth)
 }
 async function tokenContrast(page: Page) {
   const ratios = await page.evaluate(() => {
@@ -169,6 +170,10 @@ test('collaborator geometry stays stable with long translated names and changing
     await expect(page.locator('.collaboration-row')).toHaveCount(2)
     for (const width of [1200, 760]) {
       await resize(app, width, 800)
+      // Resizing can move the hovered trigger and close the roster, especially
+      // with Windows non-client borders. Reopen through the real control.
+      await page.getByRole('button', { name: 'Collaborators', exact: true }).hover()
+      await expect(page.locator('.collaboration-row')).toHaveCount(2)
       // Geometry fixture only: keep the actual React-produced DOM and styles,
       // then vary the two text fields independently of transport timing.
       const result = await page.locator('.collaboration-row').evaluateAll((rows) => {

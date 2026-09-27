@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { electron } from './helpers/electron'
+import { electron, waitForDesktopReady } from './helpers/electron'
 import { mkdtemp, mkdir, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -49,8 +49,7 @@ test('real rich media: recorded rasters, isolated Mermaid SVG, KaTeX and consent
     await route.fulfill({ contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: png })
   })
   try {
-    await expect(page.locator('.startup-stage')).toHaveAttribute('data-phase', 'settled')
-    await expect(page.getByText('Connected locally')).toBeVisible()
+    await waitForDesktopReady(app, page)
     await page.getByRole('textbox', { name: 'Message bingo' }).fill('Show the isolated media fixture.')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Media ready' })).toBeVisible()

@@ -18,7 +18,7 @@ test('hidden Electron paints real UI, retains isolation and never shows or activ
       const window = BrowserWindow.getAllWindows()[0]
       app.emit('activate', {}, false)
       app.emit('second-instance', {}, [], process.cwd(), {})
-      window.setSize(1200, 800)
+      window.setContentSize(1200, 800)
       return window.webContents.getBackgroundThrottling()
     })
     expect(backgroundThrottling).toBe(false)

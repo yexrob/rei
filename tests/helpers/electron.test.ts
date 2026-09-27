@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createPackage } from '@electron/asar'
@@ -41,6 +41,16 @@ it('rejects missing packaged archives and escaped profile symlinks without launc
   symlinkSync(fixtureB.data, fixtureA.data, 'junction')
   await expect(electron.launch(fixtureA.options)).rejects.toThrow('symlink')
   expect(mock.launch).not.toHaveBeenCalled()
+})
+it('passes one canonical temporary root to Node and Electron without changing the containment guard', async () => {
+  const { electron } = await import('./electron')
+  const f = fixture(), other = fixture(); fakeApplication()
+  const application = await electron.launch({ ...f.options, env: { ...f.options.env, TEMP: other.home, TMP: other.home, TMPDIR: other.home } })
+  expect(mock.launch).toHaveBeenCalledWith(expect.objectContaining({ env: expect.objectContaining({
+    HOME: realpathSync.native(f.home), USERPROFILE: realpathSync.native(f.home), BINGO_GUI_USER_DATA: realpathSync.native(f.data),
+    TEMP: realpathSync.native(tmpdir()), TMP: realpathSync.native(tmpdir()), TMPDIR: realpathSync.native(tmpdir())
+  }) }))
+  await application.close()
 })
 it.each([true, false])('checks the packaged main archive before hidden launch (guard: %s)', async guarded => {
   const f = fixture()
@@ -95,6 +105,28 @@ it.each([{ exitCode: 1, signalCode: null }, { exitCode: null, signalCode: 'SIGTE
   fake.close.mockImplementationOnce(async () => { Object.assign(fake.child, result) })
   await expect(application.close()).rejects.toThrow('isolated Electron exited unexpectedly')
   expect(fake.close).toHaveBeenCalledOnce()
+})
+it('captures surviving startup evidence when the page or native process has exited', async () => {
+  const { desktopStartupEvidence } = await import('./electron')
+  const page = {
+    url: () => 'file:///test/index.html',
+    pageErrors: async () => [new Error('renderer failed')],
+    consoleMessages: async () => { throw new Error('console target closed') },
+    content: async () => { throw new Error('page target closed') }
+  }
+  const app = { evaluate: async () => { throw new Error('native target closed') } }
+  const evidence = await desktopStartupEvidence(app as never, page as never)
+  expect(evidence).toMatchObject({ url: 'file:///test/index.html', errors: [{ message: 'renderer failed' }], console: { unavailable: 'console target closed' }, dom: { unavailable: 'page target closed' }, native: { unavailable: 'native target closed' } })
+})
+it('bounds startup evidence collection when one target stops responding', async () => {
+  vi.useFakeTimers()
+  try {
+    const { desktopStartupEvidence } = await import('./electron')
+    const page = { url: () => 'file:///test/index.html', pageErrors: async () => [], consoleMessages: async () => [], content: () => new Promise(() => {}) }
+    const result = desktopStartupEvidence({ evaluate: async () => ({ windows: [], rendererExits: [] }) } as never, page as never)
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(await result).toMatchObject({ errors: [], dom: { unavailable: 'Evidence read timed out' }, native: { windows: [], rendererExits: [] } })
+  } finally { vi.useRealTimers() }
 })
 it('still requires runtime audit after a bundle passes the static preflight', async () => {
   const { electron } = await import('./electron')

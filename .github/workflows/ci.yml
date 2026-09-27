@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: yexrob/bingo
-          ref: 13b62ef4f9faf7cd186cca61a18945de2bc08d0b
+          ref: e036efe2e029bcbef9c191a326fafc126d935a99
           path: _runtime
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable

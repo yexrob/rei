@@ -36,6 +36,38 @@ export async function assertBackground(app: ElectronApplication): Promise<void> 
   for (const window of state.windows) expect(window).toEqual({ visible: false, focused: false, focusable: false })
 }
 
+export async function desktopStartupEvidence(app: ElectronApplication, page: Page): Promise<Record<string, unknown>> {
+  const capture = async (read: () => Promise<unknown>): Promise<unknown> => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try { return await Promise.race([read(), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Evidence read timed out')), 1500) })]) }
+    catch (error) { return { unavailable: error instanceof Error ? error.message : String(error) } }
+    finally { clearTimeout(timer) }
+  }
+  const [url, errors, consoleErrors, dom, native] = await Promise.all([
+    capture(async () => page.url()),
+    capture(async () => (await page.pageErrors()).slice(-20).map(error => ({ message: error.message, stack: error.stack }))),
+    capture(async () => (await page.consoleMessages()).filter(message => message.type() === 'error').slice(-20).map(message => message.text().slice(0, 2000))),
+    capture(async () => (await page.content()).slice(0, 12000)),
+    capture(async () => app.evaluate(({ app, BrowserWindow }) => ({
+      rendererExits: (app as typeof app & { __reiRendererExits?: unknown[] }).__reiRendererExits,
+      windows: BrowserWindow.getAllWindows().map(window => ({ url: window.webContents.getURL(), crashed: window.webContents.isCrashed(), loading: window.webContents.isLoading() }))
+    })))
+  ])
+  return { url, errors, console: consoleErrors, dom, native }
+}
+
+/** Preserve startup failures with renderer evidence; an empty root is never readiness. */
+export async function waitForDesktopReady(app: ElectronApplication, page: Page): Promise<void> {
+  try {
+    await expect(page.locator('.startup-stage')).toHaveAttribute('data-phase', 'settled')
+    await expect(page.getByText('Connected locally')).toBeVisible()
+    expect(await page.pageErrors()).toEqual([])
+  } catch (error) {
+    console.error('Desktop startup evidence:', JSON.stringify(await desktopStartupEvidence(app, page)))
+    throw error
+  }
+}
+
 /** Wait for finite UI transitions, not indefinite working indicators. Never disable axe. */
 export async function settledMotion(page: Page): Promise<void> {
   await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation =>
@@ -63,13 +95,16 @@ export const electron = {
       if (!bundle.includes('__reiBackgroundTestAudit') || !bundle.includes('REI_E2E_MODE')) throw new Error('The main bundle has no background guard. Run npm run build before E2E; refusing to launch a stale visible build.')
       const home = env?.HOME, data = env?.BINGO_GUI_USER_DATA
       if (!home || !data || !isAbsolute(home) || !isAbsolute(data)) throw new Error('Every E2E launch requires its own absolute HOME and BINGO_GUI_USER_DATA.')
-      const actualHome = await realpath(home), temporaryHome = relative(await realpath(tmpdir()), actualHome)
+      const temporaryRoot = await realpath(tmpdir())
+      const actualHome = await realpath(home), temporaryHome = relative(temporaryRoot, actualHome)
       if (!temporaryHome || isAbsolute(temporaryHome) || temporaryHome === '..' || temporaryHome.startsWith(`..${sep}`) || await realpath(dirname(data)) !== actualHome) throw new Error('The E2E profile must be a direct child of an isolated temporary HOME.')
       const token = randomUUID()
       await mkdir(data, { recursive: true })
       if (dirname(await realpath(data)) !== actualHome) throw new Error('The E2E profile must not escape its temporary HOME through a symlink.')
       await writeFile(join(data, BACKGROUND_TEST_MARKER), token, { mode: 0o600 })
-      env = { ...env, REI_E2E_MODE: 'background', REI_E2E_TOKEN: token }
+      // fs.promises.realpath expands Windows 8.3 aliases; Electron's sync guard
+      // must receive the same spelling for HOME and its actual temporary parent.
+      env = { ...env, HOME: actualHome, USERPROFILE: actualHome, BINGO_GUI_USER_DATA: await realpath(data), TEMP: temporaryRoot, TMP: temporaryRoot, TMPDIR: temporaryRoot, REI_E2E_MODE: 'background', REI_E2E_TOKEN: token }
     }
     const app = await _electron.launch({ ...options, env })
     const close = app.close.bind(app)
@@ -100,6 +135,13 @@ export const electron = {
       if (safetyError) throw safetyError
     }
     try {
+      await app.evaluate(({ app, webContents }) => {
+        const exits: unknown[] = []
+        Object.assign(app, { __reiRendererExits: exits })
+        const observe = (contents: Electron.WebContents) => contents.on('render-process-gone', (_event, details) => { exits.push({ id: contents.id, ...details }) })
+        for (const contents of webContents.getAllWebContents()) observe(contents)
+        app.on('web-contents-created', (_event, contents) => observe(contents))
+      })
       await app.firstWindow()
       if (!foregroundEnabled) await assertBackground(app)
       await app.context().addInitScript(installClipboardSink)
