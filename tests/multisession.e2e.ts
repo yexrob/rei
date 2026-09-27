@@ -267,6 +267,7 @@ test('background ShowPage cannot navigate the foreground browser and completed s
     await f.command('Q', { op: 'showPage', session: 'Q-a' })
     await expect.poll(async () => (await browserState(f.page)).url).toBe(`${(await f.endpoint('Q')).endpoint}/${'s'.repeat(43)}`)
     await expect(f.page.getByRole('region', { name: 'Browser', exact: true })).toBeVisible()
+    await expect(f.page.getByRole('button', { name: 'Show sidebar', exact: true })).toBeVisible()
     const before = await browserState(f.page)
     await f.command('P', { op: 'showPage', session: 'P-a' })
     await expect.poll(() => f.page.evaluate(() => (window as any).__multisessionEvents.filter((event: any) => event.type === 'agent-page' && event.page.sessionId === 'P-a' && event.page.status === 'available').length)).toBe(1)
@@ -276,6 +277,9 @@ test('background ShowPage cannot navigate the foreground browser and completed s
     await selectProject(f.page, 'P'); await selectSession(f.page, 'P A')
     await f.page.getByRole('button', { name: /^Open page from P/ }).click()
     await expect.poll(async () => (await browserState(f.page)).url).toBe(`${(await f.endpoint('P')).endpoint}/${'s'.repeat(43)}`)
+    // Native navigation precedes the opened notification. Wait until React's
+    // resulting responsive collapse completes before selecting another project.
+    await expect(f.page.getByRole('button', { name: 'Show sidebar', exact: true })).toBeVisible()
     const explicitlyOpened = await browserState(f.page)
     await selectProject(f.page, 'Q'); await selectSession(f.page, 'Q A')
     await f.command('P', { op: 'closePage', session: 'P-a' })

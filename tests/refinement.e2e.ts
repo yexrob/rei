@@ -79,7 +79,11 @@ async function exerciseTerminalTabs(page: Page): Promise<string> {
   // xterm 6 owns a virtual scrollbar: setting .xterm-viewport.scrollTop is a no-op.
   // Its track maps pointer positions directly, without platform wheel normalization.
   const scrollbar = firstView.locator('.xterm-scrollable-element > .scrollbar.vertical')
-  await scrollbar.hover()
+  // Auto-hidden tracks ignore pointer events; enter the screen first to reveal it.
+  await toggle.hover()
+  await expect(scrollbar).toHaveClass(/\binvisible\b/)
+  await firstView.locator('.xterm-screen').hover()
+  await expect(scrollbar).toHaveClass(/\bvisible\b/)
   const track = await scrollbar.evaluate(element => ({ width: element.clientWidth, height: element.clientHeight }))
   expect(track.width).toBeGreaterThan(0)
   expect(track.height).toBeGreaterThan(2)
