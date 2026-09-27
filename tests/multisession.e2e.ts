@@ -177,7 +177,7 @@ test('warm same-host A→B→A selects without reopening history, but tree repla
     expect(childOpen?.params?.options?.children).toBe(false)
     await f.page.getByRole('textbox', { name: 'Message P Child' }).fill('CHILD_DIRECT_SUBMIT')
     await f.page.getByRole('button', { name: 'Send message', exact: true }).click()
-    await expect(f.page.getByText('CHILD_DIRECT_SUBMIT', { exact: true })).toBeVisible()
+    await expect(f.page.getByLabel('Conversation', { exact: true }).getByText('CHILD_DIRECT_SUBMIT', { exact: true })).toBeVisible()
     expect((await f.audit('P')).filter(row => row.kind === 'request' && row.method === 'session/submit').map(row => row.params?.session)).toEqual(['P-a', 'P-b', 'P-child'])
     expect((await opened()).map(row => row.params?.selector?.id)).toEqual(['P-a', 'P-b', 'P-child'])
   } finally { await f.close() }
