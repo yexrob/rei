@@ -659,5 +659,9 @@ export const zhCN = {
   'Focus the browser page': '聚焦浏览器页面',
   'Review is unavailable in rooms.': '房间中无法审查更改。',
   'Review needs a project folder. Personal space is not a Git workspace.': '审查更改需要项目文件夹。个人空间不是 Git 工作区。',
-  'Connect to review changes.': '连接后即可审查更改。'
+  'Connect to review changes.': '连接后即可审查更改。',
+  'Actions': '操作',
+  'Results': '结果',
+  'New conversation': '新对话',
+  'Toggle theme': '切换主题'
 } as const

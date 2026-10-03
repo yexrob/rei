@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ArrowUpRight, Download, GitCompareArrows, Globe2, Info, MessageSquare, MoreHorizontal, PanelLeft, SquareTerminal, Terminal, Trash2, X } from './components/icons'
+import { ArrowLeft, Download, GitCompareArrows, Globe2, Info, MoreHorizontal, PanelLeft, Settings2, SquarePen, SquareTerminal, Sun, Trash2, X } from './components/icons'
 import { WelcomeHeading } from './components/Welcome'
 import { SessionMetrics } from './components/SessionMetrics'
 import { SessionStatus } from './components/SessionStatus'
@@ -8,7 +8,7 @@ import { conversationKey, useWorkspace, unwrap } from './state/useWorkspace'
 import { itemText, selectSessionTitle, selectStatus, selectUsage, selectWorkspaceThreads } from './state/session'
 import { Composer, emptyDraft, type Draft } from './components/Composer'
 import { Timeline } from './components/Timeline'
-import { pinKey, ProjectSidebar, type SessionAction, type WorkspacePage } from './components/ProjectSidebar'
+import { byUpdated, pinKey, ProjectSidebar, type SessionAction, type WorkspacePage } from './components/ProjectSidebar'
 import { SkillsPage } from './components/SkillsPage'
 import { AutomationsPage } from './components/AutomationsPage'
 import { ReviewPanel } from './components/ReviewPanel'
@@ -25,6 +25,7 @@ import { ImageAttachmentError, readImageFiles } from './images'
 import { localizeNotice, Toast } from './components/Toast'
 import { ariaKeys, keyLabel, matches, SHORTCUTS, type ShortcutId } from './shortcuts'
 import { ActionMenu, type MenuAction } from './components/ActionMenu'
+import { CommandPalette } from './components/CommandPalette'
 import { InteractionPanel } from './components/InteractionPanel'
 import { Settings, Onboarding } from './components/Settings'
 import { StructuredView, type RunAction } from './components/Content'
@@ -354,7 +355,20 @@ function WorkspaceApp(): React.JSX.Element {
     </main>
     {w.notice && <Toast key={w.notice} message={localizeNotice(w.notice, t)} onDismiss={() => w.setNotice('')} />}
     {settings && <Settings key={`${w.connection.hostId}:${w.connection.connectionId}`} workspace={w} initialPage={settingsPage} onClose={() => { setSettings(false); setSettingsPage('general') }} openLink={openLink} clearDrafts={() => { setDrafts({}); localStorage.removeItem('rei.drafts.v1') }} />}
-    {palette && <Modal title={t('Search & commands')} onClose={() => setPalette(false)}><input className="palette-input" autoFocus aria-label={t('Search sessions and commands')} placeholder={t('Find a session or type a command…')} value={query} onChange={(event) => setQuery(event.target.value)} /><div className="palette-results">{visibleSessions.filter((session) => `${session.title} ${session.cwd}`.toLowerCase().includes(query.toLowerCase())).slice(0, 12).map((session) => <button key={session.id} onClick={() => openSession(session.id)}><MessageSquare size={16} /><span>{session.title || t('Untitled session')}<small title={session.cwd}>{formatPath(session.cwd, 56)}</small></span><ArrowUpRight size={14} /></button>)}{w.catalogs.commands?.entries.filter((entry) => entry.id.includes(query.replace(/^\//, '').toLowerCase())).slice(0, 8).map((entry) => <button key={entry.id} onClick={() => { setDraft({ ...draft, text: `/${entry.id} ` }); setPalette(false); requestAnimationFrame(() => input.current?.focus()) }}><Terminal size={16} /><span>/{entry.id}<small>{entry.label}</small></span></button>)}{!visibleSessions.some((session) => `${session.title} ${session.cwd}`.toLowerCase().includes(query.toLowerCase())) && !w.catalogs.commands?.entries.some((entry) => entry.id.includes(query.replace(/^\//, '').toLowerCase())) && <p className="secondary">{t('No matching sessions or commands.')}</p>}</div></Modal>}
+    {palette && <CommandPalette onClose={() => setPalette(false)}
+      sessions={sidebarProjects.flatMap(project => byUpdated(project.sessions).map(({ summary, titleOmitted }) => ({ hostId: project.connection.hostId, id: summary.id, title: titleOmitted ? t('Title not loaded') : summary.title || t('Untitled session'), caption: formatPath(summary.cwd, 56), path: summary.cwd, project: formatPath(project.connection.workspace) })))}
+      commands={(w.catalogs.commands?.entries ?? []).map(entry => ({ id: entry.id, label: entry.label }))}
+      onSession={(hostId, id) => openSession(id, hostId)}
+      onCommand={(id) => { setDraft({ ...draft, text: `/${id} ` }); setPalette(false); requestAnimationFrame(() => input.current?.focus()) }}
+      actions={[
+        { id: 'new', label: 'New conversation', icon: <SquarePen size={16} />, shortcut: keyLabel(platform, SHORTCUTS.newSession), run: () => { setPalette(false); newSession() } },
+        { id: 'theme', label: 'Toggle theme', icon: <Sun size={16} />, run: () => { setPalette(false); void w.savePreferences({ theme: document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark' }).catch(w.report) } },
+        { id: 'terminal', label: 'Toggle terminal', icon: <SquareTerminal size={16} />, shortcut: keyLabel(platform, SHORTCUTS.terminal), run: () => { setPalette(false); toggleTerminal() } },
+        { id: 'browser', label: 'Toggle browser', icon: <Globe2 size={16} />, shortcut: keyLabel(platform, SHORTCUTS.browser), run: () => { setPalette(false); toggleBrowser() } },
+        { id: 'review', label: 'Review changes', icon: <GitCompareArrows size={16} />, shortcut: keyLabel(platform, SHORTCUTS.review), disabled: !canReview, hint: reviewUnavailable, run: () => { setPalette(false); toggleReview() } },
+        { id: 'settings', label: 'Settings', icon: <Settings2 size={16} />, shortcut: keyLabel(platform, SHORTCUTS.settings), run: () => { setPalette(false); setSettings(true) } },
+        { id: 'sidebar', label: 'Toggle sidebar', icon: <PanelLeft size={16} />, shortcut: keyLabel(platform, SHORTCUTS.sidebar), run: () => { setPalette(false); setSidebar(value => !value) } }
+      ]} />}
     {rename !== null && <Modal title={t('Rename session')} onClose={() => setRename(null)}><form onSubmit={event => { event.preventDefault(); const request = rename, finish = beginOperation(operationKey, 'commands'); void request.apply(request.name.trim()).then(() => setRename(current => current === request ? null : current)).catch(request.report).finally(finish) }}><label className="field-label">{t('Session name')}<input autoFocus maxLength={80} value={rename.name} onChange={event => setRename({ ...rename, name: event.target.value })} /></label><div className="button-row"><button type="button" onClick={() => setRename(null)}>{t('Cancel')}</button><button className="primary" disabled={commandBusy || !rename.name.trim()} type="submit">{t('Save name')}</button></div></form></Modal>}
     {bypass && <Modal title={t('Bypass permission prompts?')} onClose={() => setBypass(null)}><p>{t('bingo will run tools without asking, except actions reserved for a person. This can change files, execute commands and contact external services. Explicit deny rules still apply.')}</p><div className="button-row"><button onClick={() => setBypass(null)}>{t('Keep asking')}</button><button className="danger-button" onClick={() => { const request = bypass; setBypass(null); request.apply() }}>{t('Bypass for this session')}</button></div></Modal>}
   </div></StartupTransition>

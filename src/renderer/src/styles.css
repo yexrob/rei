@@ -412,12 +412,18 @@ th { font-weight: 600; background: var(--code); }
 .catalog-list p { font-size: 12px; margin-block: 12px 0; }
 .shortcuts > div, .key-values > div { display: flex; justify-content: space-between; gap: 20px; padding-block: 12px; font-size: 12px; border-block-end: 1px solid var(--line); }
 .shortcuts dd, .key-values dd { margin: 0; color: var(--secondary); }
-.palette-input { width: 100%; margin-block-end: 16px; }
-.palette-results { max-height: 420px; overflow-y: auto; }
-.palette-results button { width: 100%; justify-content: flex-start; border: 0; background: transparent; text-align: start; padding: 10px; }
-.palette-results button > span { display: grid; gap: 5px; }
-.palette-results button > svg:last-child { margin-inline-start: auto; }
-.palette-results small { color: var(--secondary); font-size: 12px; }
+.palette-input { width: 100%; margin-block-end: 12px; }
+.palette-results { max-height: min(420px, 56vh); overflow-y: auto; }
+.palette [cmdk-item] { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--text); }
+.palette [cmdk-item] > svg { color: var(--secondary); flex-shrink: 0; }
+.palette [cmdk-item][data-selected="true"] { background: var(--selected); }
+.palette [cmdk-item][data-disabled="true"] { cursor: not-allowed; color: var(--secondary); }
+.palette [cmdk-item] > svg:last-child:not(:first-child), .palette [cmdk-item] > kbd { margin-inline-start: auto; }
+.palette-copy { display: grid; gap: 3px; min-width: 0; }
+.palette-copy > span, .palette-copy > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-copy small { color: var(--secondary); font-size: 12px; }
+.palette-hint { display: flex; justify-content: space-between; gap: 12px; margin-block-start: 12px; color: var(--secondary); font-size: 12px; }
+@media (forced-colors: active) { .palette [cmdk-item][data-selected="true"] { outline: 2px solid Highlight; } }
 .interaction-panel { width: min(100% - 80px, 720px); margin: 10px auto 0; padding: 22px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; max-height: min(54vh, 560px); overflow-y: auto; flex-shrink: 0; }
 .interaction-diff { margin-block: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--code); max-height: 280px; overflow: auto; }
 .interaction-diff .diff-view { overflow: visible; }
