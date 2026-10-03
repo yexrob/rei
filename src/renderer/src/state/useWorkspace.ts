@@ -262,7 +262,9 @@ export function useWorkspace() {
   }, [requireHost, updateProjection])
   const refreshSessionsFor = useCallback(async (scope: HostEpoch) => {
     const host = requireHost(scope); requireBoundedRuntime(host.connection)
-    const removed = epochCache(scope).removed
+    const store = epochCache(scope), removed = store.removed
+    // A complete scan is authoritative for sessions known before it started.
+    const known = new Set(host.sessions.map(summary => summary.id)), scanned = new Set<string>()
     let after: string | undefined
     updateHost(scope.hostId, current => ({ ...current, listComplete: false }))
     while (true) {
@@ -271,6 +273,7 @@ export function useWorkspace() {
         if (result.heads.some((head, index) => head.cwd !== host.connection.workspace || (index === 0 ? cursor !== undefined && head.id <= cursor : head.id <= result.heads[index - 1].id)) || (result.next && (!result.heads.length || result.next !== result.heads.at(-1)?.id))) throw new Error('The bounded session list did not advance safely.')
         updateHost(scope.hostId, current => {
           const heads = result.heads.filter(head => !removed.has(head.id))
+          for (const head of heads) scanned.add(head.id)
           const omitted = { ...current.headOmissions }
           const summaries = heads.map(({ omitted: fields, ...summary }) => { omitted[summary.id] = fields ?? []; return summary as SessionSummary })
           const fresh = new Map(summaries.map(summary => [summary.id, summary]))
@@ -284,7 +287,13 @@ export function useWorkspace() {
       if (next === after) throw new Error('The bounded session list repeated its cursor.')
       after = next
     }
-    updateHost(scope.hostId, current => ({ ...current, listComplete: true }))
+    updateHost(scope.hostId, current => {
+      const shown = (id: string) => [targetRef.current, previewRef.current].some(value => value?.hostId === scope.hostId && value.sessionId === id)
+      const sessions = current.sessions.filter(({ id }) => scanned.has(id) || !known.has(id) || store.attachments.has(id) || store.opening.has(id) || current.projectionEpochs[id] === scope.connectionId || shown(id))
+      if (sessions.length === current.sessions.length) return { ...current, listComplete: true }
+      const kept = new Set(sessions.map(summary => summary.id))
+      return { ...current, listComplete: true, sessions, headOmissions: Object.fromEntries(Object.entries(current.headOmissions).filter(([id]) => kept.has(id))) }
+    })
   }, [requireHost, epochCache, updateHost, requestBoundedFor])
   // Single flight per epoch: a request during a scan marks it dirty for one more pass.
   const refreshSessions = useCallback((scope: HostEpoch): Promise<void> => {

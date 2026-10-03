@@ -1051,6 +1051,30 @@ describe('streamed frame rendering and recovery bounds', () => {
     } finally { Object.assign(refreshPolicy, policy) }
   })
 
+  it('replaces the list after a complete scan while keeping open, selected and newly created sessions', async () => {
+    const { bridge, result } = await connected()
+    const summary = (id: string) => snapshot(id).summary
+    let listed = ['gone', 'kept', 'ses_1']
+    bridge.handlers.set('session/list', async () => ok({ sessions: listed.map(summary) }))
+    const policy = { ...refreshPolicy }
+    Object.assign(refreshPolicy, { debounce: 1 })
+    const head = async () => {
+      bridge.emit({ type: 'rpc', connectionId: result.current.connection.connectionId!, method: 'gateway/sessionHead', params: { session: 'kept' } })
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    try {
+      await act(head)
+      await act(async () => { await result.current.openSession('ses_1') })
+      expect(result.current.sessions.map(item => item.id).sort()).toEqual(['gone', 'kept', 'ses_1'])
+      listed = ['kept']
+      // Created mid-scan: the scan cannot vouch for it, so it stays.
+      bridge.handlers.set('session/list', async () => { bridge.emit({ type: 'rpc', connectionId: result.current.connection.connectionId!, method: 'gateway/event', params: { type: 'sessionCreated', summary: summary('fresh') } }); return ok({ sessions: listed.map(summary) }) })
+      await act(head)
+    } finally { Object.assign(refreshPolicy, policy) }
+    expect(result.current.sessions.map(item => item.id).sort()).toEqual(['fresh', 'kept', 'ses_1'])
+    expect(result.current.hosts[result.current.connection.hostId].listComplete).toBe(true)
+  })
+
   it('renders on the next animation frame outside tests, with a timer fallback for hidden windows', () => {
     vi.useFakeTimers()
     vi.stubEnv('MODE', 'production')
