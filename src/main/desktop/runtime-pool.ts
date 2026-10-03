@@ -60,6 +60,7 @@ export class RuntimePool {
   async connect(binary: string, workspace: string): Promise<ConnectionState> {
     this.admitConnection()
     const id = hostIdentity(binary, workspace)
+    this.pruneIdle(id)
     let host = this.hosts.get(id)
     if (host?.closing) throw new DesktopFailure('RUNTIME_CLOSING', 'This project runtime is still closing. Wait for its process to exit.')
     if (host?.starting) return host.starting
@@ -160,6 +161,19 @@ export class RuntimePool {
     if (this.closing) throw new DesktopFailure('RUNTIME_CLOSING', 'The runtime connections are still closing.')
     this.beforeConnect()
     this.invalidated = false
+  }
+  /**
+   * Forget fully stopped hosts without an epoch. The renderer re-ensures those by
+   * (workspace, binary), which recreates the same host id. A failed host keeps
+   * its connectionId for an explicit reconnect, so it is never pruned here.
+   */
+  private pruneIdle(keep: string): void {
+    for (const [id, host] of this.hosts) {
+      const connection = host.runtime.connection
+      if (id === keep || connection.status !== 'disconnected' || connection.connectionId !== null || host.runtime.live || host.starting || host.closing || host.operations || this.selected?.hostId === id) continue
+      if ([...this.owners.values(), ...this.references.values()].some(owner => owner.hostId === id)) continue
+      this.hosts.delete(id)
+    }
   }
   private reserve(binary: string, workspace: string, id: string): void {
     const live = [...this.hosts.values()].filter(host => host.runtime.live || host.starting || host.closing)

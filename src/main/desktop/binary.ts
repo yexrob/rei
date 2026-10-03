@@ -23,10 +23,12 @@ export async function workspaceDirectory(path: string): Promise<string> {
 export async function discoverBinary(options: DiscoveryOptions): Promise<BinaryLocation> {
   const env = options.env ?? process.env
   const suffix = process.platform === 'win32' ? '.exe' : ''
-  const explicit = env.BINGO_GUI_BINARY ?? options.preference
+  // Like BINGO_GUI_USER_DATA/BINGO_GUI_CWD, the environment override is a development/test hook only.
+  const override = options.packaged ? undefined : env.BINGO_GUI_BINARY || undefined
+  const explicit = override ?? options.preference
   if (explicit) {
-    try { return { path: await executable(explicit), source: env.BINGO_GUI_BINARY ? 'environment' : 'preferences' } }
-    catch { return { path: null, source: env.BINGO_GUI_BINARY ? 'invalid environment override' : 'unavailable saved binary' } }
+    try { return { path: await executable(explicit), source: override ? 'environment' : 'preferences' } }
+    catch { return { path: null, source: override ? 'invalid environment override' : 'unavailable saved binary' } }
   }
   const candidates: Array<[string, string]> = [
     [join(options.resourcesPath, 'bin', `bingo${suffix}`), 'bundled'],

@@ -1,5 +1,5 @@
 import { ipcMain, type BrowserWindow } from 'electron'
-import { DESKTOP_IPC, type BoundedDelivery, type DesktopEvent } from '../../shared/desktop'
+import { DESKTOP_IPC, type BoundedDelivery, type ConnectionState, type DesktopEvent } from '../../shared/desktop'
 import { trustedSender } from './security'
 import { DesktopFailure } from './rpc-client'
 
@@ -9,6 +9,8 @@ export const EVENT_DELIVERY_LIMITS = { inFlight: 256, events: 4096, bytes: 32 * 
 type Ticket = { transferId: string; settled: boolean; id?: number; resolve(): void; reject(error: DesktopFailure): void }
 type Queued = { channel: string; payload: { event: DesktopEvent } | { delivery: BoundedDelivery }; size: number; charged: boolean; ticket?: Ticket }
 type Pending = { size: number; sentAt: number; ticket?: Ticket }
+type Dropped = { connectionId: string; session: string; root?: string | null; from: number; to: number }
+const MAX_DROPPED_SESSIONS = 4096
 const error = (code: string, message: string) => new DesktopFailure(code, message)
 
 /** One bounded FIFO/window for runtime events and explicitly accepted results. */
@@ -23,8 +25,15 @@ export class EventDelivery {
   private reportingFailure = false
   private transportBroken = false
   private draining = false
+  private suspended = false
+  // Runtime traffic fused while the renderer was behind. Recovery replays it as
+  // canonical 'lagged' frames so the renderer reopens authoritative snapshots.
+  private readonly dropped = new Map<string, Dropped>()
+  private readonly droppedGateway = new Map<string, string>()
+  private droppedConnections = false
 
-  constructor(private readonly window: () => BrowserWindow | null, documentUrl: string, private readonly overflow: (failure: DesktopFailure) => void) {
+  /** Backpressure only fuses renderer delivery; it never stops native runtimes. */
+  constructor(private readonly window: () => BrowserWindow | null, documentUrl: string, private readonly overflow: (failure: DesktopFailure) => void, private readonly connections: () => ConnectionState[] = () => []) {
     ipcMain.on('desktop:event-ack', (event, id: unknown) => {
       if (!this.trusted(event, documentUrl) || !Number.isSafeInteger(id)) return
       const pending = this.pending.get(id as number)
@@ -60,13 +69,23 @@ export class EventDelivery {
     this.failed = false
     this.reportingFailure = false
     this.transportBroken = false
+    this.clearDropped()
+  }
+
+  /** System sleep must not count against the renderer's ACK deadline. */
+  suspend(): void { this.suspended = true; clearTimeout(this.timer); this.timer = undefined }
+  resume(): void {
+    this.suspended = false
+    const now = Date.now()
+    for (const pending of this.pending.values()) pending.sentAt = now
+    this.armDeadline()
   }
 
   /** Explicit reconnect must not erase unacknowledged IPC or restart an old deadline. */
   recover(): void {
     if (!this.failed) return
     if (this.transportBroken || this.pending.size || this.queue.length) throw error('RENDERER_BACKPRESSURE', 'The window is still recovering runtime events. Wait for it to catch up, or reload the window before reconnecting.')
-    this.failed = false
+    this.resync()
   }
 
   send(event: DesktopEvent): void {
@@ -76,13 +95,14 @@ export class EventDelivery {
     // notice behind existing IPC, but fuse runtime events until reconnect.
     // Native menu commands remain usable and consume the same bounded budget.
     const control = this.failed && this.reportingFailure
-    if (this.failed && !control && event.type !== 'menu') return
+    if (this.failed && !control && event.type !== 'menu') { this.drop(event); return }
     if (control) this.reportingFailure = false
     const size = this.packetBytes({ id: Number.MAX_SAFE_INTEGER, event })
     if (control) {
       if (size > EVENT_DELIVERY_LIMITS.controlBytes) return
     } else if (this.pending.size + this.queue.length >= EVENT_DELIVERY_LIMITS.events - 1 || this.bytes + size > EVENT_DELIVERY_LIMITS.bytes - EVENT_DELIVERY_LIMITS.controlBytes) {
       this.fail()
+      this.drop(event)
       return
     }
     this.queue.push({ channel: DESKTOP_IPC.event, payload: { event }, size, charged: true })
@@ -144,6 +164,30 @@ export class EventDelivery {
     this.pending.delete(id)
     this.bytes -= pending.size
     this.drain()
+    // The renderer caught up with everything already sent: reopen delivery.
+    if (this.failed && !this.transportBroken && !this.pending.size && !this.queue.length) this.resync()
+  }
+  private drop(event: DesktopEvent): void {
+    if (event.type === 'connection') { this.droppedConnections = true; return }
+    if (event.type !== 'rpc') return
+    if (event.method === 'gateway/event' || event.method === 'gateway/sessionHead') {
+      const params = event.params, session = 'session' in params ? params.session : 'summary' in params ? params.summary.id : null
+      if (session && (this.droppedGateway.has(event.connectionId) || this.droppedGateway.size < MAX_DROPPED_SESSIONS)) this.droppedGateway.set(event.connectionId, session)
+      return
+    }
+    const { session, seq } = event.params, key = JSON.stringify([event.connectionId, session]), previous = this.dropped.get(key)
+    if (previous) { previous.from = Math.min(previous.from, seq); previous.to = Math.max(previous.to, seq); return }
+    if (this.dropped.size < MAX_DROPPED_SESSIONS) this.dropped.set(key, { connectionId: event.connectionId, session, root: event.params.root, from: seq, to: seq })
+  }
+  private clearDropped(): void { this.dropped.clear(); this.droppedGateway.clear(); this.droppedConnections = false }
+  /** Publishes current host states and one canonical lagged frame per session with fused events. */
+  private resync(): void {
+    this.failed = false
+    const dropped = [...this.dropped.values()], gateway = [...this.droppedGateway], connections = this.droppedConnections
+    this.clearDropped()
+    if (connections || dropped.length || gateway.length) for (const connection of this.connections()) this.send({ type: 'connection', connection })
+    for (const lost of dropped) this.send({ type: 'rpc', connectionId: lost.connectionId, method: 'event', params: { seq: lost.to, ts: new Date().toISOString(), session: lost.session, ...(lost.root ? { root: lost.root } : {}), event: { type: 'lagged', from: lost.from, to: lost.to } } })
+    for (const [connectionId, session] of gateway) this.send({ type: 'rpc', connectionId, method: 'gateway/sessionHead', params: { session } })
   }
   private drain(): void {
     if (this.draining || this.transportBroken) return
@@ -179,7 +223,7 @@ export class EventDelivery {
   private armDeadline(): void {
     clearTimeout(this.timer)
     this.timer = undefined
-    if (this.failed) return
+    if (this.failed || this.suspended) return
     const oldest = this.pending.values().next().value
     if (!oldest) return
     this.timer = setTimeout(() => this.fail(), Math.max(0, oldest.sentAt + EVENT_DELIVERY_LIMITS.timeout - Date.now()))
@@ -192,13 +236,14 @@ export class EventDelivery {
     this.timer = undefined
     // Already-sent packets still occupy the physical window after failure.
     for (const queued of this.queue) {
+      if ('event' in queued.payload) this.drop(queued.payload.event)
       if (queued.charged) this.bytes -= queued.size
       if (queued.ticket) { this.rejectTicket(queued.ticket, error('RENDERER_BACKPRESSURE', 'The renderer could not receive this bounded result.')); this.tickets.delete(queued.ticket.transferId) }
     }
     this.queue = []
     for (const pending of this.pending.values()) if (pending.ticket) this.rejectTicket(pending.ticket, error('RENDERER_BACKPRESSURE', 'The renderer did not acknowledge this bounded result.'))
     this.reportingFailure = true
-    try { this.overflow(error('RENDERER_BACKPRESSURE', 'The window could not keep up with runtime events. Reconnect to recover an authoritative snapshot.')) }
+    try { this.overflow(error('RENDERER_BACKPRESSURE', 'The window could not keep up with runtime events. Delivery resumes with fresh snapshots once it catches up.')) }
     finally { this.reportingFailure = false }
   }
 }

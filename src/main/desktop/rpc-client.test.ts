@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fileURLToPath } from 'node:url'
-import { RpcClient, type RpcNotification, type DesktopFailure } from './rpc-client'
+import { RpcClient, redactSecrets, unknownEventType, withDiagnostics, type RpcNotification, type DesktopFailure } from './rpc-client'
 
 const clients: RpcClient[] = []
 const fixture = fileURLToPath(new URL('./__fixtures__/rpc-host.cjs', import.meta.url))
@@ -104,12 +104,58 @@ describe('native bingo stdio client', () => {
     expect(failures).toHaveLength(0)
     expect(await client.request('catalog/read', { kind: 'tools' })).toEqual({ kind: 'tools', entries: [] })
   })
-  it('invalidates all pending requests on timeout without retrying writes', async () => {
+  it('invalidates all pending requests when a write times out without retrying it', async () => {
     const { client, failures } = create('timeout', 150)
     await client.start()
-    const results = await Promise.allSettled([client.request('session/list', {}), client.request('session/list', {})])
-    expect(results.every((result) => result.status === 'rejected' && result.reason.code === 'REQUEST_TIMEOUT')).toBe(true)
+    const results = await Promise.allSettled([client.request('session/submit', { session: 's', intent: 'i', input: { kind: 'text', text: 'x', origin: { surface: 'desktop' } } }), client.request('session/list', {})])
+    expect(results.map(result => result.status === 'rejected' && result.reason.code)).toEqual(['REQUEST_TIMEOUT', 'REQUEST_TIMEOUT'])
     expect(failures).toHaveLength(1)
+  })
+  it('fails only a timed-out idempotent read and silently drops its late reply', async () => {
+    const { client, failures } = create('late-read', 150)
+    await client.start()
+    await expect(client.request('session/list', {})).rejects.toMatchObject({ code: 'TIMEOUT' })
+    await new Promise(resolve => setTimeout(resolve, 300))
+    expect(await client.request('catalog/read', { kind: 'tools' })).toEqual({ kind: 'tools', entries: [] })
+    expect(failures).toHaveLength(0)
+  })
+  it('keeps the connection when a desktop consumer throws', async () => {
+    const failures: DesktopFailure[] = [], error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const client = new RpcClient({ binary: process.execPath, cwd: process.cwd(), args: [fixture] }, () => { throw new Error('ui exploded') }, (failure) => failures.push(failure), () => { throw new Error('observer exploded') })
+    clients.push(client)
+    await client.start()
+    expect((await client.request('session/open', { selector: { kind: 'byId', id: 's' } })).session).toBe('fixture-session')
+    expect(await client.request('catalog/read', { kind: 'tools' })).toEqual({ kind: 'tools', entries: [] })
+    expect(failures).toHaveLength(0)
+    expect(error).toHaveBeenCalled()
+    error.mockRestore()
+  })
+  it('drops unknown event variants but still rejects malformed known events', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { client, events, failures } = create('unknown-event')
+    await client.start()
+    await client.request('session/events', { session: 'fixture-session', since: 0 })
+    await expect.poll(() => events.length).toBe(1)
+    expect(events[0]).toMatchObject({ method: 'event', params: { seq: 2, event: { type: 'notice' } } })
+    expect(failures).toHaveLength(0)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('futureThing'))
+    warn.mockRestore()
+    const invalid = create('invalid-event')
+    await invalid.client.start()
+    await invalid.client.request('session/events', { session: 'fixture-session', since: 0 }).catch(() => {})
+    await expect.poll(() => invalid.failures.map(failure => failure.code)).toEqual(['INVALID_PROTOCOL'])
+    expect(unknownEventType({ event: { type: 'notice' } })).toBeNull()
+    expect(unknownEventType({ event: {} })).toBeNull()
+  })
+  it('reports a redacted, bounded stderr tail when bingo exits', async () => {
+    const { client, failures } = create('stderr-exit')
+    await client.start()
+    await expect(client.request('session/list', {})).rejects.toMatchObject({ code: 'PROCESS_EXITED' })
+    const message = failures[0].message
+    expect(message).toMatch(/^bingo stopped \(exit 3\)/)
+    expect(message).toContain('fatal: boom')
+    expect(message.length).toBeLessThanOrEqual(2048)
+    expect(message).not.toMatch(/abc123|tok\.en-1|0123456789abcdef|xxxx/)
   })
   it('bounds concurrent requests and payload bytes', async () => {
     const { client } = create('timeout', 500)
@@ -133,5 +179,17 @@ describe('native bingo stdio client', () => {
     clients.push(client)
     await expect(client.start()).rejects.toMatchObject({ code: 'START_FAILED' })
     expect(failures).toHaveLength(1)
+  })
+})
+
+describe('stderr diagnostics', () => {
+  it('redacts common credential shapes', () => {
+    expect(redactSecrets('key sk-ant-api03-abcdef Bearer abc.def OPENAI_API_KEY=xyz token: "q1" password=hunter2 ok')).toBe('key sk-[redacted] Bearer [redacted] OPENAI_API_KEY=[redacted] token: "[redacted]" password=[redacted] ok')
+  })
+  it('keeps messages within the desktop error budget', () => {
+    expect(withDiagnostics('stopped.', '')).toBe('stopped.')
+    const message = withDiagnostics('stopped.', 'y'.repeat(5000) + 'END')
+    expect(message.length).toBe(2048)
+    expect(message.endsWith('END')).toBe(true)
   })
 })

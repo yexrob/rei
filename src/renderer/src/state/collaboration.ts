@@ -38,17 +38,25 @@ export function roomMetadata(snapshot: SessionState): { purpose: string; members
 }
 
 export function rootSessionId(sessions: SessionSummary[], activeId: string | null): string | null {
-  const index = new Map(sessions.map((session) => [session.id, session]))
+  return rootIn(new Map(sessions.map((session) => [session.id, session])), activeId)
+}
+
+/** Resolves roots against one shared index; `roots` memoizes every visited chain. */
+function rootIn(index: Map<string, SessionSummary>, activeId: string | null, roots?: Map<string, string | null>): string | null {
   const seen = new Set<string>()
-  let id = activeId
+  const chain: string[] = []
+  let id = activeId, root: string | null = null
   while (id && !seen.has(id)) {
-    seen.add(id)
+    const cached = roots?.get(id)
+    if (cached !== undefined) { root = cached; break }
+    seen.add(id); chain.push(id)
     const session = index.get(id)
-    if (!session) return null
-    if (!session.parent) return id
+    if (!session) break
+    if (!session.parent) { root = id; break }
     id = session.parent.session
   }
-  return null
+  if (roots) for (const visited of chain) roots.set(visited, root)
+  return root
 }
 
 function activityItem(projection: SessionProjection): Item | undefined {
@@ -111,10 +119,11 @@ function collaborator(summary: SessionSummary, rootId: string, projection?: Sess
 }
 
 export function selectCollaboration(sessions: SessionSummary[], projections: Record<string, SessionProjection>, activeId: string | null): { rootId: string | null; root: SessionSummary | null; entries: Collaborator[] } {
-  const rootId = rootSessionId(sessions, activeId)
-  const root = sessions.find((session) => session.id === rootId) ?? null
+  const index = new Map(sessions.map((session) => [session.id, session])), roots = new Map<string, string | null>()
+  const rootId = rootIn(index, activeId, roots)
+  const root = rootId ? index.get(rootId) ?? null : null
   if (!root || !rootId) return { rootId: null, root: null, entries: [] }
-  const descendants = sessions.filter((session) => session.id !== rootId && (isRoomSession(session) || isAgentSession(session)) && rootSessionId(sessions, session.id) === rootId)
+  const descendants = sessions.filter((session) => session.id !== rootId && (isRoomSession(session) || isAgentSession(session)) && rootIn(index, session.id, roots) === rootId)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
   return { rootId, root, entries: [root, ...descendants].map((summary) => collaborator(summary, rootId, projections[summary.id])) }
 }

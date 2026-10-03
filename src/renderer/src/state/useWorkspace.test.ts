@@ -9,7 +9,8 @@ import type {
 } from '../../../shared/desktop'
 import type { Event, Frame, RpcMethods, SessionState } from '../../../shared/rpc'
 import { rustInitial } from './fixtures'
-import { useWorkspace } from './useWorkspace'
+import { bufferLimits, frameScheduler, projectionCache, recoveryPolicy, refreshPolicy, useWorkspace } from './useWorkspace'
+import { selectStatus } from './session'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -942,5 +943,207 @@ describe('journal-driven collaboration subscriptions', () => {
     expect(result.current.error).toBe('')
     await act(async () => { bridge.emit({ type: 'connection', connection: { ...result.current.connection, status: 'failed', error: { code: 'CONNECTION', message: 'Transport lost' } } }); result.current.newSession() })
     expect(result.current.error).toBe('Transport lost')
+  })
+})
+
+describe('streamed frame rendering and recovery bounds', () => {
+  it('folds a burst of frames into one render and keeps the session list identity while the summary is unchanged', async () => {
+    const bridge = desktop()
+    let renders = 0
+    const { result } = renderHook(() => { renders += 1; return useWorkspace() })
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await result.current.connect('/work') })
+    await act(async () => { await result.current.openSession('ses_1') })
+    const sessions = result.current.sessions, hosts = result.current.hosts, started = renders
+    const spy = vi.spyOn(frameScheduler, 'schedule')
+    await act(async () => { for (let seq = 11; seq <= 40; seq += 1) bridge.emitFrame(delta(seq, '.')) })
+    expect(spy).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
+    expect(renders - started).toBe(1)
+    expect(assistantText(result.current.active)).toBe(`Before${'.'.repeat(30)}`)
+    expect(result.current.sessions).toBe(sessions)
+    expect(result.current.hosts).not.toBe(hosts)
+    await act(async () => { bridge.emitFrame(frame(41, { type: 'sessionUpdated', summary: { ...snapshot().summary, title: 'Renamed' } })) })
+    expect(result.current.sessions).not.toBe(sessions)
+    expect(result.current.sessions[0].title).toBe('Renamed')
+    const renamed = result.current.sessions
+    await act(async () => { bridge.emitFrame(frame(42, { type: 'sessionUpdated', summary: { ...snapshot().summary, title: 'Renamed' } })) })
+    expect(result.current.sessions).toBe(renamed)
+  })
+
+  it('drops an overflowing in-flight buffer and resyncs the opened session instead of growing without bound', async () => {
+    const { bridge, result } = await connected()
+    const reply = deferred<Result<unknown>>()
+    bridge.handlers.set('session/open', () => reply.promise)
+    const limits = { ...bufferLimits }
+    bufferLimits.session = 5
+    try {
+      let open!: Promise<string>
+      await act(async () => { open = result.current.openSession('ses_1'); for (let seq = 11; seq <= 30; seq += 1) bridge.emitFrame(delta(seq, '.')) })
+      bridge.handlers.set('session/open', async () => openReply(snapshot('ses_1', 30, 'Recovered')))
+      await act(async () => { reply.resolve(openReply(snapshot())); await open })
+      await act(async () => { await Promise.resolve() })
+      expect(bridge.api.requestBounded).toHaveBeenCalledTimes(3)
+      expect(result.current.active?.resync).toBeNull()
+      expect(assistantText(result.current.active)).toBe('Recovered')
+    } finally { Object.assign(bufferLimits, limits) }
+  })
+
+  it('evicts the largest buffer when the epoch-wide cap is reached and keeps replaying the rest', async () => {
+    const { bridge, result } = await connected()
+    const reply = deferred<Result<unknown>>()
+    bridge.handlers.set('session/open', () => reply.promise)
+    const limits = { ...bufferLimits }
+    bufferLimits.total = 6
+    try {
+      let open!: Promise<string>
+      await act(async () => {
+        open = result.current.openSession('ses_1')
+        for (let seq = 1; seq <= 4; seq += 1) bridge.emitFrame(delta(seq, '.', 'other'))
+        for (let seq = 11; seq <= 13; seq += 1) bridge.emitFrame(delta(seq, String(seq)))
+      })
+      await act(async () => { reply.resolve(openReply(snapshot())); await open })
+      expect(result.current.active?.resync).toBeNull()
+      expect(assistantText(result.current.active)).toBe('Before111213')
+    } finally { Object.assign(bufferLimits, limits) }
+  })
+
+  it('retries a failed gap recovery with backoff, then surfaces a failed state that a manual reopen clears', async () => {
+    const { bridge, result } = await opened()
+    const policy = { ...recoveryPolicy }
+    Object.assign(recoveryPolicy, { backoff: 1 })
+    try {
+      bridge.handlers.set('session/open', async () => ({ ok: false as const, error: { code: 'UNAVAILABLE', message: 'Runtime busy.' } }))
+      bridge.request.mockClear()
+      await act(async () => { bridge.emitFrame(delta(12, 'gap')) })
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
+      expect(bridge.request.mock.calls.filter(([input]) => input.method === 'session/open')).toHaveLength(3)
+      expect(result.current.active?.resync).toMatchObject({ reason: 'gap', since: 10, failed: true })
+      expect(selectStatus(result.current.active!)).toBe('failed')
+      expect(result.current.error).toMatch(/recovery failed after 3 attempts: Runtime busy/)
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
+      expect(bridge.request.mock.calls.filter(([input]) => input.method === 'session/open')).toHaveLength(3)
+      bridge.handlers.set('session/open', async () => openReply(snapshot('ses_1', 12, 'Repaired')))
+      await act(async () => { await result.current.openSession('ses_1') })
+      expect(result.current.active?.resync).toBeNull()
+      expect(assistantText(result.current.active)).toBe('Repaired')
+    } finally { Object.assign(recoveryPolicy, policy) }
+  })
+
+  it('coalesces sessionHead bursts into one trailing scan and reruns once for heads seen mid-scan', async () => {
+    const { bridge, result } = await connected()
+    const policy = { ...refreshPolicy }
+    Object.assign(refreshPolicy, { debounce: 5 })
+    try {
+      const gate = deferred<void>()
+      let scans = 0
+      bridge.handlers.set('session/list', async () => { scans += 1; if (scans === 1) await gate.promise; return ok({ sessions: [] }) })
+      const head = () => bridge.emit({ type: 'rpc', connectionId: result.current.connection.connectionId!, method: 'gateway/sessionHead', params: { session: 'ses_1' } })
+      await act(async () => { for (let index = 0; index < 20; index += 1) head() })
+      expect(scans).toBe(0)
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+      expect(scans).toBe(1)
+      await act(async () => { head(); head(); head(); await new Promise(resolve => setTimeout(resolve, 20)) })
+      expect(scans).toBe(1)
+      await act(async () => { gate.resolve(); await new Promise(resolve => setTimeout(resolve, 20)) })
+      expect(scans).toBe(2)
+      expect(result.current.hosts[result.current.connection.hostId].listComplete).toBe(true)
+    } finally { Object.assign(refreshPolicy, policy) }
+  })
+
+  it('replaces the list after a complete scan while keeping open, selected and newly created sessions', async () => {
+    const { bridge, result } = await connected()
+    const summary = (id: string) => snapshot(id).summary
+    let listed = ['gone', 'kept', 'ses_1']
+    bridge.handlers.set('session/list', async () => ok({ sessions: listed.map(summary) }))
+    const policy = { ...refreshPolicy }
+    Object.assign(refreshPolicy, { debounce: 1 })
+    const head = async () => {
+      bridge.emit({ type: 'rpc', connectionId: result.current.connection.connectionId!, method: 'gateway/sessionHead', params: { session: 'kept' } })
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    try {
+      await act(head)
+      await act(async () => { await result.current.openSession('ses_1') })
+      expect(result.current.sessions.map(item => item.id).sort()).toEqual(['gone', 'kept', 'ses_1'])
+      listed = ['kept']
+      // Created mid-scan: the scan cannot vouch for it, so it stays.
+      bridge.handlers.set('session/list', async () => { bridge.emit({ type: 'rpc', connectionId: result.current.connection.connectionId!, method: 'gateway/event', params: { type: 'sessionCreated', summary: summary('fresh') } }); return ok({ sessions: listed.map(summary) }) })
+      await act(head)
+    } finally { Object.assign(refreshPolicy, policy) }
+    expect(result.current.sessions.map(item => item.id).sort()).toEqual(['fresh', 'kept', 'ses_1'])
+    expect(result.current.hosts[result.current.connection.hostId].listComplete).toBe(true)
+  })
+
+  it('evicts least recently used idle projections beyond the per-host cap and reloads them on reselect', async () => {
+    const { bridge, result } = await connected()
+    const limit = projectionCache.perHost
+    projectionCache.perHost = 1
+    try {
+      await act(async () => { await result.current.openSession('s1') })
+      await act(async () => { bridge.emitFrame(frame(11, { type: 'turnStarted', turn: 'turn_2', inputs: [], origin: 'submit' }, 's1')) })
+      for (const id of ['s2', 's3', 's4']) await act(async () => { await result.current.openSession(id) })
+      // The busy s1, the selected s3 and the opening s4 never count against the cap.
+      expect(Object.keys(result.current.projections).sort()).toEqual(['s1', 's2', 's3', 's4'])
+      await act(async () => { await result.current.openSession('s5') })
+      expect(Object.keys(result.current.projections).sort()).toEqual(['s1', 's3', 's4', 's5'])
+      await act(async () => { bridge.emitFrame(delta(11, ' dropped', 's2')) })
+      bridge.request.mockClear()
+      await act(async () => { await result.current.openSession('s2') })
+      expect(bridge.request.mock.calls.filter(([input]) => input.method === 'session/open')).toHaveLength(1)
+      expect(result.current.activeId).toBe('s2')
+      expect(result.current.active?.snapshot.items[0].body).toMatchObject({ text: 'Before' })
+      expect(Object.keys(result.current.projections).sort()).toEqual(['s1', 's2', 's4', 's5'])
+    } finally { projectionCache.perHost = limit }
+  })
+
+  it('drops old-epoch projections on reconnect except the transcript still on screen', async () => {
+    const { result } = await connected()
+    await act(async () => { await result.current.openSession('other') })
+    await act(async () => { await result.current.openSession('ses_1') })
+    expect(Object.keys(result.current.projections).sort()).toEqual(['other', 'ses_1'])
+    const hostId = result.current.connection.hostId
+    await act(async () => { await result.current.closeHost(hostId) })
+    expect(Object.keys(result.current.hosts[hostId].projections)).toEqual(['ses_1'])
+    expect(result.current.active?.snapshot.summary.id).toBe('ses_1')
+  })
+
+  it('trims read watermarks by last update rather than first insertion', async () => {
+    const own = JSON.stringify(['host:/work', 'ses_1'])
+    localStorage.setItem('rei.read.v1', JSON.stringify(Object.fromEntries([[own, 1], ...Array.from({ length: 999 }, (_, index) => [`k${index}`, 1])])))
+    try {
+      const { result } = await opened()
+      await act(async () => { result.current.markRead({ ...result.current.target!, sessionId: 'ses_1' }, 10) })
+      await act(async () => { result.current.markRead({ ...result.current.target!, sessionId: 'other' }, 10) })
+      const saved = Object.keys(JSON.parse(localStorage.getItem('rei.read.v1')!))
+      expect(saved).toHaveLength(1000)
+      expect(saved.slice(-2)).toEqual([own, JSON.stringify(['host:/work', 'other'])])
+      expect(saved).not.toContain('k0')
+    } finally { localStorage.removeItem('rei.read.v1') }
+  })
+
+  it('renders on the next animation frame outside tests, with a timer fallback for hidden windows', () => {
+    vi.useFakeTimers()
+    vi.stubEnv('MODE', 'production')
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback))
+    vi.stubGlobal('cancelAnimationFrame', () => {})
+    try {
+      const flush = vi.fn()
+      frameScheduler.schedule(flush)
+      expect(flush).not.toHaveBeenCalled()
+      frames[0](0); vi.runAllTimers()
+      expect(flush).toHaveBeenCalledTimes(1)
+      const hidden = vi.fn()
+      frameScheduler.schedule(hidden)
+      vi.advanceTimersByTime(100)
+      expect(hidden).toHaveBeenCalledTimes(1)
+      frames[1](0)
+      expect(hidden).toHaveBeenCalledTimes(1)
+      const cancelled = vi.fn()
+      frameScheduler.schedule(cancelled)()
+      frames[2](0); vi.runAllTimers()
+      expect(cancelled).not.toHaveBeenCalled()
+    } finally { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.useRealTimers() }
   })
 })
