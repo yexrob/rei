@@ -224,7 +224,6 @@ export class RpcClient {
   stderrTail(): string {
     let text = Buffer.concat(this.stderr, this.stderrBytes).toString('utf8')
     if (this.stderrTruncated) text = text.slice(text.indexOf('\n') + 1)
-    // eslint-disable-next-line no-control-regex
     return redactSecrets(text).replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '').trim()
   }
 
