@@ -1,5 +1,6 @@
 import { Plus, TerminalSquare, X } from './icons'
 import { useI18n } from '../i18n'
+import { useDisplayPath } from '../paths'
 import { IconButton } from './primitives'
 import { TerminalTabs } from './terminal/TerminalTabs'
 import { useTerminalController } from './terminal/useTerminalController'
@@ -9,6 +10,7 @@ import './terminal/terminal.css'
 
 export function TerminalPanel({ visible, onClose }: { visible: boolean; onClose(): void }): React.JSX.Element {
   const { t } = useI18n()
+  const formatPath = useDisplayPath()
   const { host, controller, state } = useTerminalController(visible, onClose)
   const active = state.tabs.find((tab) => tab.id === state.activeId)
   const error = state.error || active?.error
@@ -19,7 +21,7 @@ export function TerminalPanel({ visible, onClose }: { visible: boolean; onClose(
   return <section className="native-panel terminal-panel" aria-label={t('Terminal')} hidden={!visible}>
     <header className="panel-heading terminal-heading">
       <span><TerminalSquare size={14} />{t('Terminal')}</span>
-      <span className="terminal-cwd" title={active?.cwd || ''}>{active?.cwd || t('Local shell · not sent to the agent')}</span>
+      <span className="terminal-cwd" title={active?.cwd || ''}>{active?.cwd ? formatPath(active.cwd, 64) : t('Local shell · not sent to the agent')}</span>
       <IconButton label={t('New terminal')} disabled={state.starting || !state.ready || state.tabs.length >= 8 || !window.bingoPanels} onClick={() => { void controller.current?.start() }}><Plus size={15} /></IconButton>
       <IconButton label={t('Hide terminal area')} onClick={onClose}><X size={15} /></IconButton>
     </header>

@@ -7,6 +7,7 @@ import { ErrorBanner, Modal, object } from './primitives'
 import { ProviderSetup } from './ProviderSetup'
 import { ModelPicker, Picker } from './Picker'
 import { useI18n, type LocalePreference } from '../i18n'
+import { useDisplayPath } from '../paths'
 import './settings.css'
 
 type Workspace = ReturnType<typeof useWorkspace>
@@ -18,6 +19,7 @@ export function Settings({ workspace: w, onClose, openLink, clearDrafts, initial
   const [catalogKind, setCatalogKind] = useState<CapabilityKind>('tools')
   const [filter, setFilter] = useState('')
   const [busy, setBusy] = useState(false)
+  const formatPath = useDisplayPath()
   const perform = (action: () => Promise<unknown>) => { setBusy(true); void action().catch(w.report).finally(() => setBusy(false)) }
   useEffect(() => { if (page === 'extensions' && w.connection.status === 'ready') void w.readCatalog(catalogKind === 'skills' ? 'commands' : catalogKind).catch(w.report) }, [page, catalogKind, w.readCatalog, w.report, w.connection.status])
   const catalogEntries = (w.catalogs[catalogKind === 'skills' ? 'commands' : catalogKind]?.entries ?? []).filter((entry) => catalogKind !== 'skills' || object(entry.meta).family === 'skill')
@@ -26,7 +28,7 @@ export function Settings({ workspace: w, onClose, openLink, clearDrafts, initial
     {w.error && <ErrorBanner message={w.error} onDismiss={() => w.setError('')} />}
     {page === 'general' && <><h3>{t('Appearance')}</h3><div className="theme-options" role="group" aria-label={t('Appearance')}>{([['system', Laptop], ['light', Sun], ['dark', Moon]] as const).map(([theme, Icon]) => <button key={theme} aria-pressed={w.preferences?.theme === theme} className={w.preferences?.theme === theme ? 'selected' : ''} onClick={() => perform(() => w.savePreferences({ theme }))}><span className={`theme-preview theme-preview-${theme}`} aria-hidden="true"><span className="theme-preview-rail"><i /><i /><i /></span><span className="theme-preview-workspace"><i /><i /><span /></span></span><span className="theme-option-label"><Icon size={15} />{t(theme.charAt(0).toUpperCase() + theme.slice(1))}<span className="theme-option-check" aria-hidden="true">{w.preferences?.theme === theme && <Check size={13} />}</span></span></button>)}</div>
       <section className="setting-section"><h3>{t('Language')}</h3><Picker label={t('Language')} value={preference} onValueChange={(value) => setLocale(value as LocalePreference)} options={[{ value: 'system', label: t('System default') }, { value: 'en', label: 'English' }, { value: 'zh-CN', label: '简体中文' }]} /></section>
-      <section className="setting-section"><h3>{t('Workspace')}</h3><p className="path-label">{w.connection.workspace || t('No folder selected')}</p><button onClick={() => perform(w.chooseWorkspace)} disabled={busy}><FolderOpen size={15} /> {t('Open another folder')}</button></section>
+      <section className="setting-section"><h3>{t('Workspace')}</h3><p className="path-label" title={w.connection.workspace ?? undefined}>{w.connection.workspace ? formatPath(w.connection.workspace) : t('No folder selected')}</p><button onClick={() => perform(w.chooseWorkspace)} disabled={busy}><FolderOpen size={15} /> {t('Open another folder')}</button></section>
       <section className="setting-section"><h3>{t('bingo runtime')}</h3><p className="path-label">{w.connection.binary || w.bootstrap?.binary.path || t('Not found')}</p><p className="secondary">{w.connection.server ? t('Connected · bingo {version} · protocol {protocol}', { version: w.connection.server.version, protocol: w.connection.server.protocol }) : t('The app includes bingo. Choosing another executable is optional.')}</p><div className="button-row"><button disabled={busy} onClick={() => perform(async () => { const binary = unwrap(await window.bingoDesktop.chooseBinary()); if (binary) { await w.savePreferences({ binaryPath: binary }); if (w.connection.workspace) await w.connect(w.connection.workspace, binary) } })}>{t('Choose executable…')}</button>{w.preferences?.binaryPath && <button disabled={busy} onClick={() => perform(async () => { await w.savePreferences({ binaryPath: null }); await w.connect(w.connection.workspace || w.preferences?.workspace || undefined) })}>{t('Use default runtime')}</button>}</div></section>
       <section className="setting-section"><h3>{t('Your data stays yours')}</h3><p className="secondary">{t('bingo owns your sessions, settings and permissions. Rei stores only desktop preferences and local text drafts. Prompts and files are sent to the provider you choose. External images are not loaded automatically.')}</p><button disabled={busy} onClick={() => { if (window.confirm(t('Clear all saved text drafts? Sent messages and bingo sessions will not be changed.'))) { clearDrafts(); w.setNotice(t('Saved text drafts cleared.')); onClose() } }}>{t('Clear saved drafts')}</button></section>
     </>}
