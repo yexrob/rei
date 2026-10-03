@@ -243,6 +243,11 @@ function WorkspaceApp(): React.JSX.Element {
     } catch { /* The captured create/submit operation records errors on its own destination. */ }
     finally { sendLocks.current.delete(lock); finish(); if (isCurrent()) input.current?.focus() }
   }
+  // Stable transcript callbacks: memoized rows must not re-render because App did.
+  const conversation = useRef({ ready, send: w.send, activeId: w.activeId, draft, setDraft })
+  conversation.current = { ready, send: w.send, activeId: w.activeId, draft, setDraft }
+  const retryMessage = useCallback((text: string) => { const c = conversation.current; if (c.ready && c.activeId) void c.send(text, [], c.activeId).catch(() => { /* The submit operation reports its own error. */ }) }, [])
+  const editMessage = useCallback((text: string) => { const c = conversation.current; c.setDraft({ ...c.draft, text }); requestAnimationFrame(() => { input.current?.focus(); input.current?.setSelectionRange(text.length, text.length) }) }, [])
   const applyCommand = (name: string, value: string) => {
     const finish = beginOperation(operationKey, 'commands')
     void w.runAction(name, value).then(() => w.clearContextError()).catch(() => {}).finally(finish)
@@ -355,7 +360,7 @@ function WorkspaceApp(): React.JSX.Element {
         </>} />
       </> : <div className={`conversation ${showWelcome ? 'empty-conversation' : ''}`}>
         {showWelcome && <WelcomeHero workspaceName={workspaceLabel} workspacePath={scratch ? undefined : w.connection.workspace ?? undefined} chooseProject={chooseProject} />}
-        {w.active && !showWelcome && <Timeline key={operationKey} connected={ready} projection={w.active} childIds={w.hosts[w.connection.hostId]?.childIds[w.activeId ?? ''] ?? []} childScanComplete={w.hosts[w.connection.hostId]?.childScanComplete[w.activeId ?? ''] ?? false} previewReference={(kind, id) => { void w.previewReference(kind, id).catch(w.report) }} saveReference={(kind, id) => { void w.exportReference(kind, id).catch(w.report) }} exportProgress={w.exportProgress} cancelExport={() => { void w.cancelExport().catch(w.report) }} assistantName={agentName} openLink={openLink} runAction={runAction} sessions={w.sessions} onSelectSession={selectCollaborator} loadHistory={() => { void w.loadHistory().catch(w.report) }} loading={w.loading} />}
+        {w.active && !showWelcome && <Timeline key={operationKey} connected={ready} onRetry={retryMessage} onEdit={editMessage} projection={w.active} childIds={w.hosts[w.connection.hostId]?.childIds[w.activeId ?? ''] ?? []} childScanComplete={w.hosts[w.connection.hostId]?.childScanComplete[w.activeId ?? ''] ?? false} previewReference={(kind, id) => { void w.previewReference(kind, id).catch(w.report) }} saveReference={(kind, id) => { void w.exportReference(kind, id).catch(w.report) }} exportProgress={w.exportProgress} cancelExport={() => { void w.cancelExport().catch(w.report) }} assistantName={agentName} openLink={openLink} runAction={runAction} sessions={w.sessions} onSelectSession={selectCollaborator} loadHistory={() => { void w.loadHistory().catch(w.report) }} loading={w.loading} />}
         {w.commandView && !settings && <div className="command-result"><IconButton label="Dismiss command result" onClick={() => w.setCommandView(null)}><X size={15} /></IconButton><StructuredView view={w.commandView} runAction={runAction} openLink={openLink} /></div>}
         {state?.interactions?.map((interaction) => <InteractionPanel key={`${operationKey}:${interaction.id}`} interaction={interaction} disabled={!ready || identityOmitted || uncertainRuntime} openLink={interaction.kind.kind === 'login' ? openSignIn : openLink} respond={(answer, activation) => w.respond(interaction.session, interaction.id, answer, activation)} />)}
         {ready && currentError && <div className="composer-error"><ErrorBanner message={currentError} onDismiss={() => { w.setError(''); setDraftError('') }} onRetry={w.active?.resync && w.activeId ? () => { void w.openSession(w.activeId!, true).catch(w.report) } : undefined} /></div>}

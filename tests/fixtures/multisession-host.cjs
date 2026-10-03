@@ -278,6 +278,10 @@ function command(input) {
     const item = required(session).items.find(item => item.id === `${lane(session)}-page`)
     if (!item) throw new Error('No ShowPage item')
     frame(session, { type: 'itemCompleted', item: { ...item, status: 'completed', completedAt: ts, body: { ...item.body, output: { parts: [{ type: 'text', text: 'Fixture page closed' }] } } } })
+  } else if (op === 'frames') {
+    // Scripted presentation frames for conversation UI acceptance; events are forwarded verbatim.
+    if (!Array.isArray(input.events) || input.events.length > 200) throw new Error('Fixture frames must be a bounded array')
+    for (const event of input.events) frame(session, event)
   } else if (op !== 'crash') throw new Error(`Unknown control operation ${op}`)
   persist()
 }
@@ -286,7 +290,7 @@ const server = http.createServer((request, response) => {
   if (request.method === 'GET' && request.url === '/' + 's'.repeat(43)) { audit('pageVisited'); response.setHeader('Content-Type', 'text/html'); response.end(`<title>${project} fixture page</title><p>Isolated ${project} page</p>`); return }
   if (request.method !== 'POST' || request.url !== '/control') { response.writeHead(404); response.end(); return }
   let body = ''
-  request.on('data', chunk => { body += chunk; if (body.length > 4096) request.destroy() })
+  request.on('data', chunk => { body += chunk; if (body.length > 256 * 1024) request.destroy() })
   request.on('end', () => {
     try { const input = JSON.parse(body); command(input); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ ok: true })); if (input.op === 'crash') response.on('finish', () => process.exit(27)) }
     catch (error) { response.writeHead(400); response.end(JSON.stringify({ error: error.message })) }

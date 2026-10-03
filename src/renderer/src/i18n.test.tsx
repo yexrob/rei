@@ -123,7 +123,7 @@ describe('localized renderer boundaries', () => {
     ] })
     const { container } = localized(<Timeline projection={projection} openLink={noAction} runAction={noAction} loadHistory={noAction} loading={false} />)
     expect(screen.getByRole('region', { name: '工具活动' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '展开工具活动' }).textContent).toContain('2 项工具调用')
+    expect(screen.getByRole('button', { name: '展开工具活动' }).textContent).toContain('使用了 2 项工具')
     fireEvent.click(screen.getByRole('button', { name: '展开工具活动' }))
     fireEvent.click(screen.getByRole('button', { name: '展开工具详情: Read · /work/Settings.txt' }))
     expect(screen.getByText('记录行 40–41')).toBeTruthy()

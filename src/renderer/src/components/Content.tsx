@@ -8,6 +8,8 @@ import { useI18n } from '../i18n'
 import { MarkdownImage } from './media/MarkdownImage'
 import { MarkdownDiagram } from './media/MarkdownDiagram'
 import { MarkdownMath } from './media/MarkdownMath'
+import { useReducedMotion } from './motion'
+import { DiffView } from './DiffView'
 
 export type RunAction = (action: Action) => void
 export type OpenLink = (url: string) => void
@@ -50,8 +52,14 @@ export function CodeBlock({ text, language }: { text: string; language?: string 
   return <div className="code-block"><div className="code-heading"><span>{language || t('Plain text')}</span><CopyButton text={text} label={t('Copy code')} /></div><pre><code>{text}</code></pre></div>
 }
 
-export const RichText = memo(function RichText({ text, openLink, final = true }: { text: string; openLink: OpenLink; final?: boolean }): React.JSX.Element {
-  return <MarkdownLinkContext.Provider value={openLink}><div className="markdown"><MarkdownRender content={text} final={final} customId={markdownId} customMarkdownIt={safeMarkdown} htmlPolicy="safe" fade={false} smoothStreaming={false} batchRendering={false} deferNodesUntilVisible={false} showTooltips={false} /></div></MarkdownLinkContext.Provider>
+// Pace bursty deltas into an even reveal that never trails the stream by more than ~a third of a second.
+const streamPacing = { minCharsPerSecond: 90, maxCharsPerSecond: 2400, targetLatencyMs: 140, catchUpLatencyMs: 360, maxCommitFps: 60, flushOnFinish: true }
+
+/** `streaming` marks text that is still growing live: new words fade in behind a caret. History renders at once. */
+export const RichText = memo(function RichText({ text, openLink, final = true, streaming = false }: { text: string; openLink: OpenLink; final?: boolean; streaming?: boolean }): React.JSX.Element {
+  const reduced = useReducedMotion()
+  const live = streaming && !reduced
+  return <MarkdownLinkContext.Provider value={openLink}><div className="markdown" data-streaming={streaming || undefined}><MarkdownRender content={text} final={final} customId={markdownId} customMarkdownIt={safeMarkdown} htmlPolicy="safe" fade={live} typewriter={false} smoothStreaming={live} smoothStreamingOptions={streamPacing} batchRendering={false} deferNodesUntilVisible={false} showTooltips={false} /></div></MarkdownLinkContext.Provider>
 })
 
 export function StructuredView({ view, runAction, openLink, depth = 0 }: { view: View; runAction: RunAction; openLink: OpenLink; depth?: number }): React.JSX.Element {
@@ -62,7 +70,7 @@ export function StructuredView({ view, runAction, openLink, depth = 0 }: { view:
     case 'text': return <p className="preserve-lines">{view.text}</p>
     case 'markdown': return <RichText text={view.text} openLink={openLink} />
     case 'code': return <CodeBlock text={view.text} language={view.lang ?? undefined} />
-    case 'diff': return <pre className="diff">{view.unified.split('\n').map((line, index) => <span key={index} className={line.startsWith('+') ? 'addition' : line.startsWith('-') ? 'deletion' : ''}>{line}{'\n'}</span>)}</pre>
+    case 'diff': return <DiffView text={view.unified} label={t('Diff')} />
     case 'list': return <ul>{view.items.map((item, index) => <li key={index}>{item}</li>)}</ul>
     case 'table': return <div className="table-scroll"><table><thead><tr>{view.headers.map((header, index) => <th key={index} scope="col">{header}</th>)}</tr></thead><tbody>{view.rows.map((row, index) => <tr key={index}>{row.map((cell, key) => <td key={key}>{cell}</td>)}</tr>)}</tbody></table></div>
     case 'keyValue': return <dl className="key-values">{view.rows.map(([key, value], index) => <div key={index}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>
