@@ -39,7 +39,7 @@ it('keeps navigation and theme previews accessible without decorative names', ()
   expect(within(appearance).queryAllByRole('img')).toHaveLength(0)
   expect(within(appearance).getByRole('button', { name: 'System' }).getAttribute('aria-pressed')).toBe('true')
   fireEvent.click(within(nav).getByRole('button', { name: 'Keyboard shortcuts' }))
-  expect(screen.getByRole('heading', { name: 'Keyboard shortcuts', level: 1 })).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'Keyboard shortcuts', level: 3 })).toBeTruthy()
   expect(within(nav).getByRole('button', { name: 'Keyboard shortcuts' }).getAttribute('aria-current')).toBe('page')
 })
 it('clears an optional runtime override before reconnecting through default discovery', async () => {

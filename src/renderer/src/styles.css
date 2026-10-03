@@ -381,6 +381,7 @@ th { font-weight: 600; background: var(--code); }
 .modal-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-block-end: 24px; }
 .modal-heading h2 { margin: 0; font-size: 17px; letter-spacing: -.3px; }
 .modal > p { font-size: 13px; color: var(--secondary); }
+.confirm-message p { margin: 0; font-size: 13px; color: var(--secondary); }
 .field-label { display: grid; gap: 8px; margin-block: 16px; font-size: 12px; font-weight: 500; }
 .field-label input, .field-label select { width: 100%; min-width: 0; font-size: 13px; font-weight: 400; }
 .provider-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block: 12px; border-block-end: 1px solid var(--line); }

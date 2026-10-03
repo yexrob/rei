@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { Check, Copy, X } from './icons'
 import { useI18n } from '../i18n'
 
@@ -24,16 +24,23 @@ export function Modal({ title, children, onClose, wide = false }: { title: strin
   const ref = useRef<HTMLDialogElement>(null)
   const close = useRef(onClose)
   close.current = onClose
+  const headingId = useId()
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
     const dialog = ref.current
     dialog?.showModal()
     return () => { dialog?.close(); previous?.focus() }
   }, [])
-  return <dialog ref={ref} className={`modal ${wide ? 'wide' : ''}`} aria-labelledby="modal-heading" onCancel={(event) => { event.preventDefault(); close.current() }}>
-    <div className="modal-heading"><h2 id="modal-heading">{title}</h2><IconButton label="Close dialog" onClick={onClose}><X size={18} /></IconButton></div>
+  return <dialog ref={ref} className={`modal ${wide ? 'wide' : ''}`} aria-labelledby={headingId} onCancel={(event) => { event.preventDefault(); close.current() }}>
+    <div className="modal-heading"><h2 id={headingId}>{title}</h2><IconButton label="Close dialog" onClick={onClose}><X size={18} /></IconButton></div>
     {children}
   </dialog>
+}
+
+/** In-app confirmation on the native modal dialog (focus trap, Escape cancels). Cancel is focused first. */
+export function ConfirmDialog({ title, message, confirmLabel, cancelLabel = 'Cancel', destructive = false, onConfirm, onCancel }: { title: string; message: ReactNode; confirmLabel: string; cancelLabel?: string; destructive?: boolean; onConfirm: () => void; onCancel: () => void }): React.JSX.Element {
+  const { t } = useI18n()
+  return <Modal title={title} onClose={onCancel}><div className="confirm-message">{message}</div><div className="button-row"><button type="button" autoFocus onClick={onCancel}>{t(cancelLabel)}</button><button type="button" className={destructive ? 'danger-button' : 'primary'} onClick={onConfirm}>{t(confirmLabel)}</button></div></Modal>
 }
 
 export function ErrorBanner({ message, onDismiss, onRetry }: { message: string; onDismiss?: () => void; onRetry?: () => void }): React.JSX.Element {
