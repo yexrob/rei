@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/yexrob/rei/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/yexrob/rei/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-0.1.1-171612">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.1.2-171612">
   <img alt="Electron" src="https://img.shields.io/badge/Electron-44-171612?logo=electron&logoColor=eeeae2">
   <img alt="Protocol" src="https://img.shields.io/badge/bingo_protocol-v1-6f5a92">
 </p>
