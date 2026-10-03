@@ -8,7 +8,7 @@ import '@xterm/xterm/css/xterm.css'
 import './panels.css'
 import './terminal/terminal.css'
 
-export function TerminalPanel({ visible, onClose }: { visible: boolean; onClose(): void }): React.JSX.Element {
+export function TerminalPanel({ visible, onClose, height }: { visible: boolean; onClose(): void; height?: number | null }): React.JSX.Element {
   const { t } = useI18n()
   const formatPath = useDisplayPath()
   const { host, controller, state } = useTerminalController(visible, onClose)
@@ -18,7 +18,7 @@ export function TerminalPanel({ visible, onClose }: { visible: boolean; onClose(
     if (active?.error && active.status === 'running' && active.id) void controller.current?.close(active.id)
     else void controller.current?.start()
   }
-  return <section className="native-panel terminal-panel" aria-label={t('Terminal')} hidden={!visible}>
+  return <section className="native-panel terminal-panel" aria-label={t('Terminal')} hidden={!visible} style={height ? { '--terminal-height': `${height}px` } as React.CSSProperties : undefined}>
     <header className="panel-heading terminal-heading">
       <span><TerminalSquare size={14} />{t('Terminal')}</span>
       <span className="terminal-cwd" title={active?.cwd || ''}>{active?.cwd ? formatPath(active.cwd, 64) : t('Local shell · not sent to the agent')}</span>

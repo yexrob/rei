@@ -663,5 +663,8 @@ export const zhCN = {
   'Actions': '操作',
   'Results': '结果',
   'New conversation': '新对话',
-  'Toggle theme': '切换主题'
+  'Toggle theme': '切换主题',
+  'Resize review panel': '调整审查面板宽度',
+  'Resize browser panel': '调整浏览器面板宽度',
+  'Resize terminal': '调整终端高度'
 } as const

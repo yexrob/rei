@@ -6,9 +6,9 @@ import { IconButton } from './primitives'
 import { DiffView } from './DiffView'
 import './review.css'
 
-type Props = { visible: boolean; workspace: string | null; onClose(): void; onCompose(text: string): void; onCount?(count: number | null): void }
+type Props = { visible: boolean; workspace: string | null; onClose(): void; onCompose(text: string): void; onCount?(count: number | null): void; width?: number | null }
 type Loaded = { workspace: string | null; scope: ReviewScope; value: ReviewSnapshot }
-export function ReviewPanel({ visible, workspace, onClose, onCompose, onCount }: Props): React.JSX.Element {
+export function ReviewPanel({ visible, workspace, onClose, onCompose, onCount, width }: Props): React.JSX.Element {
   const { t } = useI18n()
   const [scope, setScope] = useState<ReviewScope>('unstaged')
   const [revision, setRevision] = useState(0)
@@ -36,7 +36,7 @@ export function ReviewPanel({ visible, workspace, onClose, onCompose, onCount }:
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [visible, workspace, scope, revision])
-  return <section className="review-panel" aria-label={t('Review changes')} hidden={!visible}>
+  return <section className="review-panel" aria-label={t('Review changes')} hidden={!visible} style={width ? { '--review-width': `${width}px` } as React.CSSProperties : undefined}>
     <header className="review-heading"><span><GitCompareArrows size={16} />{t('Changes')}</span><div>
       <IconButton label={t('Refresh changes')} disabled={loading || !window.bingoReview} onClick={() => setRevision((value) => value + 1)}><RotateCw size={15} /></IconButton>
       <IconButton label={t('Close changes')} onClick={onClose}><X size={16} /></IconButton>

@@ -26,6 +26,7 @@ import { localizeNotice, Toast } from './components/Toast'
 import { ariaKeys, keyLabel, matches, SHORTCUTS, type ShortcutId } from './shortcuts'
 import { ActionMenu, type MenuAction } from './components/ActionMenu'
 import { CommandPalette } from './components/CommandPalette'
+import { Splitter, useStoredSize } from './components/Splitter'
 import { InteractionPanel } from './components/InteractionPanel'
 import { Settings, Onboarding } from './components/Settings'
 import { StructuredView, type RunAction } from './components/Content'
@@ -71,6 +72,9 @@ function WorkspaceApp(): React.JSX.Element {
   const sendLocks = useRef(new Set<string>())
   const panelToggles = useRef({ terminal: () => {}, browser: () => {}, review: () => {} })
   const [reviewCount, setReviewCount] = useState<number | null>(null)
+  const [browserWidth, setBrowserWidth] = useStoredSize('rei.browser-width.v1')
+  const [reviewWidth, setReviewWidth] = useStoredSize('rei.review-width.v1')
+  const [terminalHeight, setTerminalHeight] = useStoredSize('rei.terminal-height.v1')
   const presentationGeneration = useRef(0)
   const connectionId = useRef(w.connection.connectionId)
   connectionId.current = w.connection.connectionId
@@ -293,6 +297,9 @@ function WorkspaceApp(): React.JSX.Element {
   const toggleBrowser = () => { if (browserOpen && page === 'thread') setBrowserOpen(false); else showBrowser() }
   const toggleReview = () => { if (reviewOpen && page === 'thread') { setReviewOpen(false); return } if (!canReview) return; setPage('thread'); setBrowserOpen(false); setReviewOpen(true) }
   panelToggles.current = { terminal: toggleTerminal, browser: toggleBrowser, review: toggleReview }
+  // Splitter bounds come from the live layout; CSS also caps sizes for narrow windows.
+  const measure = (selector: string, axis: 'width' | 'height', fallback: number) => document.querySelector(selector)?.getBoundingClientRect()[axis] || fallback
+  const contentWidth = () => measure('.workspace-content', 'width', window.innerWidth)
   const sessionMenuItems: MenuAction[] = [
     ...(editable ? [{ key: 'rename', label: 'Rename session', onSelect: () => setRename({ name: title, apply: (name: string) => w.runAction('rename', name), report: w.report }) }] : []),
     { key: 'export', label: 'Export Markdown', icon: <Download size={14} />, onSelect: exportSession },
@@ -351,7 +358,7 @@ function WorkspaceApp(): React.JSX.Element {
         {ready && currentError && <div className="composer-error"><ErrorBanner message={currentError} onDismiss={() => { w.setError(''); setDraftError('') }} onRetry={w.active?.resync && w.activeId ? () => { void w.openSession(w.activeId!, true).catch(w.report) } : undefined} /></div>}
         <Composer draft={draft} setDraft={setDraft} send={() => void send()} stop={stopCurrent} attach={attach} attachFiles={attachFiles} ready={ready && !w.active?.resync} submitReady={ready && !w.active?.resync && !identityOmitted && !uncertainRuntime} busy={ready && Boolean(state?.turn)} sending={sending || commandBusy || w.loading} model={model} thinking={thinking} permission={permission} models={w.catalogs.models?.entries ?? []} commands={w.catalogs.commands?.entries ?? []} command={command} inputRef={input} queue={state?.queue} workspaceName={workspaceLabel} chooseProject={chooseProject} recipient={hasCollaboration || childAgent ? { name: agentName, role: childAgent ? 'agent' : 'main' } : undefined} />
       </div>}
-      </div><ReviewPanel visible={reviewOpen && page === 'thread'} workspace={w.connection.workspace} onClose={() => setReviewOpen(false)} onCompose={compose} onCount={setReviewCount} /><BrowserPanel visible={browserOpen && page === 'thread'} occluded={browserOccluded} onClose={() => setBrowserOpen(false)} /></div>{terminalMounted && <Suspense fallback={<section className="terminal-panel"><p className="terminal-status">{t('Starting terminal…')}</p></section>}><TerminalPanel visible={terminalOpen && page === 'thread'} onClose={() => setTerminalOpen(false)} /></Suspense>}</div>
+      </div>{reviewOpen && page === 'thread' && <Splitter label="Resize review panel" orientation="vertical" value={reviewWidth ?? measure('.review-panel', 'width', 520)} min={320} max={contentWidth() - 320} onChange={setReviewWidth} onReset={() => setReviewWidth(null)} />}<ReviewPanel visible={reviewOpen && page === 'thread'} workspace={w.connection.workspace} onClose={() => setReviewOpen(false)} onCompose={compose} onCount={setReviewCount} width={reviewWidth} />{browserOpen && page === 'thread' && <Splitter label="Resize browser panel" orientation="vertical" value={browserWidth ?? measure('.browser-panel', 'width', 480)} min={310} max={contentWidth() - 300} onChange={setBrowserWidth} onReset={() => setBrowserWidth(null)} />}<BrowserPanel visible={browserOpen && page === 'thread'} occluded={browserOccluded} onClose={() => setBrowserOpen(false)} width={browserWidth} /></div>{terminalMounted && terminalOpen && page === 'thread' && <Splitter label="Resize terminal" orientation="horizontal" value={terminalHeight ?? measure('.terminal-panel', 'height', 260)} min={140} max={measure('.workspace-body', 'height', window.innerHeight) - 160} onChange={setTerminalHeight} onReset={() => setTerminalHeight(null)} />}{terminalMounted && <Suspense fallback={<section className="terminal-panel"><p className="terminal-status">{t('Starting terminal…')}</p></section>}><TerminalPanel visible={terminalOpen && page === 'thread'} onClose={() => setTerminalOpen(false)} height={terminalHeight} /></Suspense>}</div>
     </main>
     {w.notice && <Toast key={w.notice} message={localizeNotice(w.notice, t)} onDismiss={() => w.setNotice('')} />}
     {settings && <Settings key={`${w.connection.hostId}:${w.connection.connectionId}`} workspace={w} initialPage={settingsPage} onClose={() => { setSettings(false); setSettingsPage('general') }} openLink={openLink} clearDrafts={() => { setDrafts({}); localStorage.removeItem('rei.drafts.v1') }} />}
