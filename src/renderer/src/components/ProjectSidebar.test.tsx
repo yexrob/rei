@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ProjectSidebar, projectPaths } from './ProjectSidebar'
+import { byUpdated, dateGroup, pinKey, ProjectSidebar, projectPaths } from './ProjectSidebar'
 import { rustInitial } from '../state/fixtures'
 import { hostA, hostB } from '../../../shared/desktop.fixtures'
 
@@ -80,5 +80,39 @@ describe('project navigation', () => {
     expect(screen.queryByRole('navigation', { name: 'Sessions' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Expand project bingo' }))
     expect(screen.getByRole('button', { name: /Add session search/ }).getAttribute('aria-current')).toBe('page')
+  })
+
+  it('groups by local date and sorts by last update', () => {
+    const now = new Date(2026, 9, 3, 15, 0)
+    expect(dateGroup(new Date(2026, 9, 3, 1).toISOString(), now)).toBe('Today')
+    expect(dateGroup(new Date(2026, 9, 2, 23).toISOString(), now)).toBe('Yesterday')
+    expect(dateGroup(new Date(2026, 8, 28).toISOString(), now)).toBe('Previous 7 days')
+    expect(dateGroup(new Date(2026, 8, 1).toISOString(), now)).toBe('Older')
+    expect(dateGroup('not a date', now)).toBe('Older')
+    const row = (id: string, updatedAt: string) => ({ summary: { ...rustInitial.summary, id, updatedAt } })
+    expect(byUpdated([row('a', '2026-09-01T00:00:00Z'), row('b', '2026-09-03T00:00:00Z'), row('c', '2026-09-02T00:00:00Z')]).map(item => item.summary.id)).toEqual(['b', 'c', 'a'])
+  })
+
+  it('pins sessions into a Pinned section and offers row actions from a menu or right-click', async () => {
+    const today = new Date().toISOString()
+    const rows = [
+      { summary: { ...rustInitial.summary, id: 'one', cwd: hostA.workspace!, title: 'Pinned work', updatedAt: today }, status: 'ready', unread: false },
+      { summary: { ...rustInitial.summary, id: 'two', cwd: hostA.workspace!, title: 'Old work', updatedAt: '2020-01-01T00:00:00Z' }, status: 'ready', unread: false }
+    ]
+    const onSessionAction = vi.fn()
+    render(<ProjectSidebar {...props()} projects={[{ connection: hostA, sessions: rows }]} activeHostId={hostA.hostId} workspace={hostA.workspace} onHostSession={vi.fn()} pinned={[pinKey(hostA.hostId, 'one')]} onSessionAction={onSessionAction} />)
+    const pinned = screen.getByRole('navigation', { name: 'Pinned' })
+    expect(within(pinned).getByRole('button', { name: /^Pinned work/ })).toBeTruthy()
+    const sessions = screen.getByRole('navigation', { name: 'Sessions' })
+    expect(within(sessions).queryByRole('button', { name: /^Pinned work/ })).toBeNull()
+    expect(within(sessions).getByRole('group', { name: 'Older' })).toBeTruthy()
+    fireEvent.contextMenu(within(sessions).getByRole('button', { name: /^Old work/ }))
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Rename', 'Pin', 'Export Markdown', 'Delete session…'])
+    act(() => { fireEvent.click(within(menu).getByRole('menuitem', { name: 'Pin' })) })
+    await waitFor(() => expect(onSessionAction).toHaveBeenCalledWith(hostA.hostId, 'two', 'pin'))
+    const more = within(pinned).getByRole('button', { name: 'More actions for Pinned work' })
+    act(() => more.focus()); fireEvent.keyDown(more, { key: 'Enter' })
+    expect(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Unpin' })).toBeTruthy()
   })
 })

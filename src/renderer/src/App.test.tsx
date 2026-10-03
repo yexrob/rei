@@ -88,7 +88,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 async function ready() { await screen.findByText('Connected locally'); await waitFor(() => expect(screen.getByRole('button', { name: 'Send message' }).hasAttribute('disabled')).toBe(true)) }
 
 describe('desktop user journeys', () => {
-  it('keeps sidebar rows in creation order when an older thread is opened or updated', async () => {
+  it('orders sidebar rows by last update, matching the displayed time, when a thread is opened or updated', async () => {
     const { api, state, emit } = desktop()
     const oldest = { ...state.summary, createdAt: '2026-09-01T10:00:00Z', updatedAt: '2026-09-01T10:00:00Z' }
     const newest = { ...state.summary, id: 'session-two', title: 'Newer thread', createdAt: time, updatedAt: time }
@@ -102,11 +102,12 @@ describe('desktop user journeys', () => {
     const rows = () => [...document.querySelectorAll('.session-row-title')].map((row) => row.textContent)
     const order = [newest.title, oldest.title]
     expect(rows()).toEqual(order)
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /Review the workspace/ }))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /^Review the workspace/ }))
     await screen.findByRole('heading', { name: 'Review the workspace' })
-    expect(rows()).toEqual(order)
+    // Opening refreshes the older thread's updatedAt, so it moves up with its displayed time.
+    expect(rows()).toEqual([oldest.title, newest.title])
     await act(async () => emit({ type: 'sessionUpdated', summary: { ...oldest, updatedAt: '2026-09-17T12:00:00Z', busy: true } }))
-    expect(rows()).toEqual(order)
+    expect(rows()).toEqual([oldest.title, newest.title])
     expect(document.querySelector('.session-row[aria-current="page"] .session-row-title')?.textContent).toBe(oldest.title)
   })
 
@@ -203,7 +204,7 @@ describe('desktop user journeys', () => {
     const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     const { emit } = desktop()
     render(<App />); await ready()
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /Review the workspace/ }))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /^Review the workspace/ }))
     await screen.findByRole('heading', { name: 'Review the workspace' })
     const saved = () => JSON.parse(localStorage.getItem('rei.read.v1') ?? '{}')[JSON.stringify(['host', 'session-one'])]
     await waitFor(() => expect(saved()).toBe(0))
@@ -211,7 +212,7 @@ describe('desktop user journeys', () => {
     await act(async () => emit({ type: 'notice', level: 'info', code: 'BACKGROUND', text: 'Finished while away' }))
     expect(saved()).toBe(0)
     expect(document.querySelector('.session-unread')).toBeTruthy()
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /Review the workspace/ }))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /^Review the workspace/ }))
     expect(saved()).toBe(0) // Synthetic click does not prove the OS window became visible.
     visibility.mockReturnValue('visible'); focus.mockReturnValue(false)
     await act(async () => document.dispatchEvent(new Event('visibilitychange')))
@@ -223,12 +224,12 @@ describe('desktop user journeys', () => {
     visibility.mockReturnValue('hidden')
     await act(async () => emit({ type: 'notice', level: 'info', code: 'BACKGROUND_2', text: 'Another background update' }))
     visibility.mockReturnValue('visible')
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /Review the workspace/ }))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /^Review the workspace/ }))
     await waitFor(() => expect(saved()).toBe(2))
   })
   it('pauses stale retry presentation on disconnect while retaining history, error and editable drafts', async () => {
     const { api, emit, emitDesktop, state } = desktop(); render(<App />); await ready()
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button'))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /^Review the workspace/ }))
     await screen.findByRole('heading', { name: 'Review the workspace' })
     await act(async () => {
       emit({ type: 'itemCompleted', item: { id: 'history', status: 'completed', startedAt: time, body: { kind: 'assistant', text: 'Saved history remains readable.' } } })
@@ -255,7 +256,7 @@ describe('desktop user journeys', () => {
     state.turn = { id: 'fresh-turn', startedAt: time, origin: 'submit' }
     fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }))
     await waitFor(() => expect(api.reconnect).toHaveBeenCalledOnce())
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button'))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /^Review the workspace/ }))
     await waitFor(() => expect(document.querySelector('.session-status.working')).toBeTruthy())
     expect(document.querySelector('.live-working')?.textContent).toBe('Working…')
     expect(screen.getByRole('button', { name: 'Stop generation' }).hasAttribute('disabled')).toBe(false)
@@ -296,7 +297,7 @@ describe('desktop user journeys', () => {
   it('preserves drafts across new-session navigation and existing session selection', async () => {
     desktop(); render(<App />); await ready()
     fireEvent.change(screen.getByRole('textbox', { name: 'Message bingo' }), { target: { value: 'Unsent new draft' } })
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button'))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /^Review the workspace/ }))
     await screen.findByRole('heading', { name: 'Review the workspace' })
     expect((screen.getByRole('textbox', { name: 'Message bingo' }) as HTMLTextAreaElement).value).toBe('')
     fireEvent.click(screen.getByRole('button', { name: 'New thread' }))
@@ -304,7 +305,7 @@ describe('desktop user journeys', () => {
   })
   it('shows provider-qualified model identity and authoritative live permission mode', async () => {
     desktop(); render(<App />); await ready()
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button'))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /^Review the workspace/ }))
     await screen.findByRole('heading', { name: 'Review the workspace' })
     expect(screen.getByRole('button', { name: 'Model' }).getAttribute('title')).toBe('custom/same-model')
     expect(screen.getByRole('combobox', { name: 'Permission mode' }).textContent).toContain('Plan · read only')
@@ -323,7 +324,7 @@ describe('desktop user journeys', () => {
   })
   it('stops the running turn with Escape only from the composer or page, not other inputs', async () => {
     const { api, emit } = desktop(); render(<App />); await ready()
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /Review the workspace/ }))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /^Review the workspace/ }))
     await screen.findByRole('heading', { name: 'Review the workspace' })
     await act(async () => emit({ type: 'turnStarted', turn: 'turn', inputs: [], origin: 'submit' }))
     const interrupts = () => vi.mocked(api.request).mock.calls.filter(([call]) => call.method === 'session/interrupt').length
@@ -336,7 +337,7 @@ describe('desktop user journeys', () => {
   })
   it('offers session actions as an accessible menu that returns focus on Escape', async () => {
     desktop(); render(<App />); await ready()
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /Review the workspace/ }))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /^Review the workspace/ }))
     await screen.findByRole('heading', { name: 'Review the workspace' })
     const trigger = screen.getByRole('button', { name: 'Session actions' })
     act(() => trigger.focus())
@@ -347,6 +348,18 @@ describe('desktop user journeys', () => {
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
     expect(document.activeElement).toBe(trigger)
+  })
+  it('runs sidebar row actions through the existing flows and persists pins', async () => {
+    desktop(); render(<App />); await ready()
+    const sessions = screen.getByRole('navigation', { name: 'Sessions' })
+    fireEvent.contextMenu(within(sessions).getByRole('button', { name: /^Review the workspace/ }))
+    fireEvent.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Pin' }))
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('rei.pins.v1') ?? '[]')).toEqual([JSON.stringify(['host', 'session-one'])]))
+    const pinned = screen.getByRole('navigation', { name: 'Pinned' })
+    fireEvent.contextMenu(within(pinned).getByRole('button', { name: /^Review the workspace/ }))
+    fireEvent.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Rename' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Rename session' })
+    expect((within(dialog).getByRole('textbox', { name: 'Session name' }) as HTMLInputElement).value).toBe('Review the workspace')
   })
   it('exposes complete settings and persists theme through the native preferences API', async () => {
     const { api } = desktop(); render(<App />); await ready()

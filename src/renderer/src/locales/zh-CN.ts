@@ -643,5 +643,14 @@ export const zhCN = {
   'Images must be no larger than 5 MB.': '每张图片不能超过 5 MB。',
   'Thinking effort: {level}': '思考强度：{level}',
   'Clear saved drafts?': '清除已保存的草稿？',
-  'Clear drafts': '清除草稿'
+  'Clear drafts': '清除草稿',
+  'Pinned': '已置顶',
+  'Today': '今天',
+  'Yesterday': '昨天',
+  'Previous 7 days': '过去 7 天',
+  'Older': '更早',
+  'Rename': '重命名',
+  'Pin': '置顶',
+  'Unpin': '取消置顶',
+  'More actions for {name}': '{name} 的更多操作'
 } as const

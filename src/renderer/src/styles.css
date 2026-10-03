@@ -154,6 +154,15 @@ kbd { font-size: 11px; color: var(--secondary); font-weight: 400; }
 .session-row:has(.running) { padding-inline-start: 21px; }
 .session-row.selected { background: var(--selected); color: var(--text); font-weight: 550; }
 .session-row time { margin-inline-start: auto; flex-shrink: 0; font-size: 11px; color: var(--secondary); }
+.session-row-wrap { position: relative; }
+.session-row-more { position: absolute; inset-block-start: 4px; inset-inline-end: 4px; width: 26px; min-width: 26px; height: 26px; min-height: 26px; padding: 4px; border-radius: 6px; opacity: 0; background: var(--hover); }
+.session-row-wrap:hover .session-row-more, .session-row-wrap:focus-within .session-row-more, .session-row-wrap.menu-open .session-row-more, .session-row-more[data-state="open"] { opacity: 1; }
+.session-row-wrap:hover time, .session-row-wrap:focus-within time, .session-row-wrap.menu-open time { visibility: hidden; }
+.session-date-label { padding: 8px 10px 4px 32px; color: var(--secondary); font-size: 11px; font-weight: 500; }
+.session-date-group:first-child .session-date-label { padding-block-start: 2px; }
+.pinned-heading { display: flex; align-items: center; gap: 8px; padding: 6px 10px; color: var(--secondary); font-size: 12px; }
+.pinned-group .session-row { padding-inline-start: 31px; }
+@media (hover: none) { .session-row-more { opacity: 1; } }
 .session-dot { width: 5px; height: 5px; flex-shrink: 0; background: var(--quiet); border-radius: 50%; opacity: .65; }
 .session-dot.running { background: var(--accent); opacity: 1; box-shadow: 0 0 0 3px var(--selected); }
 .sidebar-empty { padding: 8px 10px; font-size: 12px; color: var(--secondary); }
