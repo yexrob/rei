@@ -10,7 +10,7 @@ import { useDraftPersistence, withDraft } from './state/drafts'
 import { itemText, selectSessionTitle, selectStatus, selectUsage, selectWorkspaceThreads } from './state/session'
 import { Composer, emptyDraft, type Draft } from './components/Composer'
 import { Timeline } from './components/Timeline'
-import { byUpdated, pinKey, ProjectSidebar, updatedTime, type SessionAction, type WorkspacePage } from './components/ProjectSidebar'
+import { byCreated, byUpdated, pinKey, ProjectSidebar, updatedTime, type SessionAction, type WorkspacePage } from './components/ProjectSidebar'
 import { SkillsPage } from './components/SkillsPage'
 import { AutomationsPage } from './components/AutomationsPage'
 import { ReviewPanel } from './components/ReviewPanel'
@@ -372,7 +372,7 @@ function WorkspaceApp(): React.JSX.Element {
     {w.notice && <Toast key={w.notice} message={localizeNotice(w.notice, t)} onDismiss={() => w.setNotice('')} />}
     {settings && <Settings key={`${w.connection.hostId}:${w.connection.connectionId}`} workspace={w} initialPage={settingsPage} onClose={() => { setSettings(false); setSettingsPage('general') }} openLink={openLink} clearDrafts={() => { setDrafts({}); localStorage.removeItem('rei.drafts.v1') }} />}
     {palette && <CommandPalette onClose={() => setPalette(false)}
-      sessions={sidebarProjects.flatMap(project => byUpdated(project.sessions).map(({ summary, titleOmitted }) => ({ hostId: project.connection.hostId, id: summary.id, title: titleOmitted ? t('Title not loaded') : summary.title || t('Untitled session'), caption: formatPath(summary.cwd, 56), path: summary.cwd, project: formatPath(project.connection.workspace) })))}
+      sessions={sidebarProjects.flatMap(project => byCreated(project.sessions).map(({ summary, titleOmitted }) => ({ hostId: project.connection.hostId, id: summary.id, title: titleOmitted ? t('Title not loaded') : summary.title || t('Untitled session'), caption: formatPath(summary.cwd, 56), path: summary.cwd, project: formatPath(project.connection.workspace) })))}
       commands={(w.catalogs.commands?.entries ?? []).map(entry => ({ id: entry.id, label: entry.label }))}
       onSession={(hostId, id) => openSession(id, hostId)}
       onCommand={(id) => { setDraft({ ...draft, text: `/${id} ` }); setPalette(false); requestAnimationFrame(() => input.current?.focus()) }}

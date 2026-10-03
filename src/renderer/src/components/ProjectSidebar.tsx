@@ -35,7 +35,12 @@ export function dateGroup(value: string, now = new Date()): DateGroup {
   if (time >= startOfToday - 86_400_000) return 'Yesterday'
   return time >= startOfToday - 7 * 86_400_000 ? 'Previous 7 days' : 'Older'
 }
-/** Newest activity first, matching the relative time shown on each row. */
+/** Newest first by creation: rows never jump when a thread is merely opened. The shown time matches the order. */
+export function byCreated<T extends { summary: SessionSummary }>(rows: T[]): T[] {
+  const stamp = (row: T) => { const time = Date.parse(row.summary.createdAt); return Number.isFinite(time) ? time : 0 }
+  return [...rows].sort((a, b) => stamp(b) - stamp(a) || a.summary.id.localeCompare(b.summary.id))
+}
+/** Most recent activity first, for "recent conversations" lists that are not navigation. */
 export function byUpdated<T extends { summary: SessionSummary }>(rows: T[]): T[] {
   const stamp = (row: T) => { const time = Date.parse(row.summary.updatedAt); return Number.isFinite(time) ? time : 0 }
   return [...rows].sort((a, b) => stamp(b) - stamp(a) || a.summary.id.localeCompare(b.summary.id))
@@ -71,11 +76,11 @@ export function ProjectSidebar(p: Props): React.JSX.Element {
       { key: 'delete', label: 'Delete session…', icon: <Trash2 size={14} />, danger: true, onSelect: () => p.onSessionAction?.(hostId, session.id, 'delete') }
     ] : null
     return <div key={key} className={`session-row-wrap ${menu === key ? 'menu-open' : ''}`} onContextMenu={actions ? (event) => { event.preventDefault(); setMenu(key) } : undefined}>
-      <button className={`session-row ${selected ? 'selected' : ''}`} aria-current={selected ? 'page' : undefined} title={projectName} onClick={() => p.onHostSession?.(hostId, session.id)}><span className="session-row-title">{titleOmitted ? t('Title not loaded') : session.title || t('Untitled session')}</span><span className="session-row-state">{status === 'waiting' ? t('Needs attention') : status === 'failed' ? t('Failed') : ['working', 'retrying', 'resyncing'].includes(status) ? t('Running') : ''}{unread && <span className="session-unread">{t('Unread')}</span>}</span><time dateTime={session.updatedAt}>{updatedTime(session.updatedAt, locale)}</time></button>
+      <button className={`session-row ${selected ? 'selected' : ''}`} aria-current={selected ? 'page' : undefined} title={projectName} onClick={() => p.onHostSession?.(hostId, session.id)}><span className="session-row-title">{titleOmitted ? t('Title not loaded') : session.title || t('Untitled session')}</span><span className="session-row-state">{status === 'waiting' ? t('Needs attention') : status === 'failed' ? t('Failed') : ['working', 'retrying', 'resyncing'].includes(status) ? t('Running') : ''}{unread && <span className="session-unread">{t('Unread')}</span>}</span><time dateTime={session.createdAt}>{updatedTime(session.createdAt, locale)}</time></button>
       {actions && <ActionMenu label={t('More actions for {name}', { name: titleOmitted ? t('Title not loaded') : session.title || t('Untitled session') })} icon={<MoreHorizontal size={15} />} triggerClassName="session-row-more" open={menu === key} onOpenChange={(open) => setMenu(open ? key : null)} items={actions} />}
     </div>
   }
-  const pinnedRows = (p.projects ?? []).flatMap(project => byUpdated(project.sessions.filter(row => pins.has(pinKey(project.connection.hostId, row.summary.id)))).map(row => ({ project, row })))
+  const pinnedRows = (p.projects ?? []).flatMap(project => byCreated(project.sessions.filter(row => pins.has(pinKey(project.connection.hostId, row.summary.id)))).map(row => ({ project, row })))
   const toggle = (path: string) => setCollapsed((current) => current.includes(path) ? current.filter((item) => item !== path) : [...current, path])
 
   return <aside className="sidebar" aria-label={t('Workspace navigation')} inert={!p.visible}>
@@ -100,7 +105,7 @@ export function ProjectSidebar(p: Props): React.JSX.Element {
           <div className="project-heading-row"><button className="project-heading" title={connection.workspace ?? name} aria-label={t(current ? expanded ? 'Collapse project {name}' : 'Expand project {name}' : 'Open project {name}', { name })} aria-expanded={expanded} onClick={() => current ? toggle(id) : p.onHostProject?.(id)}><Folder size={15} /><span>{name}</span>{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</button>{p.onCloseHost && <IconButton label={t('Close idle project {name}', { name })} disabled={connection.busy} onClick={() => p.onCloseHost?.(id)}><X size={13} /></IconButton>}</div>
           {expanded && <nav className="session-list" aria-label={t('Sessions')}>
             {DATE_GROUPS.map(group => {
-              const rows = byUpdated(project.sessions.filter(row => !pins.has(pinKey(id, row.summary.id)) && dateGroup(row.summary.updatedAt) === group))
+              const rows = byCreated(project.sessions.filter(row => !pins.has(pinKey(id, row.summary.id)) && dateGroup(row.summary.createdAt) === group))
               return rows.length > 0 && <div key={group} className="session-date-group" role="group" aria-label={t(group)}><div className="session-date-label" aria-hidden="true">{t(group)}</div>{rows.map(row => sessionRow(id, current, row))}</div>
             })}
             {!project.sessions.length && <p className="sidebar-empty">{t(connection.status === 'ready' ? 'No threads yet. Start something new.' : 'Preparing your workspace…')}</p>}
@@ -117,7 +122,7 @@ export function ProjectSidebar(p: Props): React.JSX.Element {
           </button>
           {expanded && <nav className="session-list" aria-label={t('Sessions')}>
             {p.sessions.map((session) => <button key={session.id} aria-current={p.page === 'thread' && session.id === p.activeId ? 'page' : undefined} className={`session-row ${p.page === 'thread' && session.id === p.activeId ? 'selected' : ''}`} onClick={() => p.onSession(session.id)}>
-              {session.busy && <span className="session-dot running" aria-label={t('Running')} />}<span className="session-row-title">{session.title || t('Untitled session')}</span><time dateTime={session.updatedAt}>{updatedTime(session.updatedAt, locale)}</time>
+              {session.busy && <span className="session-dot running" aria-label={t('Running')} />}<span className="session-row-title">{session.title || t('Untitled session')}</span><time dateTime={session.createdAt}>{updatedTime(session.createdAt, locale)}</time>
             </button>)}
             {!p.sessions.length && <p className="sidebar-empty">{t(p.ready ? 'No threads yet. Start something new.' : 'Preparing your workspace…')}</p>}
           </nav>}

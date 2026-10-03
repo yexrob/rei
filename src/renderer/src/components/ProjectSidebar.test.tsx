@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { byUpdated, dateGroup, pinKey, ProjectSidebar, projectPaths } from './ProjectSidebar'
+import { byCreated, dateGroup, pinKey, ProjectSidebar, projectPaths } from './ProjectSidebar'
 import { rustInitial } from '../state/fixtures'
 import { hostA, hostB } from '../../../shared/desktop.fixtures'
 
@@ -82,15 +82,15 @@ describe('project navigation', () => {
     expect(screen.getByRole('button', { name: /Add session search/ }).getAttribute('aria-current')).toBe('page')
   })
 
-  it('groups by local date and sorts by last update', () => {
+  it('groups by local date and sorts by creation', () => {
     const now = new Date(2026, 9, 3, 15, 0)
     expect(dateGroup(new Date(2026, 9, 3, 1).toISOString(), now)).toBe('Today')
     expect(dateGroup(new Date(2026, 9, 2, 23).toISOString(), now)).toBe('Yesterday')
     expect(dateGroup(new Date(2026, 8, 28).toISOString(), now)).toBe('Previous 7 days')
     expect(dateGroup(new Date(2026, 8, 1).toISOString(), now)).toBe('Older')
     expect(dateGroup('not a date', now)).toBe('Older')
-    const row = (id: string, updatedAt: string) => ({ summary: { ...rustInitial.summary, id, updatedAt } })
-    expect(byUpdated([row('a', '2026-09-01T00:00:00Z'), row('b', '2026-09-03T00:00:00Z'), row('c', '2026-09-02T00:00:00Z')]).map(item => item.summary.id)).toEqual(['b', 'c', 'a'])
+    const row = (id: string, createdAt: string) => ({ summary: { ...rustInitial.summary, id, createdAt } })
+    expect(byCreated<{ summary: typeof rustInitial.summary }>([row('a', '2026-09-01T00:00:00Z'), row('b', '2026-09-03T00:00:00Z'), row('c', '2026-09-02T00:00:00Z')]).map(item => item.summary.id)).toEqual(['b', 'c', 'a'])
   })
 
   it('pins sessions into a Pinned section and offers row actions from a menu or right-click', async () => {

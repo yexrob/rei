@@ -19,8 +19,10 @@ async function expectComposerPosition(page: Page, centered: boolean) {
     const bounds = conversation.getBoundingClientRect()
     const heading = conversation.querySelector('.welcome-heading')!.getBoundingClientRect()
     const composer = conversation.querySelector('.composer-region')!.getBoundingClientRect()
-    return Math.abs((heading.top + composer.bottom) / 2 - (bounds.top + bounds.bottom) / 2) < 30
-      && heading.top >= bounds.top + 15 && composer.bottom <= bounds.bottom - 15
+    // Suggestions and recent conversations below the composer belong to the same starting composition.
+    const bottom = Math.max(composer.bottom, conversation.querySelector('.welcome-more')?.getBoundingClientRect().bottom ?? 0)
+    return Math.abs((heading.top + bottom) / 2 - (bounds.top + bounds.bottom) / 2) < 30
+      && heading.top >= bounds.top + 15 && bottom <= bounds.bottom - 15
       && heading.bottom + 16 <= composer.top
       && composer.width >= Math.min(300, bounds.width - 40)
   })).toBe(true)
@@ -142,7 +144,7 @@ test('sidebar preserves thread positions across selection, new threads and rende
   const page = await app.firstWindow()
   const rows = page.locator('.session-row-title')
   const select = async (title: string) => {
-    await page.getByRole('navigation', { name: 'Sessions', exact: true }).getByRole('button', { name: new RegExp(title) }).click()
+    await page.getByRole('navigation', { name: 'Sessions', exact: true }).getByRole('button', { name: new RegExp(`^${title}`) }).click()
     await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible()
   }
   const create = async (title: string) => {

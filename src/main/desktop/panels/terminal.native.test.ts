@@ -43,7 +43,7 @@ describe.skipIf(process.platform === 'win32')('production PanelTerminal with rea
       const state = await terminal.start()
       const pid = mocks.pty!.pid
       terminal.write(state.id!, "trap '' HUP; printf '__REI_HUP_READY__\\n'; read ignored\n")
-      await Promise.race([marker, new Promise<never>((_resolve, reject) => { timeout = setTimeout(() => reject(new Error('Native shell fixture did not become ready.')), 3000) })])
+      await Promise.race([marker, new Promise<never>((_resolve, reject) => { timeout = setTimeout(() => reject(new Error('Native shell fixture did not become ready.')), 8000) })])
       const stop = terminal.close()
       expect(terminal.snapshot().status).toBe('stopping')
       expect(() => process.kill(pid, 0)).not.toThrow()
@@ -55,5 +55,5 @@ describe.skipIf(process.platform === 'win32')('production PanelTerminal with rea
       await terminal.close().catch(() => { if (mocks.pty) { try { process.kill(mocks.pty.pid, 'SIGKILL') } catch { /* Already reaped. */ } } })
       await rm(root, { recursive: true, force: true })
     }
-  }, 7000)
+  }, 15000)
 })

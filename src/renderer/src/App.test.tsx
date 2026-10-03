@@ -88,7 +88,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 async function ready() { await screen.findByText('Connected locally'); await waitFor(() => expect(screen.getByRole('button', { name: 'Send message' }).hasAttribute('disabled')).toBe(true)) }
 
 describe('desktop user journeys', () => {
-  it('orders sidebar rows by last update, matching the displayed time, when a thread is opened or updated', async () => {
+  it('keeps sidebar rows in creation order when a thread is opened or updated', async () => {
     const { api, state, emit } = desktop()
     const oldest = { ...state.summary, createdAt: '2026-09-01T10:00:00Z', updatedAt: '2026-09-01T10:00:00Z' }
     const newest = { ...state.summary, id: 'session-two', title: 'Newer thread', createdAt: time, updatedAt: time }
@@ -104,10 +104,10 @@ describe('desktop user journeys', () => {
     expect(rows()).toEqual(order)
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /^Review the workspace/ }))
     await screen.findByRole('heading', { name: 'Review the workspace' })
-    // Opening refreshes the older thread's updatedAt, so it moves up with its displayed time.
-    expect(rows()).toEqual([oldest.title, newest.title])
+    // Opening refreshes the older thread's updatedAt; navigation must not jump under the pointer.
+    expect(rows()).toEqual(order)
     await act(async () => emit({ type: 'sessionUpdated', summary: { ...oldest, updatedAt: '2026-09-17T12:00:00Z', busy: true } }))
-    expect(rows()).toEqual([oldest.title, newest.title])
+    expect(rows()).toEqual(order)
     expect(document.querySelector('.session-row[aria-current="page"] .session-row-title')?.textContent).toBe(oldest.title)
   })
 

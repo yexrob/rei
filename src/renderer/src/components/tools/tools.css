@@ -21,11 +21,11 @@
 .tool-activity-rows { position: relative; min-width: 0; }
 /* A quiet rail ties a multi-tool run together without boxing it in. */
 .tool-activity[data-multi] .tool-activity-rows { margin-inline-start: 13px; padding-inline-start: 8px; border-inline-start: 1px solid var(--line); }
-.tool-activity-row, .tool-card-reveal { height: auto; opacity: 1; overflow: clip; overflow-clip-margin: 6px; min-width: 0; }
-/* Height/opacity only animate while the open state flips (data-ready marks rows added after first paint). */
-.tool-activity[data-ready] .tool-activity-row, .tool-card-reveal { transition: height var(--motion-normal) var(--ease-out), opacity var(--motion-normal) var(--ease-out), display var(--motion-normal) allow-discrete; }
-.tool-activity-row[hidden], .tool-card-reveal[hidden] { display: none; height: 0; opacity: 0; }
-@starting-style { .tool-activity[data-ready] .tool-activity-row:not([hidden]), .tool-card-reveal:not([hidden]) { height: 0; opacity: 0; } }
+.tool-activity-row, .tool-card-reveal { min-width: 0; }
+/* Layout snaps (no height animation: rows below never drift under the pointer); content fades and settles in. */
+.tool-activity[data-ready] .tool-activity-row, .tool-card-reveal { transition: opacity var(--motion-normal) var(--ease-out), translate var(--motion-normal) var(--ease-out), display var(--motion-normal) allow-discrete; }
+.tool-activity-row[hidden], .tool-card-reveal[hidden] { display: none; opacity: 0; }
+@starting-style { .tool-activity[data-ready] .tool-activity-row:not([hidden]), .tool-card-reveal:not([hidden]) { opacity: 0; translate: 0 -3px; } }
 .tool-activity .tool-card { margin: 0; }
 /* Live work: the active name carries a slow light sweep; finished work settles with a check. */
 .tool-card[data-live] .tool-card-name, .tool-activity-live { color: var(--text); background: linear-gradient(100deg, var(--text) 0%, var(--text) 40%, color-mix(in srgb, var(--text) 35%, transparent) 50%, var(--text) 60%, var(--text) 100%); background-size: 250% 100%; background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: text-shimmer 2.2s linear infinite; }
