@@ -4,6 +4,16 @@ import { installReviewBridge } from './review'
 import { DESKTOP_IPC, type BingoDesktopApi, type BoundedDelivery, type BoundedReceipt, type BoundedRequest, type DesktopEvent, type PartRequest, type Result } from '../shared/desktop'
 import type { RpcMethods } from '../shared/rpc'
 
+function homeDirectory(): string | null {
+  const value = typeof process === 'undefined' ? undefined : process.env?.HOME || process.env?.USERPROFILE
+  return typeof value === 'string' && value.length > 1 && value.length <= 4096 ? value : null
+}
+const activations = new Set<(target: { hostId: string; sessionId: string }) => void>()
+ipcRenderer.on(DESKTOP_IPC.notificationActivated, (_event, target: unknown) => {
+  const value = target as { hostId?: unknown; sessionId?: unknown } | null
+  if (!value || typeof value.hostId !== 'string' || typeof value.sessionId !== 'string' || value.hostId.length > 100 || value.sessionId.length > 512) return
+  for (const listener of activations) { try { listener({ hostId: value.hostId, sessionId: value.sessionId }) } catch { /* Isolate subscribers. */ } }
+})
 const listeners = new Set<(event: DesktopEvent) => void>()
 let boundedConsumer: ((delivery: BoundedDelivery) => Promise<void>) | null = null
 type AcceptedMeta = { kind: 'response' | 'part'; transferId: string; hostId: string; connectionId: string; session: string | null; method?: string; partKind?: string; offset?: number; nextOffset?: number | null; totalBytes?: number }
@@ -95,6 +105,15 @@ const api: BingoDesktopApi = {
   exportText: (input) => ipcRenderer.invoke(DESKTOP_IPC.exportText, input),
   deleteSession: (input) => ipcRenderer.invoke(DESKTOP_IPC.deleteSession, input),
   configureProvider: (input) => ipcRenderer.invoke(DESKTOP_IPC.configureProvider, input),
+  notify: (input) => ipcRenderer.invoke(DESKTOP_IPC.notify, input),
+  setBadgeCount: (count) => ipcRenderer.invoke(DESKTOP_IPC.setBadgeCount, count),
+  onNotificationActivated: (listener) => {
+    if (activations.size >= 4) throw new Error('Too many notification subscriptions.')
+    activations.add(listener)
+    return () => { activations.delete(listener) }
+  },
+  // Display-only (`~` abbreviation). Sandboxed preloads still receive env.
+  homeDirectory: homeDirectory(),
   onEvent: (listener) => {
     if (listeners.size >= 32) throw new Error('Too many desktop event subscriptions.')
     listeners.add(listener)

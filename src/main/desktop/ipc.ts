@@ -10,7 +10,8 @@ import { configureProvider, configureProviderSchema } from './provider-setup'
 import { RuntimePool } from './runtime-pool'
 import { DesktopFailure } from './rpc-client'
 import { ScratchWorkspace } from './scratchWorkspace'
-import { agentPageSchema, boundedRequestSchema, connectSchema, deletionSchema, exportReferenceSchema, exportSchema, externalUrl, hostEpochSchema, partRequestSchema, preferencesPatchSchema, requestSchema, selectionSchema, suggestedFilename, transferCancelSchema, trustedSender } from './security'
+import { AttentionNotifications } from './notifications'
+import { agentPageSchema, attentionNoticeSchema, badgeCountSchema, boundedRequestSchema, connectSchema, deletionSchema, exportReferenceSchema, exportSchema, externalUrl, hostEpochSchema, partRequestSchema, preferencesPatchSchema, requestSchema, selectionSchema, suggestedFilename, transferCancelSchema, trustedSender } from './security'
 import { BoundedTransfers } from './bounded-transfers'
 import { ReferenceExporter } from './reference-export'
 import type { EventDelivery } from './event-delivery'
@@ -27,6 +28,7 @@ export class DesktopIpc {
   private rendererNavigating = false
   private readonly transfers: BoundedTransfers | null
   private readonly exporter: ReferenceExporter
+  private readonly notifications: AttentionNotifications
   invalidateRenderer(): void { this.rendererGeneration += 1; this.rendererNavigating = true; this.transfers?.cancelAll(); this.exporter.cancelAll() }
   observeRuntimeEvent(event: DesktopEvent): void {
     if (event.type === 'connection' && event.connection.status !== 'ready') { this.transfers?.cancelHost(event.connection.hostId); this.exporter.cancelHost(event.connection.hostId) }
@@ -35,9 +37,10 @@ export class DesktopIpc {
   rendererReady(): void { this.rendererGeneration += 1; this.rendererNavigating = false }
   get busy(): boolean { return this.setup !== null }
   get currentWorkspace(): string | null { return this.options.runtime.selectedConnection?.workspace ?? null }
-  async shutdown(): Promise<void> { this.transfers?.cancelAll(); this.exporter.cancelAll(); await this.setup?.catch(() => {}) }
+  async shutdown(): Promise<void> { this.notifications.close(); this.transfers?.cancelAll(); this.exporter.cancelAll(); await this.setup?.catch(() => {}) }
   async flushExports(): Promise<void> { await this.exporter.waitForCleanup() }
   constructor(private readonly options: Options) {
+    this.notifications = new AttentionNotifications({ window: options.window, enabled: () => options.preferences.preferences.notifications !== false })
     this.transfers = options.delivery ? new BoundedTransfers(options.runtime, options.delivery) : null
     this.exporter = new ReferenceExporter(options.runtime, name => this.withDialog(() => dialog.showSaveDialog(this.window(), { title: 'Save complete recorded JSON', defaultPath: name, filters: [{ name: 'JSON', extensions: ['json'] }] })), event => options.emit?.(event))
   }
@@ -126,6 +129,7 @@ export class DesktopIpc {
       if (patch.binaryPath && !this.binaries.has(patch.binaryPath)) throw new DesktopFailure('BINARY_NOT_APPROVED', 'Choose the binary using the native file picker.')
       const result = this.projectPreferences(await this.options.preferences.save(patch.workspace === this.scratch.path ? { ...patch, workspace: null } : patch))
       nativeTheme.themeSource = result.theme
+      if (patch.notifications === false) this.notifications.setBadgeCount(0)
       if ('binaryPath' in patch) this.binary = await discoverBinary({ appPath: app.getAppPath(), resourcesPath: process.resourcesPath, packaged: app.isPackaged, preference: result.binaryPath })
       if (this.binary.path) this.binaries.add(this.binary.path)
       return result
@@ -137,6 +141,8 @@ export class DesktopIpc {
       await writeFile(result.filePath, input.text, { encoding: 'utf8', mode: 0o600 })
       return true
     }))
+    this.handle(DESKTOP_IPC.notify, attentionNoticeSchema, (input) => this.notifications.show(input))
+    this.handle(DESKTOP_IPC.setBadgeCount, badgeCountSchema, (count) => { this.notifications.setBadgeCount(count) })
     this.handle(DESKTOP_IPC.deleteSession, deletionSchema, (input) => this.withDialog(async () => {
       const choice = await dialog.showMessageBox(this.window(), { type: 'warning', title: 'Delete conversation?', message: 'Delete this conversation permanently?', detail: 'Its saved history will be deleted by bingo. This cannot be undone.', buttons: ['Cancel', 'Delete conversation'], defaultId: 0, cancelId: 0, noLink: true })
       if (choice.response !== 1) return false

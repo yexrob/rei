@@ -8,9 +8,13 @@ export type DesktopPreferences = {
   workspace: string | null
   binaryPath: string | null
   recentWorkspaces: string[]
+  // Native OS notifications while the window is unfocused. Absent means on.
+  notifications?: boolean
 }
 export type ConfigureProviderInput = { name: string; protocol: 'openai' | 'anthropic'; baseUrl: string; apiKey: string }
-export type PreferencesPatch = Partial<Pick<DesktopPreferences, 'theme' | 'workspace' | 'binaryPath'>>
+export type PreferencesPatch = Partial<Pick<DesktopPreferences, 'theme' | 'workspace' | 'binaryPath' | 'notifications'>>
+// Renderer-localized attention notice; Main shows it only while unfocused.
+export type AttentionNotice = { kind: 'waiting' | 'completed' | 'failed'; title: string; body: string; hostId: string; sessionId: string }
 export type HostEpoch = { hostId: string; connectionId: string | null }
 // A null session is the host's unsent draft, not a request to create a session.
 // Native admission rejects a non-null session without a current, opened epoch.
@@ -122,6 +126,13 @@ export interface BingoDesktopApi {
   exportText(input: { text: string; suggestedName: string }): Promise<Result<boolean>>
   deleteSession(input: { connectionId: string; session: string }): Promise<Result<boolean>>
   configureProvider(input: ConfigureProviderInput): Promise<Result<void>>
+  // Optional so older bridges and fixtures remain valid.
+  notify?(input: AttentionNotice): Promise<Result<boolean>>
+  setBadgeCount?(count: number): Promise<Result<void>>
+  // The person clicked a native attention notice; Main already focused the window.
+  onNotificationActivated?(listener: (target: { hostId: string; sessionId: string }) => void): () => void
+  // Display-only: lets the renderer abbreviate paths to `~`. Never an operation input.
+  readonly homeDirectory?: string | null
 }
 export const DESKTOP_IPC = {
   bootstrap: 'desktop:bootstrap', connect: 'desktop:connect', reconnect: 'desktop:reconnect',
@@ -133,7 +144,8 @@ export const DESKTOP_IPC = {
   event: 'desktop:event', chooseWorkspace: 'desktop:choose-workspace',
   chooseBinary: 'desktop:choose-binary', chooseImages: 'desktop:choose-images',
   savePreferences: 'desktop:save-preferences', openExternal: 'desktop:open-external',
-  exportText: 'desktop:export-text', deleteSession: 'desktop:delete-session', configureProvider: 'desktop:configure-provider'
+  exportText: 'desktop:export-text', deleteSession: 'desktop:delete-session', configureProvider: 'desktop:configure-provider',
+  notify: 'desktop:notify', setBadgeCount: 'desktop:set-badge-count', notificationActivated: 'desktop:notification-activated'
 } as const
 
 declare global {
