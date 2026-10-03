@@ -29,6 +29,11 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     process.exit(0)
   } else if (r.method === 'session/list') {
     if (mode === 'timeout') return
+    if (mode === 'late-read') return setTimeout(() => reply(r, { sessions: [] }), 300)
+    if (mode === 'stderr-exit') {
+      process.stderr.write('x'.repeat(20 * 1024) + '\nstarting provider with api_key=abc123 and Authorization: Bearer tok.en-1\nusing sk-live-0123456789abcdef\nfatal: boom\n')
+      return setTimeout(() => process.exit(3), 20)
+    }
     if (mode === 'uncorrelated') return send({ jsonrpc: '2.0', id: 'bogus', result: { sessions: [] } })
     if (mode === 'invalid-result') return reply(r, { sessions: 'invalid' })
     if (mode === 'rpc-error') return send({ jsonrpc: '2.0', id: r.id, error: { code: -32000, message: 'Fixture rejected this request.', data: { code: 'sessionNotFound' } } })
@@ -49,13 +54,17 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     else if (mode === 'bounded-notifications') {
       send({ jsonrpc: '2.0', method: 'eventRef', params: { session: summary.id, seq: ++seq, messageId: 'ref-1', eventType: 'itemCompleted', item: 'recorded-item', stateUncertain: false, generation: 0, availability: { kind: 'available', token: 'fixture-token' }, totalBytes: 17 * 1024 * 1024, checksum: 'a6a4eddc16724d5c' } })
       frame({ type: 'turnCompleted', turn: 'turn', status: { kind: 'completed' }, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 } })
-    } else frame({ type: 'notice', level: 'info', code: 'replay', text: 'Replay fixture.' })
+    } else if (mode === 'unknown-event') {
+      frame({ type: 'futureThing', payload: { anything: true } })
+      frame({ type: 'notice', level: 'info', code: 'replay', text: 'Replay fixture.' })
+    } else if (mode === 'invalid-event') frame({ type: 'notice', level: 'info' })
+    else frame({ type: 'notice', level: 'info', code: 'replay', text: 'Replay fixture.' })
   }
   else if (r.method === 'gateway/subscribe') {
     reply(r, {})
     if (mode === 'bounded-notifications') send({ jsonrpc: '2.0', method: 'gateway/sessionHead', params: { session: summary.id } })
     else send({ jsonrpc: '2.0', method: 'gateway/event', params: { type: 'sessionCreated', summary } })
   }
-  else if (r.method === 'session/submit') { reply(r, {}); frame({ type: 'intentAck', intent: r.params.intent, outcome: { kind: 'applied', result: null } }) }
+  else if (r.method === 'session/submit') { if (mode === 'timeout') return; reply(r, {}); frame({ type: 'intentAck', intent: r.params.intent, outcome: { kind: 'applied', result: null } }) }
   else reply(r, {})
 })
