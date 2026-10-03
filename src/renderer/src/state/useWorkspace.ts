@@ -26,8 +26,10 @@ type SessionContext = { error: string; notice: string; commandView: View | null;
 const emptyContext: SessionContext = { error: '', notice: '', commandView: null, loading: 0 }
 export type WorkspaceHost = { connection: ConnectionState; sessions: SessionSummary[]; headOmissions: Record<string, HeadOmission[]>; listComplete: boolean; childIds: Record<string, string[]>; childScanComplete: Record<string, boolean>; projections: Record<string, SessionProjection>; projectionEpochs: Record<string, string>; catalogs: Partial<Record<CatalogKind, Catalog>>; contexts: Record<string, SessionContext>; runtimeDraft: RuntimeSelection }
 type Pending = { target: ConversationSelection; presentResult: boolean; resolve: (value: IntentOutcome) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
-type EpochCache = { buffered: Map<string, Frame[]>; deferred: Map<string, EventRefParams[]>; bufferedCount: number; overflowed: Set<string>; refresh?: Promise<void>; refreshDirty: boolean; refreshTimer?: ReturnType<typeof setTimeout>; opening: Set<string>; flights: Map<string, Promise<string>>; attachments: Map<string, { children: boolean; generation: number }>; ancestors: Set<string>; recovery: Set<string>; removed: Set<string>; discovering: Set<string>; scanned: Set<string>; gatewayRevision: number; initialThinking: Map<string, string>; preparing: Map<string, Promise<void>>; commandSession?: Promise<string>; initialized?: Promise<void> }
-function cache(): EpochCache { return { buffered: new Map(), deferred: new Map(), bufferedCount: 0, overflowed: new Set(), refreshDirty: false, opening: new Set(), flights: new Map(), attachments: new Map(), ancestors: new Set(), recovery: new Set(), removed: new Set(), discovering: new Set(), scanned: new Set(), gatewayRevision: 0, initialThinking: new Map(), preparing: new Map() } }
+type EpochCache = { buffered: Map<string, Frame[]>; deferred: Map<string, EventRefParams[]>; bufferedCount: number; overflowed: Set<string>; refresh?: Promise<void>; refreshDirty: boolean; refreshTimer?: ReturnType<typeof setTimeout>; evicted: Set<string>; opening: Set<string>; flights: Map<string, Promise<string>>; attachments: Map<string, { children: boolean; generation: number }>; ancestors: Set<string>; recovery: Set<string>; removed: Set<string>; discovering: Set<string>; scanned: Set<string>; gatewayRevision: number; initialThinking: Map<string, string>; preparing: Map<string, Promise<void>>; commandSession?: Promise<string>; initialized?: Promise<void> }
+function cache(): EpochCache { return { buffered: new Map(), deferred: new Map(), bufferedCount: 0, overflowed: new Set(), refreshDirty: false, evicted: new Set(), opening: new Set(), flights: new Map(), attachments: new Map(), ancestors: new Set(), recovery: new Set(), removed: new Set(), discovering: new Set(), scanned: new Set(), gatewayRevision: 0, initialThinking: new Map(), preparing: new Map() } }
+/** Idle attached projections kept per host; evicted ones reload through session/open. */
+export const projectionCache = { perHost: 8 }
 export const recoveryPolicy = { attempts: 3, backoff: 500 }
 /** Trailing window that coalesces gateway/sessionHead bursts into one re-pagination. */
 export const refreshPolicy = { debounce: 500 }
@@ -129,10 +131,18 @@ export function useWorkspace() {
     if (next === host) return
     hostsRef.current = { ...hostsRef.current, [id]: next }; commitHosts(defer)
   }, [commitHosts])
+  const projectionUse = useRef(new Map<string, Map<string, true>>())
+  const touchProjection = useCallback((hostId: string, id: string) => {
+    let order = projectionUse.current.get(hostId)
+    if (!order) { order = new Map(); projectionUse.current.set(hostId, order) }
+    order.delete(id); order.set(id, true)
+    return order
+  }, [])
   const setSelection = useCallback((next: ConversationSelection | null, show = true) => {
+    if (next?.sessionId) touchProjection(next.hostId, next.sessionId)
     targetRef.current = next; setTarget(next)
     if (show) { previewRef.current = next; setPreview(next) }
-  }, [])
+  }, [touchProjection])
   const live = useCallback((scope: HostEpoch): boolean => Boolean(scope.connectionId && hostsRef.current[scope.hostId]?.connection.connectionId === scope.connectionId), [])
   const requireHost = useCallback((scope: HostEpoch): WorkspaceHost => {
     const host = hostsRef.current[scope.hostId]
@@ -190,7 +200,11 @@ export function useWorkspace() {
       pagesRef.current = pagesRef.current.map(page => page.hostId === connection.hostId ? { ...page, status: 'invalidated' } : page); setAgentPages(pagesRef.current)
     }
     const retained = hostsRef.current[connection.hostId]
-    hostsRef.current = { ...hostsRef.current, [connection.hostId]: retained ? { ...retained, connection, ...(changedEpoch ? { catalogs: {}, listComplete: false, childIds: {}, childScanComplete: {}, sessions: retained.sessions.map(summary => ({ ...summary, busy: false })) } : {}) } : workspaceHost(connection) }
+    // Old-epoch projections are never reused; only the previewed transcript stays visible until reopened.
+    const shown = previewRef.current?.hostId === connection.hostId ? previewRef.current.sessionId : null
+    const stale = (host: WorkspaceHost) => ({ projections: Object.fromEntries(Object.entries(host.projections).filter(([id]) => id === shown)), projectionEpochs: Object.fromEntries(Object.entries(host.projectionEpochs).filter(([id]) => id === shown)) })
+    if (changedEpoch) projectionUse.current.delete(connection.hostId)
+    hostsRef.current = { ...hostsRef.current, [connection.hostId]: retained ? { ...retained, connection, ...(changedEpoch ? { catalogs: {}, listComplete: false, childIds: {}, childScanComplete: {}, sessions: retained.sessions.map(summary => ({ ...summary, busy: false })), ...stale(retained) } : {}) } : workspaceHost(connection) }
     commitHosts()
   }, [rejectEpoch, setSelection, commitHosts])
   const requestFor = useCallback(async <M extends DesktopMethod>(scope: HostEpoch, method: M, params: RpcMethods[M]['params']): Promise<RpcMethods[M]['result']> => {
@@ -238,11 +252,37 @@ export function useWorkspace() {
       throw error
     } finally { clearTimeout(timer); boundedSlots.current.delete(transferId) }
   }, [requireHost])
+  // Least recently used idle, attached, unselected projections beyond the cap are dropped.
+  const evictIdle = useCallback((scope: HostEpoch, host: WorkspaceHost, projections: Record<string, SessionProjection>, projectionEpochs: Record<string, string>, order: Map<string, true>) => {
+    const store = epochs.current.get(scope.connectionId!)
+    if (!store) return
+    const index = new Map(host.sessions.map(summary => [summary.id, summary])), kept = new Set<string>()
+    for (const value of [targetRef.current, previewRef.current]) {
+      let id = value?.hostId === scope.hostId ? value.sessionId : null
+      while (id && !kept.has(id)) { kept.add(id); id = index.get(id)?.parent?.session ?? projections[id]?.snapshot.summary.parent?.session ?? null }
+    }
+    for (const item of pending.current.values()) if (item.target.hostId === scope.hostId && item.target.sessionId) kept.add(item.target.sessionId)
+    const idle = [...order.keys()].filter(id => {
+      const projection = projections[id], state = projection?.snapshot
+      return state && projectionEpochs[id] === scope.connectionId && store.attachments.has(id) && !kept.has(id) && !store.opening.has(id) && !store.flights.has(id) && !projection.resync && !projection.provisional && !state.turn && !state.summary.busy && !state.interactions?.length && state.summary.driver !== 'log'
+    })
+    for (const id of idle.slice(0, Math.max(0, idle.length - projectionCache.perHost))) {
+      delete projections[id]; delete projectionEpochs[id]; order.delete(id)
+      store.evicted.add(id); store.ancestors.delete(id)
+    }
+  }, [])
   // Streamed callers defer the render; unchanged summaries and epochs keep their identities.
   const updateProjection = useCallback((scope: HostEpoch, id: string, next: SessionProjection, defer = false) => {
     if (!live(scope)) return
-    updateHost(scope.hostId, host => host.projections[id] === next && host.projectionEpochs[id] === scope.connectionId ? host : ({ ...host, projections: { ...host.projections, [id]: next }, projectionEpochs: host.projectionEpochs[id] === scope.connectionId ? host.projectionEpochs : { ...host.projectionEpochs, [id]: scope.connectionId! }, sessions: withSummary(host.sessions, id, next.snapshot.summary) }), defer)
-  }, [live, updateHost])
+    const order = touchProjection(scope.hostId, id)
+    updateHost(scope.hostId, host => {
+      if (host.projections[id] === next && host.projectionEpochs[id] === scope.connectionId) return host
+      const projections = { ...host.projections, [id]: next }
+      const projectionEpochs = host.projectionEpochs[id] === scope.connectionId && host.projections[id] ? host.projectionEpochs : { ...host.projectionEpochs, [id]: scope.connectionId! }
+      if (!host.projections[id]) evictIdle(scope, host, projections, projectionEpochs, order)
+      return { ...host, projections, projectionEpochs, sessions: withSummary(host.sessions, id, next.snapshot.summary) }
+    }, defer)
+  }, [live, updateHost, touchProjection, evictIdle])
   const readPreviewPart = useCallback(async (owner: ConversationSelection, ref: { id: string; kind: PartSlot['kind']; token: string; item?: string; generation?: number; totalBytes: number }) => {
     if (!owner.sessionId) throw new Error('Select a session before reading its content.')
     requireHost(owner)
@@ -359,7 +399,7 @@ export function useWorkspace() {
           openedId = opened.session
           previous = hostsRef.current[scope.hostId]?.projections[opened.session]
           previousSummary = hostsRef.current[scope.hostId]?.sessions.find(summary => summary.id === opened.session)
-          store.attachments.set(opened.session, { children, generation: opened.snapshot.historyGeneration ?? 0 })
+          store.attachments.set(opened.session, { children, generation: opened.snapshot.historyGeneration ?? 0 }); store.evicted.delete(opened.session)
           updateProjection(scope, opened.session, { ...createSessionProjection(opened.snapshot, opened.history ?? undefined), provisional: true, omittedFields: opened.omittedFields, ...(opened.tree ? { tree: opened.tree } : {}) })
           return opened.session
         }, () => {
@@ -540,6 +580,8 @@ export function useWorkspace() {
         updateContext(owner, { error: 'A runtime event is not loaded. Permission or request state may have changed; inspect it before continuing.' })
       }
       const existing = host.projectionEpochs[ref.session] === scope.connectionId ? host.projections[ref.session] : undefined
+      // An evicted projection reloads from a fresh snapshot; its stream is not kept meanwhile.
+      if (!existing && store.evicted.has(ref.session) && !store.opening.has(ref.session)) return
       if (!existing || store.opening.has(ref.session)) { bufferFor(store, store.deferred, ref.session, ref); return }
       const next = projectEventReference(existing, ref)
       if (next !== existing) updateProjection(scope, ref.session, next, true)
@@ -558,7 +600,7 @@ export function useWorkspace() {
       }
       if (event.params.type === 'sessionRemoved') {
         store.gatewayRevision += 1
-        const removed = event.params.session; store.removed.add(removed); takeBuffered(store, store.buffered, removed); takeBuffered(store, store.deferred, removed); store.attachments.delete(removed)
+        const removed = event.params.session; store.removed.add(removed); store.evicted.delete(removed); takeBuffered(store, store.buffered, removed); takeBuffered(store, store.deferred, removed); store.attachments.delete(removed)
         updateHost(scope.hostId, value => { const { [removed]: _, ...projections } = value.projections; return { ...value, projections, childIds: Object.fromEntries(Object.entries(value.childIds).map(([parent, ids]) => [parent, ids.filter(id => id !== removed)])), sessions: value.sessions.filter(item => item.id !== removed) } })
         if (targetRef.current?.hostId === scope.hostId && targetRef.current.sessionId === removed) { setSelection(null, false); previewRef.current = { ...scope, sessionId: null }; setPreview(previewRef.current) }
       }
@@ -589,6 +631,7 @@ export function useWorkspace() {
       const summary = data.type === 'sessionUpdated' ? data.summary : host.sessions.find(item => item.id === frame.session)
       if (summary) { const frames = [...takeBuffered(store, store.buffered, frame.session), frame]; updateProjection(scope, frame.session, projectTreeFrames(summary, frames), true); return }
     }
+    if (!existing && store.evicted.has(frame.session) && !store.opening.has(frame.session)) return
     if (!existing || store.opening.has(frame.session)) { bufferFor(store, store.buffered, frame.session, frame); return }
     const next = projectFrame(existing, frame, descendant ? 'replay' : 'live')
     if (next !== existing) updateProjection(scope, frame.session, next, true)
@@ -653,7 +696,7 @@ export function useWorkspace() {
     if (host.connection.status !== 'ready') return
     const store = epochCache(target)
     const ancestor = treeAttachmentTarget(host.sessions, target.sessionId)
-    if (!ancestor || store.attachments.has(ancestor) || store.opening.has(ancestor) || store.ancestors.has(ancestor)) return
+    if (!ancestor || (store.attachments.has(ancestor) && !store.evicted.has(ancestor)) || store.opening.has(ancestor) || store.ancestors.has(ancestor)) return
     store.ancestors.add(ancestor)
     void openFor(target, ancestor, false, 'model', false).catch(error => reportFor({ ...target, sessionId: ancestor }, error))
   }, [target, hosts, live, epochCache, openFor, reportFor])

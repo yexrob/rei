@@ -9,7 +9,7 @@ import type {
 } from '../../../shared/desktop'
 import type { Event, Frame, RpcMethods, SessionState } from '../../../shared/rpc'
 import { rustInitial } from './fixtures'
-import { bufferLimits, frameScheduler, recoveryPolicy, refreshPolicy, useWorkspace } from './useWorkspace'
+import { bufferLimits, frameScheduler, projectionCache, recoveryPolicy, refreshPolicy, useWorkspace } from './useWorkspace'
 import { selectStatus } from './session'
 
 function deferred<T>() {
@@ -1073,6 +1073,39 @@ describe('streamed frame rendering and recovery bounds', () => {
     } finally { Object.assign(refreshPolicy, policy) }
     expect(result.current.sessions.map(item => item.id).sort()).toEqual(['fresh', 'kept', 'ses_1'])
     expect(result.current.hosts[result.current.connection.hostId].listComplete).toBe(true)
+  })
+
+  it('evicts least recently used idle projections beyond the per-host cap and reloads them on reselect', async () => {
+    const { bridge, result } = await connected()
+    const limit = projectionCache.perHost
+    projectionCache.perHost = 1
+    try {
+      await act(async () => { await result.current.openSession('s1') })
+      await act(async () => { bridge.emitFrame(frame(11, { type: 'turnStarted', turn: 'turn_2', inputs: [], origin: 'submit' }, 's1')) })
+      for (const id of ['s2', 's3', 's4']) await act(async () => { await result.current.openSession(id) })
+      // The busy s1, the selected s3 and the opening s4 never count against the cap.
+      expect(Object.keys(result.current.projections).sort()).toEqual(['s1', 's2', 's3', 's4'])
+      await act(async () => { await result.current.openSession('s5') })
+      expect(Object.keys(result.current.projections).sort()).toEqual(['s1', 's3', 's4', 's5'])
+      await act(async () => { bridge.emitFrame(delta(11, ' dropped', 's2')) })
+      bridge.request.mockClear()
+      await act(async () => { await result.current.openSession('s2') })
+      expect(bridge.request.mock.calls.filter(([input]) => input.method === 'session/open')).toHaveLength(1)
+      expect(result.current.activeId).toBe('s2')
+      expect(result.current.active?.snapshot.items[0].body).toMatchObject({ text: 'Before' })
+      expect(Object.keys(result.current.projections).sort()).toEqual(['s1', 's2', 's4', 's5'])
+    } finally { projectionCache.perHost = limit }
+  })
+
+  it('drops old-epoch projections on reconnect except the transcript still on screen', async () => {
+    const { result } = await connected()
+    await act(async () => { await result.current.openSession('other') })
+    await act(async () => { await result.current.openSession('ses_1') })
+    expect(Object.keys(result.current.projections).sort()).toEqual(['other', 'ses_1'])
+    const hostId = result.current.connection.hostId
+    await act(async () => { await result.current.closeHost(hostId) })
+    expect(Object.keys(result.current.hosts[hostId].projections)).toEqual(['ses_1'])
+    expect(result.current.active?.snapshot.summary.id).toBe('ses_1')
   })
 
   it('renders on the next animation frame outside tests, with a timer fallback for hidden windows', () => {
