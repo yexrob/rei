@@ -666,5 +666,16 @@ export const zhCN = {
   'Toggle theme': '切换主题',
   'Resize review panel': '调整审查面板宽度',
   'Resize browser panel': '调整浏览器面板宽度',
-  'Resize terminal': '调整终端高度'
+  'Resize terminal': '调整终端高度',
+  'Workspace: {name}. Choose another folder': '工作区：{name}。选择其他文件夹',
+  'Explain this project': '讲解这个项目',
+  'Explain how this project is organized and where I should start reading.': '讲讲这个项目的结构，以及我应该从哪里开始读。',
+  'Find and fix a bug': '查找并修复问题',
+  'Find and fix a bug in ': '查找并修复这里的问题：',
+  'Write tests for…': '编写测试…',
+  'Write tests for ': '为以下内容编写测试：',
+  'Review my changes': '审查我的更改',
+  'Review my uncommitted changes and point out problems before I commit.': '审查我尚未提交的更改，在提交前指出其中的问题。',
+  'Suggestions': '建议',
+  'Recent conversations': '最近的对话'
 } as const

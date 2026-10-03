@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Download, GitCompareArrows, Globe2, Info, MoreHorizontal, PanelLeft, Settings2, SquarePen, SquareTerminal, Sun, Trash2, X } from './components/icons'
-import { WelcomeHeading } from './components/Welcome'
+import { WelcomeHero, WelcomeSuggestions } from './components/Welcome'
 import { SessionMetrics } from './components/SessionMetrics'
 import { SessionStatus } from './components/SessionStatus'
 import { DESKTOP_IMAGE_LIMITS } from '../../shared/desktop'
@@ -8,7 +8,7 @@ import { conversationKey, useWorkspace, unwrap } from './state/useWorkspace'
 import { itemText, selectSessionTitle, selectStatus, selectUsage, selectWorkspaceThreads } from './state/session'
 import { Composer, emptyDraft, type Draft } from './components/Composer'
 import { Timeline } from './components/Timeline'
-import { byUpdated, pinKey, ProjectSidebar, type SessionAction, type WorkspacePage } from './components/ProjectSidebar'
+import { byUpdated, pinKey, ProjectSidebar, updatedTime, type SessionAction, type WorkspacePage } from './components/ProjectSidebar'
 import { SkillsPage } from './components/SkillsPage'
 import { AutomationsPage } from './components/AutomationsPage'
 import { ReviewPanel } from './components/ReviewPanel'
@@ -48,7 +48,7 @@ function loadDrafts(): Record<string, Draft> {
 export default function App(): React.JSX.Element { return <I18nProvider><WorkspaceApp /></I18nProvider> }
 
 function WorkspaceApp(): React.JSX.Element {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const w = useWorkspace()
   const [sidebar, setSidebar] = useState(() => window.innerWidth >= 760)
   const [page, setPage] = useState<WorkspacePage>('thread')
@@ -184,6 +184,12 @@ function WorkspaceApp(): React.JSX.Element {
     setDrafts((current) => { const previous = current[key] ?? emptyDraft; return { ...current, [key]: { ...previous, text: previous.text ? text.startsWith('/') ? `${text}${previous.text}` : `${previous.text}\n\n${text}` : text } } })
     setPage('thread'); if (window.innerWidth < 900) setReviewOpen(false)
     requestAnimationFrame(() => input.current?.focus())
+  }
+  // Suggestions fill (never send) the draft, keeping anything already typed.
+  const fillDraft = (text: string) => {
+    const next = draft.text.trim() ? `${draft.text.trimEnd()}\n\n${text}` : text
+    setDraft({ ...draft, text: next })
+    requestAnimationFrame(() => { input.current?.focus(); input.current?.setSelectionRange(next.length, next.length) })
   }
   const navigate = (next: WorkspacePage) => { ++presentationGeneration.current; setPage(next); if (window.innerWidth < 760) setSidebar(false) }
   const chooseProject = () => { ++presentationGeneration.current; void w.chooseWorkspace().then(() => setPage('thread')).catch(w.report) }
@@ -351,12 +357,13 @@ function WorkspaceApp(): React.JSX.Element {
           <RoomComposer key={operationKey} draft={draft} setDraft={setDraft} send={() => void send()} attach={attach} ready={ready && !w.active.resync && !uncertainRuntime && !identityOmitted} sending={sending || commandBusy || w.loading} roomName={title} closed={room.closed} members={room.members} inputRef={input} />
         </>} />
       </> : <div className={`conversation ${showWelcome ? 'empty-conversation' : ''}`}>
-        {showWelcome && <WelcomeHeading />}
+        {showWelcome && <WelcomeHero workspaceName={workspaceLabel} workspacePath={scratch ? undefined : w.connection.workspace ?? undefined} chooseProject={chooseProject} />}
         {w.active && !showWelcome && <Timeline key={operationKey} connected={ready} projection={w.active} childIds={w.hosts[w.connection.hostId]?.childIds[w.activeId ?? ''] ?? []} childScanComplete={w.hosts[w.connection.hostId]?.childScanComplete[w.activeId ?? ''] ?? false} previewReference={(kind, id) => { void w.previewReference(kind, id).catch(w.report) }} saveReference={(kind, id) => { void w.exportReference(kind, id).catch(w.report) }} exportProgress={w.exportProgress} cancelExport={() => { void w.cancelExport().catch(w.report) }} assistantName={agentName} openLink={openLink} runAction={runAction} sessions={w.sessions} onSelectSession={selectCollaborator} loadHistory={() => { void w.loadHistory().catch(w.report) }} loading={w.loading} />}
         {w.commandView && !settings && <div className="command-result"><IconButton label="Dismiss command result" onClick={() => w.setCommandView(null)}><X size={15} /></IconButton><StructuredView view={w.commandView} runAction={runAction} openLink={openLink} /></div>}
         {state?.interactions?.map((interaction) => <InteractionPanel key={`${operationKey}:${interaction.id}`} interaction={interaction} disabled={!ready || identityOmitted || uncertainRuntime} openLink={interaction.kind.kind === 'login' ? openSignIn : openLink} respond={(answer, activation) => w.respond(interaction.session, interaction.id, answer, activation)} />)}
         {ready && currentError && <div className="composer-error"><ErrorBanner message={currentError} onDismiss={() => { w.setError(''); setDraftError('') }} onRetry={w.active?.resync && w.activeId ? () => { void w.openSession(w.activeId!, true).catch(w.report) } : undefined} /></div>}
         <Composer draft={draft} setDraft={setDraft} send={() => void send()} stop={stopCurrent} attach={attach} attachFiles={attachFiles} ready={ready && !w.active?.resync} submitReady={ready && !w.active?.resync && !identityOmitted && !uncertainRuntime} busy={ready && Boolean(state?.turn)} sending={sending || commandBusy || w.loading} model={model} thinking={thinking} permission={permission} models={w.catalogs.models?.entries ?? []} commands={w.catalogs.commands?.entries ?? []} command={command} inputRef={input} queue={state?.queue} workspaceName={workspaceLabel} chooseProject={chooseProject} recipient={hasCollaboration || childAgent ? { name: agentName, role: childAgent ? 'agent' : 'main' } : undefined} />
+        {showWelcome && <WelcomeSuggestions onSuggestion={fillDraft} recent={byUpdated(visibleSessions.filter(session => session.id !== w.activeId).map(summary => ({ summary }))).slice(0, 3).map(({ summary }) => ({ key: summary.id, title: summary.title || t('Untitled session'), when: updatedTime(summary.updatedAt, locale), open: () => openSession(summary.id) }))} />}
       </div>}
       </div>{reviewOpen && page === 'thread' && <Splitter label="Resize review panel" orientation="vertical" value={reviewWidth ?? measure('.review-panel', 'width', 520)} min={320} max={contentWidth() - 320} onChange={setReviewWidth} onReset={() => setReviewWidth(null)} />}<ReviewPanel visible={reviewOpen && page === 'thread'} workspace={w.connection.workspace} onClose={() => setReviewOpen(false)} onCompose={compose} onCount={setReviewCount} width={reviewWidth} />{browserOpen && page === 'thread' && <Splitter label="Resize browser panel" orientation="vertical" value={browserWidth ?? measure('.browser-panel', 'width', 480)} min={310} max={contentWidth() - 300} onChange={setBrowserWidth} onReset={() => setBrowserWidth(null)} />}<BrowserPanel visible={browserOpen && page === 'thread'} occluded={browserOccluded} onClose={() => setBrowserOpen(false)} width={browserWidth} /></div>{terminalMounted && terminalOpen && page === 'thread' && <Splitter label="Resize terminal" orientation="horizontal" value={terminalHeight ?? measure('.terminal-panel', 'height', 260)} min={140} max={measure('.workspace-body', 'height', window.innerHeight) - 160} onChange={setTerminalHeight} onReset={() => setTerminalHeight(null)} />}{terminalMounted && <Suspense fallback={<section className="terminal-panel"><p className="terminal-status">{t('Starting terminal…')}</p></section>}><TerminalPanel visible={terminalOpen && page === 'thread'} onClose={() => setTerminalOpen(false)} height={terminalHeight} /></Suspense>}</div>
     </main>

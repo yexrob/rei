@@ -398,6 +398,13 @@ describe('desktop user journeys', () => {
     fireEvent.keyDown(again, { key: 'Enter' })
     await screen.findByRole('heading', { name: 'Review the workspace' })
   })
+  it('fills, never sends, a suggested prompt from the new-conversation hero', async () => {
+    const { api } = desktop(); render(<App />); await ready()
+    expect(within(screen.getByRole('navigation', { name: 'Recent conversations' })).getByRole('button', { name: /Review the workspace/ })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Explain this project' }))
+    expect((screen.getByRole('textbox', { name: 'Message bingo' }) as HTMLTextAreaElement).value).toBe('Explain how this project is organized and where I should start reading.')
+    expect(vi.mocked(api.request).mock.calls.some(([call]) => call.method === 'session/submit')).toBe(false)
+  })
   it('exposes complete settings and persists theme through the native preferences API', async () => {
     const { api } = desktop(); render(<App />); await ready()
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))

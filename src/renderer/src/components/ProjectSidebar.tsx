@@ -13,7 +13,7 @@ export function projectPaths(workspace: string | null, scratch: string | undefin
   return [...new Set([...(workspace ? [workspace] : []), ...recent.filter((path) => path !== scratch)])]
 }
 
-function updatedTime(value: string, locale: string): string {
+export function updatedTime(value: string, locale: string): string {
   const elapsed = Math.max(0, Date.now() - Date.parse(value))
   if (!Number.isFinite(elapsed)) return ''
   const minutes = Math.floor(elapsed / 60000)
