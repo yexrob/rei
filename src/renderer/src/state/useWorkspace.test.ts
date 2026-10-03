@@ -9,7 +9,7 @@ import type {
 } from '../../../shared/desktop'
 import type { Event, Frame, RpcMethods, SessionState } from '../../../shared/rpc'
 import { rustInitial } from './fixtures'
-import { frameScheduler, useWorkspace } from './useWorkspace'
+import { bufferLimits, frameScheduler, useWorkspace } from './useWorkspace'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -968,6 +968,43 @@ describe('streamed frame rendering', () => {
     const renamed = result.current.sessions
     await act(async () => { bridge.emitFrame(frame(42, { type: 'sessionUpdated', summary: { ...snapshot().summary, title: 'Renamed' } })) })
     expect(result.current.sessions).toBe(renamed)
+  })
+
+  it('drops an overflowing in-flight buffer and resyncs the opened session instead of growing without bound', async () => {
+    const { bridge, result } = await connected()
+    const reply = deferred<Result<unknown>>()
+    bridge.handlers.set('session/open', () => reply.promise)
+    const limits = { ...bufferLimits }
+    bufferLimits.session = 5
+    try {
+      let open!: Promise<string>
+      await act(async () => { open = result.current.openSession('ses_1'); for (let seq = 11; seq <= 30; seq += 1) bridge.emitFrame(delta(seq, '.')) })
+      bridge.handlers.set('session/open', async () => openReply(snapshot('ses_1', 30, 'Recovered')))
+      await act(async () => { reply.resolve(openReply(snapshot())); await open })
+      await act(async () => { await Promise.resolve() })
+      expect(bridge.api.requestBounded).toHaveBeenCalledTimes(3)
+      expect(result.current.active?.resync).toBeNull()
+      expect(assistantText(result.current.active)).toBe('Recovered')
+    } finally { Object.assign(bufferLimits, limits) }
+  })
+
+  it('evicts the largest buffer when the epoch-wide cap is reached and keeps replaying the rest', async () => {
+    const { bridge, result } = await connected()
+    const reply = deferred<Result<unknown>>()
+    bridge.handlers.set('session/open', () => reply.promise)
+    const limits = { ...bufferLimits }
+    bufferLimits.total = 6
+    try {
+      let open!: Promise<string>
+      await act(async () => {
+        open = result.current.openSession('ses_1')
+        for (let seq = 1; seq <= 4; seq += 1) bridge.emitFrame(delta(seq, '.', 'other'))
+        for (let seq = 11; seq <= 13; seq += 1) bridge.emitFrame(delta(seq, String(seq)))
+      })
+      await act(async () => { reply.resolve(openReply(snapshot())); await open })
+      expect(result.current.active?.resync).toBeNull()
+      expect(assistantText(result.current.active)).toBe('Before111213')
+    } finally { Object.assign(bufferLimits, limits) }
   })
 
   it('renders on the next animation frame outside tests, with a timer fallback for hidden windows', () => {

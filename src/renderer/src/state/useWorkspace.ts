@@ -26,8 +26,29 @@ type SessionContext = { error: string; notice: string; commandView: View | null;
 const emptyContext: SessionContext = { error: '', notice: '', commandView: null, loading: 0 }
 export type WorkspaceHost = { connection: ConnectionState; sessions: SessionSummary[]; headOmissions: Record<string, HeadOmission[]>; listComplete: boolean; childIds: Record<string, string[]>; childScanComplete: Record<string, boolean>; projections: Record<string, SessionProjection>; projectionEpochs: Record<string, string>; catalogs: Partial<Record<CatalogKind, Catalog>>; contexts: Record<string, SessionContext>; runtimeDraft: RuntimeSelection }
 type Pending = { target: ConversationSelection; presentResult: boolean; resolve: (value: IntentOutcome) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
-type EpochCache = { buffered: Map<string, Frame[]>; deferred: Map<string, EventRefParams[]>; opening: Set<string>; flights: Map<string, Promise<string>>; attachments: Map<string, { children: boolean; generation: number }>; ancestors: Set<string>; recovery: Set<string>; removed: Set<string>; discovering: Set<string>; scanned: Set<string>; gatewayRevision: number; initialThinking: Map<string, string>; preparing: Map<string, Promise<void>>; commandSession?: Promise<string>; initialized?: Promise<void> }
-function cache(): EpochCache { return { buffered: new Map(), deferred: new Map(), opening: new Set(), flights: new Map(), attachments: new Map(), ancestors: new Set(), recovery: new Set(), removed: new Set(), discovering: new Set(), scanned: new Set(), gatewayRevision: 0, initialThinking: new Map(), preparing: new Map() } }
+type EpochCache = { buffered: Map<string, Frame[]>; deferred: Map<string, EventRefParams[]>; bufferedCount: number; overflowed: Set<string>; opening: Set<string>; flights: Map<string, Promise<string>>; attachments: Map<string, { children: boolean; generation: number }>; ancestors: Set<string>; recovery: Set<string>; removed: Set<string>; discovering: Set<string>; scanned: Set<string>; gatewayRevision: number; initialThinking: Map<string, string>; preparing: Map<string, Promise<void>>; commandSession?: Promise<string>; initialized?: Promise<void> }
+function cache(): EpochCache { return { buffered: new Map(), deferred: new Map(), bufferedCount: 0, overflowed: new Set(), opening: new Set(), flights: new Map(), attachments: new Map(), ancestors: new Set(), recovery: new Set(), removed: new Set(), discovering: new Set(), scanned: new Set(), gatewayRevision: 0, initialThinking: new Map(), preparing: new Map() } }
+export const bufferLimits = { total: 20000, session: 10000 }
+function takeBuffered<T>(store: EpochCache, queues: Map<string, T[]>, id: string): T[] {
+  const queue = queues.get(id) ?? []
+  queues.delete(id); store.bufferedCount -= queue.length
+  return queue
+}
+const bufferedLength = (store: EpochCache, id: string) => (store.buffered.get(id)?.length ?? 0) + (store.deferred.get(id)?.length ?? 0)
+/** Pre-projection frames queue in place under per-session and per-epoch caps. An
+ * overflowing queue is dropped whole; if its open is in flight, that open resyncs. */
+function bufferFor<T>(store: EpochCache, queues: Map<string, T[]>, id: string, value: T): void {
+  if (store.overflowed.has(id)) return
+  let victim = bufferedLength(store, id) >= bufferLimits.session ? id : undefined
+  if (!victim && store.bufferedCount >= bufferLimits.total) {
+    let largest = -1
+    for (const key of new Set([...store.buffered.keys(), ...store.deferred.keys()])) { const length = bufferedLength(store, key); if (length > largest) { largest = length; victim = key } }
+  }
+  if (victim) { takeBuffered(store, store.buffered, victim); takeBuffered(store, store.deferred, victim); if (store.opening.has(victim)) store.overflowed.add(victim); if (victim === id) return }
+  const queue = queues.get(id)
+  if (queue) queue.push(value); else queues.set(id, [value])
+  store.bufferedCount += 1
+}
 function workspaceHost(connection: ConnectionState): WorkspaceHost { return { connection, sessions: [], headOmissions: {}, listComplete: false, childIds: {}, childScanComplete: {}, projections: {}, projectionEpochs: {}, catalogs: {}, contexts: {}, runtimeDraft: defaultRuntime } }
 function selectedModel(id: string | null, catalogs: Partial<Record<CatalogKind, Catalog>>): Pick<SessionSpec, 'provider' | 'model'> {
   if (!id) return {}
@@ -321,8 +342,8 @@ export function useWorkspace() {
         let projection = hostsRef.current[scope.hostId]?.projections[session]
         if (!projection) throw new Error('The bounded session snapshot was not accepted.')
         const buffered = [
-          ...(store.buffered.get(session) ?? []).map(frame => ({ seq: frame.seq, frame })),
-          ...(store.deferred.get(session) ?? []).map(ref => ({ seq: ref.seq, ref }))
+          ...takeBuffered(store, store.buffered, session).map(frame => ({ seq: frame.seq, frame })),
+          ...takeBuffered(store, store.deferred, session).map(ref => ({ seq: ref.seq, ref }))
         ].sort((left, right) => left.seq - right.seq)
         const fold = foldDraft()
         for (const entry of buffered) {
@@ -332,11 +353,12 @@ export function useWorkspace() {
           if (frame.event.type === 'lagged' ? frame.event.to <= projection.snapshot.seq : frame.seq <= projection.snapshot.seq) continue
           projection = projectFrame(projection, frame, 'live', fold)
         }
-        store.buffered.delete(session); store.deferred.delete(session)
+        // Frames dropped on overflow during this open may postdate the snapshot.
+        if (store.overflowed.delete(session) && !projection.resync) projection = { ...projection, resync: { reason: 'gap', since: projection.snapshot.seq } }
         updateProjection(scope, session, { ...projection, provisional: false })
         if (!id && driver === 'model' && draft.thinking !== null) store.initialThinking.set(session, draft.thinking)
         return session
-      })().finally(() => { if (id) store.opening.delete(id); store.flights.delete(flightKey) })
+      })().finally(() => { if (id) { store.opening.delete(id); store.overflowed.delete(id) } store.flights.delete(flightKey) })
       store.flights.set(flightKey, flight)
     }
     let openedSession: string | null = null
@@ -485,7 +507,7 @@ export function useWorkspace() {
         updateContext(owner, { error: 'A runtime event is not loaded. Permission or request state may have changed; inspect it before continuing.' })
       }
       const existing = host.projectionEpochs[ref.session] === scope.connectionId ? host.projections[ref.session] : undefined
-      if (!existing || store.opening.has(ref.session)) { store.deferred.set(ref.session, [...store.deferred.get(ref.session) ?? [], ref]); return }
+      if (!existing || store.opening.has(ref.session)) { bufferFor(store, store.deferred, ref.session, ref); return }
       const next = projectEventReference(existing, ref)
       if (next !== existing) updateProjection(scope, ref.session, next, true)
       return
@@ -503,7 +525,7 @@ export function useWorkspace() {
       }
       if (event.params.type === 'sessionRemoved') {
         store.gatewayRevision += 1
-        const removed = event.params.session; store.removed.add(removed); store.buffered.delete(removed); store.deferred.delete(removed); store.attachments.delete(removed)
+        const removed = event.params.session; store.removed.add(removed); takeBuffered(store, store.buffered, removed); takeBuffered(store, store.deferred, removed); store.attachments.delete(removed)
         updateHost(scope.hostId, value => { const { [removed]: _, ...projections } = value.projections; return { ...value, projections, childIds: Object.fromEntries(Object.entries(value.childIds).map(([parent, ids]) => [parent, ids.filter(id => id !== removed)])), sessions: value.sessions.filter(item => item.id !== removed) } })
         if (targetRef.current?.hostId === scope.hostId && targetRef.current.sessionId === removed) { setSelection(null, false); previewRef.current = { ...scope, sessionId: null }; setPreview(previewRef.current) }
       }
@@ -532,9 +554,9 @@ export function useWorkspace() {
     const existing = host.projectionEpochs[frame.session] === scope.connectionId ? host.projections[frame.session] : undefined
     if (descendant && !existing) {
       const summary = data.type === 'sessionUpdated' ? data.summary : host.sessions.find(item => item.id === frame.session)
-      if (summary) { const frames = [...store.buffered.get(frame.session) ?? [], frame]; store.buffered.delete(frame.session); updateProjection(scope, frame.session, projectTreeFrames(summary, frames), true); return }
+      if (summary) { const frames = [...takeBuffered(store, store.buffered, frame.session), frame]; updateProjection(scope, frame.session, projectTreeFrames(summary, frames), true); return }
     }
-    if (!existing || store.opening.has(frame.session)) { const queue = store.buffered.get(frame.session) ?? []; if (queue.length < 10000) store.buffered.set(frame.session, [...queue, frame]); return }
+    if (!existing || store.opening.has(frame.session)) { bufferFor(store, store.buffered, frame.session, frame); return }
     const next = projectFrame(existing, frame, descendant ? 'replay' : 'live')
     if (next !== existing) updateProjection(scope, frame.session, next, true)
   }
@@ -742,7 +764,7 @@ export function useWorkspace() {
         const owner = scope(); if (!owner.sessionId) return
         const deleted = unwrap(await window.bingoDesktop.deleteSession({ connectionId: owner.connectionId!, session: owner.sessionId }))
         if (!live(owner) || !deleted) return
-        const store = epochCache(owner); store.removed.add(owner.sessionId); store.attachments.delete(owner.sessionId); store.deferred.delete(owner.sessionId)
+        const store = epochCache(owner); store.removed.add(owner.sessionId); store.attachments.delete(owner.sessionId); takeBuffered(store, store.deferred, owner.sessionId)
         updateHost(owner.hostId, host => { const { [owner.sessionId!]: _, ...projections } = host.projections; return { ...host, projections, sessions: host.sessions.filter(item => item.id !== owner.sessionId) } })
         if (targetRef.current?.hostId === owner.hostId && targetRef.current.sessionId === owner.sessionId) await selectFor({ ...owner, sessionId: null }, ++navigation.current)
       },
