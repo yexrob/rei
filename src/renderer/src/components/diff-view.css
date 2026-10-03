@@ -1,0 +1,13 @@
+.diff-view { margin: 0; padding: 8px 0; overflow: auto; font: 12px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; tab-size: 4; white-space: pre; overflow-wrap: normal; color: var(--text); }
+.diff-row { display: block; width: max-content; min-width: 100%; padding-inline: 14px; }
+.diff-text { display: inline-block; }
+.diff-add { background: var(--addition-bg); }
+.diff-add .diff-text::first-letter { color: var(--success); }
+.diff-remove { background: var(--deletion-bg); }
+.diff-remove .diff-text::first-letter { color: var(--danger); }
+.diff-hunk { color: var(--secondary); background: var(--surface-inset); }
+.diff-meta { color: var(--secondary); }
+.diff-gutter { display: inline-block; width: 4.5ch; padding-inline-end: 1ch; text-align: end; color: var(--quiet); user-select: none; font-variant-numeric: tabular-nums; }
+.diff-view.with-line-numbers .diff-row { padding-inline-start: 6px; }
+.diff-view:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+@media (forced-colors: active) { .diff-add, .diff-remove { forced-color-adjust: none; } .diff-add { background: Canvas; color: CanvasText; text-decoration: underline; } .diff-remove { background: Canvas; color: GrayText; } }

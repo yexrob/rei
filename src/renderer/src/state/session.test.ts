@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { Event, Frame, Interaction, Item, ItemBody, SessionState, View } from '../../../shared/rpc'
+import type { Event, EventRefParams, Frame, Interaction, Item, ItemBody, SessionState, View } from '../../../shared/rpc'
 import { rustFrames, rustInitial, rustSnapshots } from './fixtures'
 import {
   contentText, createSessionProjection, foldSessionFrame, isDurableEvent, itemText,
-  projectFrame, projectHistory, selectConfig, selectMessages, selectPendingInteractions,
+  projectEventReference, projectFrame, projectFrames, projectHistory, selectConfig, unloadedLimit, selectMessages, selectPendingInteractions,
   selectSessionTitle, selectStatus, selectToolRuns, selectUsage, selectWorkspaceThreads, viewText
 } from './session'
 
@@ -358,6 +358,41 @@ describe('history backfill', () => {
     const state = run([{ type: 'compacted', generation: 1, boundary: 'b', summary: 's', kept: ['c'] }], base({ items: [item('a'), item('b'), item('c')] }))
     expect(state.snapshot.historyGeneration).toBe(1)
     expect(state.snapshot.items.map((entry) => entry.id)).toEqual(['a', 'b', 'c'])
+  })
+})
+
+describe('bounded fold cost', () => {
+  it('folds a buffered run with one transcript copy, matching the per-frame fold without mutating inputs', () => {
+    const initial = deepFreeze(base({ seq: 1, items: [item('a'), item('m', { kind: 'assistant', text: '' }, 'running')] }))
+    const frames = deepFreeze([
+      ...Array.from({ length: 50 }, (_, index) => frame(index + 2, { type: 'itemDelta', item: 'm', n: index, kind: 'text', data: String(index % 10) })),
+      frame(52, { type: 'itemStarted', item: item('t', { kind: 'reasoning', text: '' }, 'running') }),
+      frame(53, { type: 'itemDelta', item: 't', n: 0, kind: 'reasoning', data: 'why' })
+    ])
+    const batched = projectFrames(initial, frames)
+    const stepwise = frames.reduce((state, next) => projectFrame(state, next), initial)
+    expect(batched).toEqual(stepwise)
+    expect(batched.activityFrame).toBe(frames.at(-1))
+    expect(initial.snapshot.items.map((entry) => entry.id)).toEqual(['a', 'm'])
+    expect(projectFrames(batched, [frames[0]])).toBe(batched)
+  })
+
+  it('stitches a large history page in linear passes with the same order as anchored insertion', () => {
+    const live = Array.from({ length: 2000 }, (_, index) => item(`live${index}`))
+    const page = [...Array.from({ length: 2000 }, (_, index) => item(`old${index}`)), live[0], item('gap'), live[1]]
+    const merged = projectHistory(base({ items: live }), { items: page, generation: 0 }, 'live0')
+    expect(merged.snapshot.items.slice(1998, 2004).map((entry) => entry.id)).toEqual(['old1998', 'old1999', 'live0', 'gap', 'live1', 'live2'])
+    expect(merged.snapshot.items).toHaveLength(4001)
+  })
+
+  it('caps loaded-later event references but never ages out state-uncertain ones', () => {
+    const ref = (seq: number, stateUncertain = false): EventRefParams => ({ session: 'ses_1', seq, messageId: `m${seq}`, eventType: 'itemCompleted', stateUncertain, generation: 0, totalBytes: 9, checksum: 'x', availability: { kind: 'unavailable', reason: 'gone' } })
+    let state = base({ seq: 0 })
+    state = projectEventReference(state, ref(1, true))
+    for (let seq = 2; seq <= unloadedLimit + 5; seq += 1) state = projectEventReference(state, ref(seq))
+    expect(state.unloaded).toHaveLength(unloadedLimit)
+    expect(state.unloaded?.[0].stateUncertain).toBe(true)
+    expect(state.unloaded?.[1].seq).toBe(7)
   })
 })
 

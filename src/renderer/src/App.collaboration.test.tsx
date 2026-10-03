@@ -97,7 +97,7 @@ async function openMain() {
   const bridge = desktop()
   render(<App />)
   await screen.findByText('Connected locally')
-  fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /Main conversation/ }))
+  fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /^Main conversation/ }))
   await screen.findByRole('heading', { name: 'Main conversation' })
   await screen.findByRole('button', { name: 'Environment' })
   return bridge

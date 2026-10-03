@@ -20,7 +20,7 @@ export function SkillsPage({ workspace: w, onCompose }: Props): React.JSX.Elemen
     setState({ loading: true, error: '' })
     void w.readCatalog('commands').then(() => {
       if (current) setState({ loading: false, error: '' })
-    }, (error: unknown) => { if (current) setState({ loading: false, error: errorMessage(error) }) })
+    }, (error: unknown) => { if (current) setState({ loading: false, error: errorMessage(error, t) }) })
     return () => { current = false }
   }, [ready, w.connection.connectionId, w.readCatalog, revision])
   const entries = (w.catalogs.commands?.entries ?? []).filter((entry) => object(entry.meta).family === 'skill').map((entry) => ({ ...entry, label: entry.id }))

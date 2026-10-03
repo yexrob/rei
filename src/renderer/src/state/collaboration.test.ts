@@ -22,6 +22,17 @@ describe('source-backed collaboration selectors', () => {
     expect(rootSessionId(sessions, 'missing')).toBeNull()
   })
 
+  it('resolves every descendant against one shared index, including deep chains and cycles', () => {
+    const chain = Array.from({ length: 3000 }, (_, index) => agent(`a${index}`, index ? `a${index - 1}` : 'root'))
+    const cycle = [agent('x', 'y'), agent('y', 'x')]
+    const started = performance.now()
+    const selected = selectCollaboration([root, ...chain, ...cycle], {}, 'a2999')
+    expect(performance.now() - started).toBeLessThan(1000)
+    expect(selected.entries).toHaveLength(3001)
+    expect(selectCollaboration([root, ...cycle], {}, 'x').rootId).toBeNull()
+    expect(rootSessionId([root, ...chain], 'a10')).toBe('root')
+  })
+
   it('recognizes renamed agents by stable parent-qualified key rather than mutable title', () => {
     const renamed = { ...agent('reviewer'), title: 'Source reviewer' }
     expect(isAgentSession(renamed)).toBe(true)

@@ -24,3 +24,21 @@
 .math-display { display: block; overflow-x: auto; max-width: 100%; padding-block: 0.5em; }
 .math-inline { overflow-wrap: normal; }
 .markdown .katex { font-size: 1.12em; }
+
+/* Reading rhythm: one paragraph rhythm, headings that group what follows, lists that breathe evenly. */
+.markdown .markstream-react p { margin-block: 0 .8em; }
+.markdown .markstream-react :is(h1, h2, h3, h4) { margin-block: 1.35em .45em; line-height: 1.35; font-weight: 600; letter-spacing: -.01em; color: var(--text); }
+.markdown .markstream-react h1 { font-size: 1.32em; }
+.markdown .markstream-react h2 { font-size: 1.2em; }
+.markdown .markstream-react h3 { font-size: 1.06em; }
+.markdown .markstream-react h4 { font-size: 1em; }
+.markdown .markstream-react :is(ul, ol) { margin-block: .35em .9em; padding-inline-start: 1.35em; }
+.markdown .markstream-react li { margin-block: .2em; padding-inline-start: .15em; }
+.markdown .markstream-react li > p { margin: 0; }
+.markdown .markstream-react li::marker { color: var(--quiet); }
+.markdown .markstream-react :not(pre) > code { padding: .12em .38em; border-radius: 5px; background: var(--code); color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .86em; }
+.markdown .markstream-react hr { border: 0; border-top: 1px solid var(--line); margin-block: 1.4em; }
+.markdown .markstream-react blockquote { margin-inline: 0; padding-inline-start: 1em; border-inline-start: 3px solid var(--control-line); }
+.markdown .markstream-react .code-block { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--code); }
+.markdown .markstream-react .code-block .code-heading { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 4px 12px; border-bottom: 1px solid var(--line); font-size: 11.5px; }
+.markdown .markstream-react .code-block pre { padding: 12px 14px; font: 12.5px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace; }

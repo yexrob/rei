@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowDown, ChevronRight, Terminal, Wrench } from './icons'
+import { ArrowDown, ChevronRight, RotateCw, SquarePen, Terminal, TriangleAlert, Wrench } from './icons'
 import type { ExportProgress } from '../../../shared/desktop'
 import type { Item, SessionSummary, View } from '../../../shared/rpc'
 import { contentText, itemText, type SessionProjection, type ToolCallItem } from '../state/session'
@@ -8,13 +8,32 @@ import { groupTimelineItems, ToolActivityGroup } from './tools/ToolActivityGroup
 import { WorkingIndicator } from './WorkingIndicator'
 import { CodeBlock, RichText, StructuredView, type OpenLink, type RunAction } from './Content'
 import { CopyButton, object } from './primitives'
+import { durationBetween, formatSeconds, useElapsed } from './motion'
+import './conversation.css'
 import { useI18n } from '../i18n'
 
 import { JournalMediaProvider, JournalPictures as Pictures } from './media/JournalMedia'
 
 type ToolNavigation = { sessionId?: string; sessions?: SessionSummary[]; onSelectSession?: (id: string) => void }
+/** Conversation-level follow-ups: resend a prompt as a new turn, or load it into the composer for editing. */
+export type MessageActions = { onRetry?: (text: string) => void; onEdit?: (text: string) => void }
 
-export const TranscriptItem = memo(function TranscriptItem({ item, openLink, runAction, assistantName = 'Bingo', sessionId, sessions, onSelectSession, deferActions = false }: { item: Item; openLink: OpenLink; runAction: RunAction; assistantName?: string; deferActions?: boolean } & ToolNavigation): React.JSX.Element | null {
+function Reasoning({ item, openLink, enter }: { item: Item & { body: { kind: 'reasoning' } }; openLink: OpenLink; enter?: boolean }): React.JSX.Element {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const working = item.status === 'running' || item.status === 'pending'
+  const elapsed = useElapsed(item.startedAt, working)
+  const duration = durationBetween(item.startedAt, item.completedAt)
+  const label = working ? t('Thinking…') : duration != null && duration >= 1 ? t('Thought for {duration}', { duration: formatSeconds(duration) }) : t('Thinking')
+  // While the model is still thinking, a two-line peek keeps the reader oriented without opening the panel.
+  const peek = working && !open ? item.body.text.trim().slice(-280) : ''
+  return <div className="reasoning-block" data-enter={enter || undefined}><details className="reasoning" data-live={working || undefined} onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <summary><ChevronRight size={14} /><span className={working ? 'reasoning-live' : undefined}>{label}</span>{elapsed != null && elapsed >= 1 && elapsed < 86400 && <span className="reasoning-elapsed" aria-hidden="true">{formatSeconds(elapsed)}</span>}</summary>
+    <div className="reasoning-content"><RichText text={item.body.text} openLink={openLink} final={!working} /></div>
+  </details>{peek && <p className="reasoning-peek" aria-hidden="true">{peek}</p>}</div>
+}
+
+export const TranscriptItem = memo(function TranscriptItem({ item, openLink, runAction, assistantName = 'Bingo', sessionId, sessions, onSelectSession, deferActions = false, enter = false, retryText, onRetry, onEdit }: { item: Item; openLink: OpenLink; runAction: RunAction; assistantName?: string; deferActions?: boolean; enter?: boolean; retryText?: string } & ToolNavigation & MessageActions): React.JSX.Element | null {
   const { t } = useI18n()
   const body = item.body
   const working = item.status === 'running' || item.status === 'pending'
@@ -23,14 +42,17 @@ export const TranscriptItem = memo(function TranscriptItem({ item, openLink, run
     if (source === 'kernel' || source.startsWith('contributor:') || source.startsWith('hook:')) return null
     const delegated = body.origin.surface === 'agent' || body.origin.surface === 'room'
     const sender = body.origin.principal || (body.origin.surface === 'room' ? t('Room update') : t('Parent agent'))
-    return <article className={`message ${delegated ? 'delegated-message' : 'user-message'}`}>
+    const text = contentText(body.parts)
+    const bubble = <article className={`message ${delegated ? 'delegated-message' : 'user-message'}`} data-enter={enter || undefined}>
       <span className={delegated ? 'delegated-author' : 'sr-only'}>{delegated ? t('From {name}', { name: sender }) : t('You')}</span>
       {delegated && body.origin.conversation && <span className="delegated-room">{body.origin.conversation}</span>}
-      <div className="user-prose">{contentText(body.parts)}</div><Pictures parts={body.parts} />
+      <div className="user-prose">{text}</div><Pictures parts={body.parts} />
     </article>
+    if (delegated || !text) return bubble
+    return <div className="user-turn" data-enter={enter || undefined}>{bubble}<div className="message-actions user-actions"><CopyButton text={text} label={t('Copy message')} />{onEdit && <button type="button" className="icon-button message-action" aria-label={t('Edit in composer')} title={t('Edit in composer')} onClick={() => onEdit(text)}><SquarePen size={14} aria-hidden="true" /></button>}</div></div>
   }
-  if (body.kind === 'assistant') return <article className="message assistant-message"><span className="sr-only">{assistantName}</span><RichText text={body.text} openLink={openLink} final={!working} />{!working && !deferActions && <div className="message-actions"><CopyButton text={body.text} label={t('Copy response')} />{item.status === 'interrupted' && <span>{t('Interrupted')}</span>}{item.status === 'failed' && <span className="field-error">{t('Failed')}</span>}</div>}</article>
-  if (body.kind === 'reasoning') return <details className="reasoning"><summary><ChevronRight size={14} />{t(working ? 'Thinking…' : 'Thinking')}</summary><div className="reasoning-content"><RichText text={body.text} openLink={openLink} final={!working} /></div></details>
+  if (body.kind === 'assistant') return <article className="message assistant-message" data-enter={enter || undefined} data-live={working || undefined} data-latest={retryText != null || undefined}><span className="sr-only">{assistantName}</span><RichText text={body.text} openLink={openLink} final={!working} streaming={working} />{!working && !deferActions && <div className="message-actions"><CopyButton text={body.text} label={t('Copy response')} />{retryText != null && onRetry && <button type="button" className="icon-button message-action" aria-label={t('Retry')} title={t('Retry')} onClick={() => onRetry(retryText)}><RotateCw size={14} aria-hidden="true" /></button>}{item.status === 'interrupted' && <span>{t('Interrupted')}</span>}{item.status === 'failed' && <span className="field-error">{t('Failed')}</span>}</div>}</article>
+  if (body.kind === 'reasoning') return <Reasoning item={item as Item & { body: { kind: 'reasoning' } }} openLink={openLink} enter={enter} />
   if (body.kind === 'toolCall') return <ToolCallCard item={item as ToolCallItem} openLink={openLink} runAction={runAction} sessionId={sessionId} sessions={sessions} onSelectSession={onSelectSession} />
   if (body.kind === 'shell') return <details className="tool-call"><summary><Terminal size={15} /><span className="tool-name">{t('Shell')}</span><span className="tool-target">{body.command}</span><span className="tool-status">{body.exit == null ? t('Interrupted') : t('Exit {code}', { code: body.exit })}</span></summary><CodeBlock text={`$ ${body.command}\n${body.output}`} language={body.cwd} /></details>
   if (body.kind === 'action') {
@@ -44,7 +66,12 @@ export const TranscriptItem = memo(function TranscriptItem({ item, openLink, run
   return <p className="system-note">{itemText(item)}</p>
 })
 
-export function Timeline({ projection, openLink, runAction, loadHistory, loading, assistantName = 'Bingo', sessions, onSelectSession, connected = true, previewReference, saveReference, exportProgress, cancelExport, childIds = [], childScanComplete = false }: { projection: SessionProjection; openLink: OpenLink; runAction: RunAction; loadHistory: () => void; loading: boolean; assistantName?: string; connected?: boolean; previewReference?: (kind: 'event' | 'history' | 'field', id: string) => void; saveReference?: (kind: 'event' | 'history' | 'field', id: string) => void; exportProgress?: ExportProgress | null; cancelExport?: () => void; childIds?: string[]; childScanComplete?: boolean } & Omit<ToolNavigation, 'sessionId'>): React.JSX.Element {
+const failureTitles: Partial<Record<string, string>> = {
+  RATE_LIMITED: 'Rate limited', AUTH_REQUIRED: 'Sign-in required', PROVIDER_UNAVAILABLE: 'Provider unavailable', CONTEXT_OVERFLOW: 'Conversation is too long',
+  TIMEOUT: 'The request timed out', OFFLINE: 'You appear to be offline', TOOL_FAILED: 'A tool failed', TURN_BUDGET_EXHAUSTED: 'Turn budget used up', PERMISSION_DENIED: 'Permission denied'
+}
+
+export function Timeline({ projection, openLink, runAction, loadHistory, loading, assistantName = 'Bingo', sessions, onSelectSession, connected = true, previewReference, saveReference, exportProgress, cancelExport, childIds = [], childScanComplete = false, onRetry, onEdit }: { projection: SessionProjection; openLink: OpenLink; runAction: RunAction; loadHistory: () => void; loading: boolean; assistantName?: string; connected?: boolean; previewReference?: (kind: 'event' | 'history' | 'field', id: string) => void; saveReference?: (kind: 'event' | 'history' | 'field', id: string) => void; exportProgress?: ExportProgress | null; cancelExport?: () => void; childIds?: string[]; childScanComplete?: boolean } & Omit<ToolNavigation, 'sessionId'> & MessageActions): React.JSX.Element {
   const { t } = useI18n()
   const scroll = useRef<HTMLDivElement>(null)
   const transcript = useRef<HTMLDivElement>(null)
@@ -56,6 +83,20 @@ export function Timeline({ projection, openLink, runAction, loadHistory, loading
   const state = projection.snapshot
   const missing = Boolean((!state.items.length && !projection.history.complete) || projection.unloaded?.length || projection.unloadedHistory?.length || projection.omittedFields?.length || projection.tree?.descendantsComplete === false || childIds.length || projection.historyPending)
   const processing = connected && Boolean(state.turn && !state.interactions?.length)
+  // Items appended after first paint animate in once; history (initial or prepended pages) appears in place.
+  const known = useRef<Set<string> | null>(null)
+  const entering = useRef(new Set<string>())
+  if (!known.current) known.current = new Set(state.items.map(item => item.id))
+  else {
+    let lastKnown = -1
+    state.items.forEach((item, index) => { if (known.current!.has(item.id)) lastKnown = index })
+    state.items.forEach((item, index) => { if (index > lastKnown && !known.current!.has(item.id)) entering.current.add(item.id) })
+    for (const item of state.items) known.current.add(item.id)
+  }
+  const lastUser = state.items.findLast(item => item.body.kind === 'user' && item.body.origin.surface === 'desktop')
+  const retryText = !state.turn && lastUser?.body.kind === 'user' ? contentText(lastUser.body.parts).trim() || undefined : undefined
+  const lastAssistant = state.items.findLast(item => item.body.kind === 'assistant')
+  const failure = state.lastTurn?.status.kind === 'failed' && !state.turn ? state.lastTurn.status.error : undefined
   const inspectTools = (target: EventTarget | null) => {
     if (!(target instanceof Element) || !target.closest('.tool-activity')) return
     // Capture before a row expands: ResizeObserver must not pull an intentional
@@ -97,10 +138,10 @@ export function Timeline({ projection, openLink, runAction, loadHistory, loading
     </section>}
     {!projection.history.complete && <button className="history-button" disabled={loading || !connected} onClick={() => { following.current = false; previousHeight.current = scroll.current?.scrollHeight ?? 0; loadHistory() }}>{t(loading ? 'Loading history…' : 'Load earlier messages')}</button>}
     {groupTimelineItems(state.items).map((entry) => entry.kind === 'tools'
-      ? <ToolActivityGroup key={entry.key} items={entry.items} connected={connected} renderTool={(item) => <TranscriptItem item={item} openLink={openLink} runAction={runAction} assistantName={assistantName} sessionId={state.summary.id} sessions={sessions} onSelectSession={onSelectSession} />} />
-      : <TranscriptItem key={entry.key} item={entry.item} openLink={openLink} runAction={runAction} assistantName={assistantName} sessionId={state.summary.id} sessions={sessions} onSelectSession={onSelectSession} deferActions={Boolean(state.turn && entry.item.turn === state.turn.id)} />)}
-    {processing && <WorkingIndicator retrying={state.turn?.retrying} />}
-    {state.lastTurn?.status.kind === 'failed' && !state.turn && <p className="turn-failure" role="alert">{state.lastTurn.status.error.message}</p>}
-    {state.lastTurn?.status.kind === 'interrupted' && !state.turn && <p className="system-note">{t('Turn interrupted. Completed changes have not been undone.')}</p>}
-  </div></div>{showLatest && <button className="latest-button" onClick={() => { inspecting.current = false; following.current = true; scroll.current?.scrollTo({ top: scroll.current.scrollHeight }); setShowLatest(false) }}><ArrowDown size={14} /> {t('Jump to latest')}</button>}</div></JournalMediaProvider>
+      ? <div key={entry.key} className="transcript-entry" data-enter={entering.current.has(entry.key) || undefined}><ToolActivityGroup items={entry.items} connected={connected} renderTool={(item) => <TranscriptItem item={item} openLink={openLink} runAction={runAction} assistantName={assistantName} sessionId={state.summary.id} sessions={sessions} onSelectSession={onSelectSession} />} /></div>
+      : <TranscriptItem key={entry.key} item={entry.item} openLink={openLink} runAction={runAction} assistantName={assistantName} sessionId={state.summary.id} sessions={sessions} onSelectSession={onSelectSession} deferActions={Boolean(state.turn && entry.item.turn === state.turn.id)} enter={entering.current.has(entry.key)} retryText={entry.item === lastAssistant && !failure ? retryText : undefined} onRetry={onRetry} onEdit={onEdit} />)}
+    {processing && <WorkingIndicator retrying={state.turn?.retrying} startedAt={state.turn?.startedAt} />}
+    {failure && <div className="turn-failure" role="alert"><TriangleAlert size={16} aria-hidden="true" /><div className="turn-failure-body"><strong>{t(failureTitles[failure.code] ?? 'The turn failed')}</strong><p>{failure.message}</p></div>{retryText && onRetry && <button type="button" className="turn-failure-retry" onClick={() => onRetry(retryText)}><RotateCw size={14} aria-hidden="true" />{t('Retry')}</button>}</div>}
+    {state.lastTurn?.status.kind === 'interrupted' && !state.turn && <div className="turn-interrupted system-note"><span>{t('Turn interrupted. Completed changes have not been undone.')}</span>{onRetry && connected && <button type="button" className="text-action" onClick={() => onRetry(t('Continue'))}>{t('Continue')}</button>}</div>}
+  </div></div>{showLatest && <button className="latest-button" data-working={processing || undefined} onClick={() => { inspecting.current = false; following.current = true; scroll.current?.scrollTo({ top: scroll.current.scrollHeight }); setShowLatest(false) }}><ArrowDown size={14} /> {t('Jump to latest')}</button>}</div></JournalMediaProvider>
 }

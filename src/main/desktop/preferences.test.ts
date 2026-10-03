@@ -46,7 +46,7 @@ describe('desktop-owned preferences', () => {
   })
   it('honors a valid native binary override and never falls back from an invalid override', async () => {
     const path = await directory()
-    expect((await discoverBinary({ appPath: path, resourcesPath: path, packaged: true, preference: null, env: { BINGO_GUI_BINARY: process.execPath } })).source).toBe('environment')
+    expect((await discoverBinary({ appPath: path, resourcesPath: path, packaged: false, preference: null, env: { BINGO_GUI_BINARY: process.execPath } })).source).toBe('environment')
     expect(await discoverBinary({ appPath: path, resourcesPath: path, packaged: false, preference: process.execPath, env: { BINGO_GUI_BINARY: '/missing/bingo' } })).toEqual({ path: null, source: 'invalid environment override' })
   })
 })

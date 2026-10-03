@@ -118,3 +118,16 @@ it('preserves interleaved host events/global invalidation order and ACKs despite
   expect(received).toEqual(events)
   expect(bridge.send.mock.calls).toEqual(events.map((_, index) => ['desktop:event-ack', index + 1]))
 })
+it('bridges attention notices and validates notification activations before routing them', async () => {
+  const notice = { kind: 'waiting' as const, title: 'Bingo needs your input', body: 'Task', hostId: 'h', sessionId: 's' }
+  await bridge.api.notify!(notice); await bridge.api.setBadgeCount!(2)
+  expect(bridge.invoke.mock.calls).toEqual([[DESKTOP_IPC.notify, notice], [DESKTOP_IPC.setBadgeCount, 2]])
+  const listener = vi.fn()
+  const off = bridge.api.onNotificationActivated!(listener)
+  const dispatch = bridge.listeners.get(DESKTOP_IPC.notificationActivated)!
+  dispatch({}, { hostId: 'h', sessionId: 's', extra: 'ignored' }); dispatch({}, { hostId: 1 }); dispatch({}, null)
+  expect(listener.mock.calls).toEqual([[{ hostId: 'h', sessionId: 's' }]])
+  off(); dispatch({}, { hostId: 'h', sessionId: 's' })
+  expect(listener).toHaveBeenCalledOnce()
+  expect(bridge.api.homeDirectory === null || typeof bridge.api.homeDirectory === 'string').toBe(true)
+})

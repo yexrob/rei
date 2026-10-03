@@ -24,7 +24,7 @@ const originalLight = {
 }
 const originalDark = {
   '--canvas': '#202020', '--sidebar': '#191919', '--surface': '#262626', '--hover': '#2b2b2b', '--selected': '#303030',
-  '--text': '#ededed', '--secondary': '#a5a5a0', '--quiet': '#a5a5a0', '--line': '#393939', '--control-line': '#70706b',
+  '--text': '#ededed', '--secondary': '#a5a5a0', '--quiet': '#9a9a95', '--line': '#393939', '--control-line': '#70706b',
   '--accent': '#ededed', '--on-accent': '#202020', '--focus': '#9ac3ff', '--danger': '#e39494', '--danger-bg': '#3a2929',
   '--warning': '#e4c989', '--warning-bg': '#393326', '--success': '#82c99a', '--addition-bg': '#24372a', '--code': '#191919',
   '--shadow': '0 12px 48px #0005, 0 2px 8px #0003'
@@ -41,6 +41,13 @@ describe('original neutral palette contract', () => {
     it(`${selector} preserves the original backgrounds, foregrounds and semantic colors`, () => {
       expect(declarations(css, selector)).toMatchObject(original)
     })
+    it(`${selector} never makes quiet text louder than secondary`, () => {
+      const tokens = declarations(css, selector)
+      // Light theme has no AA headroom on selected rows, so quiet may equal secondary there.
+      const contrast = (fg: string) => { const a = luminance(tokens[fg]), b = luminance(tokens['--canvas']); return (Math.max(a, b) + .05) / (Math.min(a, b) + .05) }
+      expect(contrast('--quiet')).toBeLessThanOrEqual(contrast('--secondary'))
+      expect(tokens['--deletion-bg']).toMatch(/^#[0-9a-f]{6}$/)
+    })
     it(`${selector} maps new surfaces onto neutral product tokens`, () => {
       expect(declarations(css, selector)).toMatchObject({
         '--surface-raised': 'var(--surface)', '--surface-inset': 'var(--code)', '--brand-soft': 'var(--selected)'
@@ -48,6 +55,7 @@ describe('original neutral palette contract', () => {
     })
     it(`${selector} keeps quiet and secondary labels readable on every neutral surface`, () => {
       const tokens = declarations(css, selector)
+      // Matches the desktop contrast audit: quiet captions can sit on hover and selected rows too.
       for (const foreground of ['--secondary', '--quiet']) {
         for (const background of ['--canvas', '--sidebar', '--surface', '--hover', '--selected', '--code']) {
           const a = luminance(tokens[foreground]), b = luminance(tokens[background])

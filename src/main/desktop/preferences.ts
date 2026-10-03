@@ -8,7 +8,8 @@ export const nativePathSchema = z.string().min(1).max(4096).refine((path) => !pa
 export const preferencesPatchSchema = z.strictObject({
   theme: z.enum(['system', 'light', 'dark']).optional(),
   workspace: nativePathSchema.nullable().optional(),
-  binaryPath: nativePathSchema.nullable().optional()
+  binaryPath: nativePathSchema.nullable().optional(),
+  notifications: z.boolean().optional()
 })
 export const windowBoundsSchema = z.strictObject({
   x: z.number().int(), y: z.number().int(), width: z.number().int().min(640).max(16_384),

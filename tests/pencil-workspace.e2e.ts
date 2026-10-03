@@ -49,7 +49,7 @@ test('Pencil workspace: real skills, schedule view, Git review and unsent feedba
     await page.getByRole('button', { name: 'New thread', exact: true }).click()
     await expect(composer).toHaveValue('/design-check Keep my unsent context.')
     await page.getByRole('button', { name: 'Environment' }).click()
-    await page.getByRole('button', { name: 'Review changes' }).click()
+    await page.getByRole('dialog', { name: 'Environment' }).getByRole('button', { name: 'Review changes' }).click()
     await expect(page.getByRole('button', { name: /search\.ts/ })).toBeVisible()
     await expect(page.locator('.review-total')).toContainText('+2')
     await expect(page.getByLabel('Diff for search.ts')).toContainText('localSearch = true')

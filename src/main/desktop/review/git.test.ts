@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, writeFile, rm, readFile, symlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, expect, it, vi } from 'vitest'
-import { readReview } from './git'
+import { findGit, readReview } from './git'
 
 const roots: string[] = []
 async function fixture(): Promise<string> {
@@ -26,14 +26,15 @@ it('separates staged and unstaged tracked patches without writing the index or w
   git(root, 'add', '.'); git(root, 'commit', '-qm', 'fixture')
   await writeFile(join(root, 'example.txt'), 'staged\n'); git(root, 'add', '.')
   await writeFile(join(root, 'example.txt'), 'working\n')
-  await writeFile(join(root, 'untracked.txt'), 'not included\n')
+  await writeFile(join(root, 'untracked.txt'), 'only unstaged\n')
   const before = await readFile(join(root, '.git/index'))
   const staged = await readReview(root, 'staged')
   const unstaged = await readReview(root, 'unstaged')
   expect(staged).toMatchObject({ status: 'ready', scope: 'staged', files: [{ path: 'example.txt', additions: 1, deletions: 1, binary: false }] })
   expect(staged.files[0].patch).toContain('+staged')
   expect(unstaged.files[0].patch).toContain('+working')
-  expect(unstaged.files).toHaveLength(1)
+  expect(staged.files).toHaveLength(1)
+  expect(unstaged.files.map(file => file.path)).toEqual(['example.txt', 'untracked.txt'])
   expect(await readFile(join(root, '.git/index'))).toEqual(before)
   expect(await readFile(join(root, 'example.txt'), 'utf8')).toBe('working\n')
 })
@@ -91,4 +92,44 @@ it('never invokes repository external diff or textconv programs', async () => {
   git(root, 'config', 'diff.hostile.textconv', 'invalid-review-textconv-command')
   await writeFile(join(root, 'test.txt'), 'after\n')
   expect((await readReview(root, 'unstaged')).files[0].patch).toContain('+after')
+})
+
+it('shows untracked files as bounded new-file patches in the unstaged scope only', async () => {
+  const root = await fixture()
+  await writeFile(join(root, '.gitignore'), 'ignored.log\n')
+  git(root, 'add', '.'); git(root, 'commit', '-qm', 'fixture')
+  await mkdir(join(root, 'dir'))
+  await writeFile(join(root, 'dir', 'new.txt'), 'one\ntwo\n')
+  await writeFile(join(root, 'tail.txt'), 'no newline')
+  await writeFile(join(root, 'empty.txt'), '')
+  await writeFile(join(root, 'blob.bin'), Buffer.from([1, 0, 2]))
+  await writeFile(join(root, 'huge.txt'), 'y\n'.repeat(200_000))
+  await writeFile(join(root, 'ignored.log'), 'ignored\n')
+  if (process.platform !== 'win32') await symlink('/etc/passwd', join(root, 'link'))
+  const result = await readReview(root, 'unstaged')
+  const byPath = Object.fromEntries(result.files.map(file => [file.path, file]))
+  expect(Object.keys(byPath).sort()).toEqual(['blob.bin', 'dir/new.txt', 'empty.txt', 'huge.txt', ...(process.platform === 'win32' ? [] : ['link']), 'tail.txt'])
+  expect(byPath['dir/new.txt']).toMatchObject({ additions: 2, deletions: 0, binary: false, truncated: false, patch: 'diff --git a/dir/new.txt b/dir/new.txt\nnew file mode 100644\n--- /dev/null\n+++ b/dir/new.txt\n@@ -0,0 +1,2 @@\n+one\n+two\n' })
+  expect(byPath['tail.txt'].patch).toMatch(/@@ -0,0 \+1 @@\n\+no newline\n\\ No newline at end of file\n$/)
+  expect(byPath['empty.txt']).toMatchObject({ additions: 0, patch: 'diff --git a/empty.txt b/empty.txt\nnew file mode 100644\n' })
+  expect(byPath['blob.bin']).toMatchObject({ binary: true, additions: null, patch: null })
+  expect(byPath['huge.txt']).toMatchObject({ additions: 200_000, patch: null, truncated: true })
+  if (process.platform !== 'win32') expect(byPath.link).toMatchObject({ additions: 1, patch: expect.stringContaining('new file mode 120000') })
+  if (process.platform !== 'win32') expect(byPath.link.patch).not.toContain('root:')
+  expect(result).toMatchObject({ totalFiles: Object.keys(byPath).length, truncated: true })
+  expect((await readReview(root, 'staged')).files).toEqual([])
+})
+
+it('resolves git only from absolute PATH entries outside the working directory', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rei-git-path-')); roots.push(root)
+  for (const dir of ['cwd', 'bin', 'plain']) await mkdir(join(root, dir))
+  const name = process.platform === 'win32' ? 'git.exe' : 'git'
+  for (const dir of ['cwd', 'bin', 'plain']) await writeFile(join(root, dir, name), '')
+  await chmod(join(root, 'bin', name), 0o755)
+  await chmod(join(root, 'cwd', name), 0o755)
+  const separator = process.platform === 'win32' ? ';' : ':'
+  const path = ['', '.', 'relative/bin', join(root, 'cwd'), ...(process.platform === 'win32' ? [] : [join(root, 'plain')]), join(root, 'bin')].join(separator)
+  expect(findGit(path, process.platform, join(root, 'cwd'))).toBe(join(root, 'bin', name))
+  expect(findGit(['.', 'relative'].join(separator), process.platform, root)).toBeNull()
+  expect(findGit(`"${join(root, 'bin')}"`, 'win32', root)).toBe(process.platform === 'win32' ? join(root, 'bin', name) : null)
 })

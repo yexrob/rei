@@ -33,9 +33,9 @@
 .settings-layout > .settings-nav button.selected > svg { color: var(--brand); }
 .settings-layout > .settings-content { width: 100%; max-width: 840px; min-width: 0; margin: 0 auto; padding: 64px 48px 80px; overflow-y: auto; scrollbar-gutter: stable; }
 .settings-page-heading { margin-bottom: 36px; padding-bottom: 26px; border-bottom: 1px solid var(--line); }
-.settings-page-heading h1 { margin: 0 0 9px; font-size: 28px; letter-spacing: -.9px; font-weight: 550; }
+.settings-content .settings-page-heading h3 { margin: 0 0 9px; font-size: 28px; letter-spacing: -.9px; font-weight: 550; }
 .settings-page-heading p { max-width: 52ch; margin: 0; color: var(--secondary); font-size: 13px; line-height: 1.7; }
-.settings-content h3 { margin: 0 0 12px; font-size: 14px; font-weight: 600; }
+.settings-content h4 { margin: 0 0 12px; font-size: 14px; font-weight: 600; }
 .settings-content .secondary { line-height: 1.7; }
 .settings-content .setting-section { margin-top: 28px; padding-top: 26px; border-top: 1px solid var(--line); }
 .settings-content .theme-options { display: flex; gap: 12px; }
@@ -57,7 +57,7 @@
 .provider-setup { padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised); animation: settings-reveal var(--motion-normal) var(--ease-out); }
 .provider-setup .setup-title { display: flex; gap: 10px; align-items: center; }
 .provider-setup .setup-title > svg { color: var(--brand); }
-.provider-setup .setup-title h3 { margin: 0; }
+.provider-setup .setup-title h4 { margin: 0; }
 .provider-setup > .secondary { margin: 16px 0 22px; font-size: 12px; line-height: 1.75; }
 .provider-setup > .button-row { justify-content: flex-end; padding-top: 8px; }
 @keyframes settings-reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
@@ -68,14 +68,14 @@
 .settings-content .setting-section > .button-row { margin-top: 18px; }
 .settings-content .settings-model-row, .settings-content .settings-reasoning { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .settings-content .settings-model-row { min-height: 70px; }
-.settings-content .settings-model-row h3 { margin-bottom: 6px; }
+.settings-content .settings-model-row h4 { margin-bottom: 6px; }
 .settings-content .settings-model-row p { margin: 0; }
 .settings-content .settings-model-row > button, .settings-content .settings-reasoning > button { flex: 0 0 auto; width: auto; max-width: 280px; }
 .settings-content .settings-custom-model { margin-top: 26px; padding: 18px 0; border-block: 1px solid var(--line); }
 .settings-content .settings-custom-model summary { color: var(--secondary); font-size: 13px; cursor: pointer; }
 .settings-content .settings-custom-model[open] summary { margin-bottom: 18px; color: var(--text); }
 .settings-content .settings-model-note { margin-top: 20px; font-size: 12px; }
-.settings-content .settings-reasoning h3 { margin-bottom: 6px; }
+.settings-content .settings-reasoning h4 { margin-bottom: 6px; }
 .settings-content .settings-reasoning p { margin: 0; }
 .settings-content .path-label { overflow-wrap: anywhere; }
 .settings-content .catalog-toolbar { display: flex; gap: 12px; margin: 24px 0; }
@@ -112,3 +112,13 @@
   .settings-layout > .settings-nav button.selected, .settings-content .theme-options button.selected { border-color: Highlight; }
   .theme-preview { forced-color-adjust: none; }
 }
+.setting-switch { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; font-size: 13px; }
+.setting-switch input { appearance: none; flex-shrink: 0; position: relative; width: 34px; height: 20px; margin: 1px 0 0; padding: 0; border: 1px solid var(--control-line); border-radius: 999px; background: var(--hover); cursor: pointer; transition: background var(--motion-fast), border-color var(--motion-fast); }
+.setting-switch input::after { content: ""; position: absolute; inset-block-start: 2px; inset-inline-start: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px #0003; transition: transform var(--motion-fast) var(--ease-out); }
+.setting-switch input:checked { background: var(--accent); border-color: var(--accent); }
+.setting-switch input:checked::after { transform: translateX(14px); background: var(--on-accent); }
+.setting-switch input:disabled { opacity: .5; cursor: not-allowed; }
+.setting-switch > span { display: grid; gap: 4px; }
+.setting-switch strong { font-weight: 500; }
+.setting-switch small { color: var(--secondary); font-size: 12px; line-height: 1.55; }
+@media (forced-colors: active) { .setting-switch input { appearance: auto; width: auto; height: auto; } .setting-switch input::after { display: none; } }

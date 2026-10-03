@@ -17,6 +17,7 @@ vi.mock('electron', async () => {
     },
     dialog: { showErrorBox: vi.fn(), showMessageBox: () => new Promise(() => {}) },
     Menu: { buildFromTemplate: vi.fn(), setApplicationMenu: vi.fn() },
+    powerMonitor: { on: vi.fn() },
     nativeTheme: { shouldUseDarkColors: false }, screen: { getAllDisplays: () => [], getPrimaryDisplay: () => ({ workArea: { width: 1440, height: 900 } }) }, shell: {}
   }
 })

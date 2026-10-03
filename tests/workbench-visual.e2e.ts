@@ -63,7 +63,7 @@ test('workbench visuals: focused composer, real conversation, motion, light/dark
   const capture = async (name: string) => {
     if (name.startsWith('settings-')) {
       await page.locator('.settings-content').evaluate((el) => { el.scrollTop = 0 })
-      await expect(page.locator('.settings-page-heading h1')).toBeInViewport()
+      await expect(page.locator('.settings-page-heading h3')).toBeInViewport()
     }
     // Motion is asserted separately below; design evidence must show the settled state.
     await page.screenshot({ animations: 'disabled', path: info.outputPath(`${name}.png`) })

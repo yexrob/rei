@@ -197,7 +197,7 @@ test('project switch retains P work, permission and error source while Q submits
     await f.command('P', { op: 'permission', session: 'P-a' })
     await f.command('Q', { op: 'permission', session: 'Q-a' })
     // Both hosts deliberately use interaction ID a-permission and the same item/turn IDs.
-    const permission = f.page.getByRole('region', { name: 'Permission required' })
+    const permission = f.page.getByRole('alertdialog', { name: 'Permission required' })
     await expect(permission.getByText('Q/Q-a: approve fixture read', { exact: false })).toBeVisible()
     await expect(permission.getByText('P/P-a: approve fixture read', { exact: false })).toHaveCount(0)
     await f.page.getByRole('button', { name: 'Allow once', exact: true }).click()
@@ -223,7 +223,7 @@ test('project switch retains P work, permission and error source while Q submits
     await expect(f.page.getByRole('textbox', { name: 'Message bingo' })).toHaveValue('Q unsent across projects')
     await selectProject(f.page, 'P'); await selectSession(f.page, 'P A')
     await expect(f.page.getByText('P SOURCE ERROR', { exact: true })).toBeVisible()
-    await expect(f.page.getByRole('region', { name: 'Permission required' }).getByText('P/P-a: approve fixture read', { exact: false })).toBeVisible()
+    await expect(f.page.getByRole('alertdialog', { name: 'Permission required' }).getByText('P/P-a: approve fixture read', { exact: false })).toBeVisible()
     await f.page.getByRole('button', { name: 'Allow once', exact: true }).click()
     await expect.poll(async () => (await f.state('P')).sessions.find(s => s.summary.id === 'P-a')?.interactions?.length).toBe(0)
     await selectProject(f.page, 'Q'); await selectSession(f.page, 'Q A')

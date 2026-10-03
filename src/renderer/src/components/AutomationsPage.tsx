@@ -27,7 +27,7 @@ export function AutomationsPage({ workspace: w, openLink, onCompose }: Props): R
       const view = await w.runActionView('schedule')
       if (current) setResult({ kind: 'ready', view })
     }
-    void load().catch((error: unknown) => { if (current) setResult({ kind: 'failed', error: errorMessage(error) }) })
+    void load().catch((error: unknown) => { if (current) setResult({ kind: 'failed', error: errorMessage(error, t) }) })
     return () => { current = false }
   }, [ready, w.connection.connectionId, w.readCatalog, w.runActionView, revision])
   const refresh = () => setRevision((value) => value + 1)
@@ -53,5 +53,5 @@ function AutomationDraft({ onCompose, onCancel }: { onCompose: (text: string) =>
     if (!when.trim() || !task.trim()) return
     onCompose(t('Create a bingo schedule for this workspace. When: {when}\nTask: {task}\nCheck the schedule specification and ask me to confirm before saving it.', { when: when.trim(), task: task.trim() }))
     onCancel()
-  }}><h2>{t('New automation')}</h2><p>{t('This prepares a message for the agent, not a saved schedule. Review the draft and send it yourself; bingo will ask before saving.')}</p><label>{t('When')}<input required value={when} onChange={(event) => setWhen(event.target.value)} placeholder="daily at 09:00" /></label><small>{t('Examples: every 30m · daily at 09:00 · once at 2026-12-01T09:00:00+08:00')}</small><label>{t('Task')}<textarea required rows={3} value={task} onChange={(event) => setTask(event.target.value)} placeholder={t('What should the agent do?')} /></label><div className="button-row"><button type="button" onClick={onCancel}>{t('Cancel')}</button><button className="primary" disabled={!when.trim() || !task.trim()}>{t('Prepare draft')}</button></div></form>
+  }}><h2>{t('New automation')}</h2><p>{t('This prepares a message for the agent, not a saved schedule. Review the draft and send it yourself; bingo will ask before saving.')}</p><label>{t('When')}<input required value={when} onChange={(event) => setWhen(event.target.value)} placeholder={t('e.g. {example}', { example: 'daily at 09:00' })} /></label><small>{t('Examples: every 30m · daily at 09:00 · once at 2026-12-01T09:00:00+08:00')}</small><label>{t('Task')}<textarea required rows={3} value={task} onChange={(event) => setTask(event.target.value)} placeholder={t('What should the agent do?')} /></label><div className="button-row"><button type="button" onClick={onCancel}>{t('Cancel')}</button><button className="primary" disabled={!when.trim() || !task.trim()}>{t('Prepare draft')}</button></div></form>
 }

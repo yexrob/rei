@@ -27,6 +27,8 @@ export const exportReferenceSchema = z.union([
 ])
 export const deletionSchema = z.strictObject({ connectionId: z.string().min(1).max(100), session: z.string().min(1).max(512) })
 export const exportSchema = z.strictObject({ text: z.string().max(8 * 1024 * 1024), suggestedName: z.string().min(1).max(160) })
+export const attentionNoticeSchema = z.strictObject({ kind: z.enum(['waiting', 'completed', 'failed']), title: z.string().min(1).max(120), body: z.string().max(240), hostId: z.string().min(1).max(100), sessionId: z.string().min(1).max(512) })
+export const badgeCountSchema = z.number().int().min(0).max(999)
 export { preferencesPatchSchema }
 export function externalUrl(input: unknown): string {
   const value = z.string().min(1).max(4096).parse(input)

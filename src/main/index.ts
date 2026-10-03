@@ -1,8 +1,9 @@
-import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, shell, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, dialog, Menu, nativeTheme, powerMonitor, screen, shell, type MenuItemConstructorOptions } from 'electron'
 import { isAbsolute, join } from 'node:path'
 import { mkdirSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { DesktopIpc, confirmStop } from './desktop/ipc'
+import { text } from './desktop/locale'
 import { EventDelivery } from './desktop/event-delivery'
 import { PreferencesStore, restoreBounds } from './desktop/preferences'
 import { RuntimePool } from './desktop/runtime-pool'
@@ -49,7 +50,7 @@ function createWindow(): void {
   window = new BrowserWindow({
     width: bounds?.width ?? Math.min(1440, area.width), height: bounds?.height ?? Math.min(960, area.height),
     ...(bounds ? { x: bounds.x, y: bounds.y } : {}),
-    minWidth: Math.min(640, area.width), minHeight: Math.min(480, area.height), show: false, title: 'Bingo',
+    minWidth: Math.min(640, area.width), minHeight: Math.min(480, area.height), show: false, title: 'Rei',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#202020' : '#FAFAF9',
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 14 } } : {}),
     ...(backgroundTest ? BACKGROUND_WINDOW_OPTIONS : {}),
@@ -99,7 +100,7 @@ function createWindow(): void {
     desktopIpc?.invalidateRenderer()
     void runtime?.close()
     delivery?.reset()
-    if (!quitting) void dialog.showMessageBox(created, { type: 'error', message: 'The conversation window stopped.', detail: 'The native runtime has been disconnected. Reload the window and reconnect to recover saved history.', buttons: ['Reload', 'Quit'] }).then((result) => { if (result.response === 0) created.reload(); else app.quit() })
+    if (!quitting) void dialog.showMessageBox(created, { type: 'error', message: text('The conversation window stopped.'), detail: text('The native runtime has been disconnected. Reload the window and reconnect to recover saved history.'), buttons: [text('Reload'), text('Quit')] }).then((result) => { if (result.response === 0) created.reload(); else app.quit() })
   })
   created.once('ready-to-show', () => { if (!backgroundTest) created.show() })
   created.on('close', (event) => {
@@ -153,7 +154,7 @@ async function quit(): Promise<void> {
     if (runtime?.busy || desktopIpc?.busy || panels?.busy) {
       panels?.setBrowserOccluded(true)
       try {
-        if (!(await confirmStop(window, 'Quit Rei and stop running work?', 'Active turns, tools and the local terminal will stop. An in-progress provider save will finish before quitting; an unfinished raw JSON export will be cancelled without replacing its chosen file. Saved history remains in bingo.'))) return
+        if (!(await confirmStop(window, text('Quit Rei and stop running work?'), text('Active turns, tools and the local terminal will stop. An in-progress provider save will finish before quitting; an unfinished raw JSON export will be cancelled without replacing its chosen file. Saved history remains in bingo.')))) return
       } finally { panels?.setBrowserOccluded(false) }
     }
     quitting = true
@@ -188,7 +189,10 @@ else {
     await preferences.load().catch((error: Error) => dialog.showErrorBox('Desktop preferences unavailable', error.message))
     nativeTheme.themeSource = preferences.preferences.theme
     runtime = new RuntimePool(emit, () => delivery?.recover())
-    delivery = new EventDelivery(() => window, documentUrl, (error) => runtime?.abort(error))
+    // Renderer backpressure fuses delivery and later forces snapshot resync; native runtimes keep running.
+    delivery = new EventDelivery(() => window, documentUrl, (error) => console.warn(error.message), () => runtime?.connections ?? [])
+    powerMonitor.on('suspend', () => delivery?.suspend())
+    powerMonitor.on('resume', () => delivery?.resume())
     desktopIpc = new DesktopIpc({ window: () => window, documentUrl, preferences, runtime, delivery, emit, agentPages: () => agentBrowser.snapshot(), openAgentPage: input => agentBrowser.open(input), onDialogChange: (open) => panels?.setBrowserOccluded(open) })
     await desktopIpc.initialize()
     panels = new Panels({ window: () => window, documentUrl, workspace: () => desktopIpc?.currentWorkspace ?? null })

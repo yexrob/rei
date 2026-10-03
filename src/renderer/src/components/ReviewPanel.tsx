@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, GitCompareArrows, RotateCw, X } from './icons'
 import type { ReviewFile, ReviewScope, ReviewSnapshot } from '../../../shared/review'
 import { useI18n } from '../i18n'
 import { IconButton } from './primitives'
+import { DiffView } from './DiffView'
 import './review.css'
 
-type Props = { visible: boolean; workspace: string | null; onClose(): void; onCompose(text: string): void }
+type Props = { visible: boolean; workspace: string | null; onClose(): void; onCompose(text: string): void; onCount?(count: number | null): void; width?: number | null }
 type Loaded = { workspace: string | null; scope: ReviewScope; value: ReviewSnapshot }
-export function ReviewPanel({ visible, workspace, onClose, onCompose }: Props): React.JSX.Element {
+export function ReviewPanel({ visible, workspace, onClose, onCompose, onCount, width }: Props): React.JSX.Element {
   const { t } = useI18n()
   const [scope, setScope] = useState<ReviewScope>('unstaged')
   const [revision, setRevision] = useState(0)
@@ -15,6 +16,11 @@ export function ReviewPanel({ visible, workspace, onClose, onCompose }: Props): 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const value = loaded?.workspace === workspace && loaded.scope === scope ? loaded.value : null
+  // The header toggle shows the last loaded unstaged count; no extra Git work is done for it.
+  const count = value?.status === 'ready' && scope === 'unstaged' ? value.totalFiles : null
+  const report = useRef(onCount); report.current = onCount
+  useEffect(() => { if (count !== null) report.current?.(count) }, [count])
+  useEffect(() => { report.current?.(null) }, [workspace])
   useEffect(() => {
     if (!visible) return
     let alive = true
@@ -30,7 +36,7 @@ export function ReviewPanel({ visible, workspace, onClose, onCompose }: Props): 
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [visible, workspace, scope, revision])
-  return <section className="review-panel" aria-label={t('Review changes')} hidden={!visible}>
+  return <section className="review-panel" aria-label={t('Review changes')} hidden={!visible} style={width ? { '--review-width': `${width}px` } as React.CSSProperties : undefined}>
     <header className="review-heading"><span><GitCompareArrows size={16} />{t('Changes')}</span><div>
       <IconButton label={t('Refresh changes')} disabled={loading || !window.bingoReview} onClick={() => setRevision((value) => value + 1)}><RotateCw size={15} /></IconButton>
       <IconButton label={t('Close changes')} onClick={onClose}><X size={16} /></IconButton>
@@ -62,7 +68,8 @@ function FileDiff({ file, scope, initiallyOpen, onCompose }: { file: ReviewFile;
   const validLine = !line || (/^[1-9]\d{0,6}$/.test(line))
   const draft = (): void => {
     if (!feedback.trim() || !validLine) return
-    onCompose(`Please review ${file.path} (${scope}${line ? `, new line ${line}` : ''}).\n\n${feedback.trim()}`)
+    const scopeLabel = t(scope === 'unstaged' ? 'Unstaged' : 'Staged').toLowerCase()
+    onCompose(`${line ? t('Please review {path} ({scope}, new line {line}).', { path: file.path, scope: scopeLabel, line }) : t('Please review {path} ({scope}).', { path: file.path, scope: scopeLabel })}\n\n${feedback.trim()}`)
     setFeedback(''); setLine('')
   }
   return <article className="review-file">
@@ -71,7 +78,7 @@ function FileDiff({ file, scope, initiallyOpen, onCompose }: { file: ReviewFile;
       {file.binary ? <span className="review-file-count">{t('Binary')}</span> : <span className="review-file-count"><span className="review-added">+{file.additions}</span><span className="review-removed">−{file.deletions}</span></span>}
     </button>
     {open && <div className="review-file-content">
-      {file.binary ? <p className="review-notice">{t('Binary file — preview unavailable.')}</p> : file.truncated ? <p className="review-notice">{t('This patch exceeds the preview limit.')}</p> : file.patch ? <pre className="review-diff" tabIndex={0} aria-label={t('Diff for {path}', { path: file.path })}>{file.patch.split('\n').map((text, index) => <span key={index} className={text.startsWith('@@') ? 'review-hunk' : text.startsWith('+') && !text.startsWith('+++') ? 'review-line-add' : text.startsWith('-') && !text.startsWith('---') ? 'review-line-remove' : ''}>{text}{'\n'}</span>)}</pre> : <p className="review-notice">{t('No text patch available.')}</p>}
+      {file.binary ? <p className="review-notice">{t('Binary file — preview unavailable.')}</p> : file.truncated ? <p className="review-notice">{t('This patch exceeds the preview limit.')}</p> : file.patch ? <DiffView className="review-diff" text={file.patch} lineNumbers label={t('Diff for {path}', { path: file.path })} /> : <p className="review-notice">{t('No text patch available.')}</p>}
       <form className="review-feedback" onSubmit={(event) => { event.preventDefault(); draft() }}>
         <textarea aria-label={t('Feedback for {path}', { path: file.path })} placeholder={t('Leave feedback for Bingo…')} value={feedback} maxLength={8000} rows={2} onChange={(event) => setFeedback(event.target.value)} />
         <div><input type="number" min={1} max={9999999} step={1} aria-label={t('New line number (optional)')} placeholder={t('Line (optional)')} value={line} onChange={(event) => setLine(event.target.value)} /><button type="submit" disabled={!feedback.trim() || !validLine}>{t('Add to thread')}</button></div>

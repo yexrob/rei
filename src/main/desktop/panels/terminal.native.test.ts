@@ -36,7 +36,9 @@ describe.skipIf(process.platform === 'win32')('production PanelTerminal with rea
       if (event.type !== 'terminal-data') return
       output += event.data
       terminal.ack(event.id, event.sequence)
-      if (output.includes('\r\n__REI_HUP_READY__\r\n')) ready()
+      // Under load the PTY echoes typed input before the prompt, so output can read "$ __REI_HUP_READY__".
+      // The echoed command holds a literal backslash-n, never CRLF, so this matches only printf's output.
+      if (output.includes('__REI_HUP_READY__\r\n')) ready()
     } })
     let timeout: ReturnType<typeof setTimeout> | undefined
     try {

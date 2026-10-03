@@ -91,4 +91,30 @@ describe('desktop composer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send follow-up' }))
     expect(p.send).toHaveBeenCalledOnce()
   })
+
+  it('closes command suggestions with Escape and consumes the key so it cannot stop the turn', () => {
+    const p = { ...props(), draft: { text: '/st', images: [] }, commands: [{ id: 'status', label: 'Status' }], busy: true }
+    render(<Composer {...p} />)
+    expect(screen.getByRole('listbox', { name: 'Commands' })).toBeTruthy()
+    expect(fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' })).toBe(false)
+    expect(screen.queryByRole('listbox', { name: 'Commands' })).toBeNull()
+    expect(p.stop).not.toHaveBeenCalled()
+  })
+
+  it('attaches pasted screenshots and dropped images with a visible drop target', () => {
+    const p = { ...props(), attachFiles: vi.fn() }
+    render(<Composer {...p} />)
+    const image = new File(['x'], 'shot.png', { type: 'image/png' })
+    const textbox = screen.getByRole('textbox')
+    expect(fireEvent.paste(textbox, { clipboardData: { files: [image], types: ['Files'] } })).toBe(false)
+    expect(p.attachFiles).toHaveBeenLastCalledWith([image])
+    fireEvent.paste(textbox, { clipboardData: { files: [image], types: ['Files', 'text/plain'] } })
+    expect(p.attachFiles).toHaveBeenCalledOnce()
+    const region = textbox.closest('.composer-region')!
+    fireEvent.dragEnter(region, { dataTransfer: { types: ['Files'], files: [] } })
+    expect(screen.getByText('Drop images to attach')).toBeTruthy()
+    fireEvent.drop(region, { dataTransfer: { types: ['Files'], files: [image, new File(['a'], 'a.txt', { type: 'text/plain' })] } })
+    expect(screen.queryByText('Drop images to attach')).toBeNull()
+    expect(p.attachFiles).toHaveBeenLastCalledWith([image])
+  })
 })

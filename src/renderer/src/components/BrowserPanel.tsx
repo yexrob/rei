@@ -6,7 +6,7 @@ import { IconButton } from './primitives'
 import './panels.css'
 
 const empty: BrowserState = { url: '', title: '', canGoBack: false, canGoForward: false, loading: false, error: null }
-export function BrowserPanel({ visible, occluded = false, onClose }: { visible: boolean; occluded?: boolean; onClose(): void }): React.JSX.Element {
+export function BrowserPanel({ visible, occluded = false, onClose, width }: { visible: boolean; occluded?: boolean; onClose(): void; width?: number | null }): React.JSX.Element {
   const { t } = useI18n()
   const [state, setState] = useState(empty)
   const [address, setAddress] = useState('')
@@ -35,13 +35,16 @@ export function BrowserPanel({ visible, occluded = false, onClose }: { visible: 
       // Native child views sit above the DOM. Any open DOM overlay must hide it,
       // including overlays opened below the root's explicit occlusion boundary.
       const overlay = Array.from(document.querySelectorAll('dialog[open], [aria-modal="true"], [role="menu"], [role="listbox"]')).some((item) => item.getClientRects().length > 0)
-      void api.browserLayout({ visible: visible && !occluded && !overlay && document.visibilityState !== 'hidden', bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } })
+      // A splitter drag hides the native view so pointer events stay in the DOM; ResizeObserver re-measures.
+      const resizing = Boolean(document.documentElement.dataset.resizing)
+      void api.browserLayout({ visible: visible && !occluded && !overlay && !resizing && document.visibilityState !== 'hidden', bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } })
     }
     const queue = (): void => { if (!frame) frame = requestAnimationFrame(measure) }
     const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(queue)
     resize?.observe(element)
     const mutations = new MutationObserver(queue)
     mutations.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open', 'aria-modal', 'data-state', 'aria-hidden'] })
+    mutations.observe(document.documentElement, { attributes: true, attributeFilter: ['data-resizing'] })
     window.addEventListener('resize', queue)
     window.addEventListener('scroll', queue, true)
     document.addEventListener('visibilitychange', queue)
@@ -67,13 +70,13 @@ export function BrowserPanel({ visible, occluded = false, onClose }: { visible: 
     const result = await window.bingoPanels.browserNavigate(address.trim())
     if (!result.ok) setError(result.error.message)
   }
-  return <section className="native-panel browser-panel" aria-label={t('Browser')} hidden={!visible}>
+  return <section className="native-panel browser-panel" aria-label={t('Browser')} hidden={!visible} style={width ? { '--browser-width': `${width}px` } as React.CSSProperties : undefined}>
     <header className="panel-heading"><span><Globe size={14} />{t('Browser')}</span><span className="panel-page-title" title={state.title}>{state.title}</span><IconButton label={t('Close browser')} onClick={onClose}><X size={15} /></IconButton></header>
     <form className="browser-controls" onSubmit={(event) => { event.preventDefault(); void navigate() }}>
       <IconButton label={t('Back')} disabled={!state.canGoBack} onClick={() => { void action('back') }}><ArrowLeft size={15} /></IconButton>
       <IconButton label={t('Forward')} disabled={!state.canGoForward} onClick={() => { void action('forward') }}><ArrowRight size={15} /></IconButton>
       <IconButton label={t(state.loading ? 'Stop loading' : 'Reload page')} disabled={!state.url} onClick={() => { void action(state.loading ? 'stop' : 'reload') }}>{state.loading ? <Square size={13} /> : <RotateCw size={15} />}</IconButton>
-      <input ref={input} value={address} onChange={(event) => setAddress(event.target.value)} aria-label={t('Website address')} placeholder="https://" spellCheck={false} autoComplete="off" maxLength={4096} onKeyDown={(event) => { if (event.key === 'Escape') { setAddress(state.url); event.currentTarget.blur() } }} />
+      <input ref={input} value={address} onChange={(event) => setAddress(event.target.value)} aria-label={t('Website address')} placeholder="https://" spellCheck={false} autoComplete="off" maxLength={4096} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); setAddress(state.url); event.currentTarget.blur() } }} />
       <button type="submit" className="panel-go" disabled={!address.trim()}>{t('Go')}</button>
       <IconButton label={t('Open in default browser')} disabled={!state.url} onClick={() => { void action('open-external') }}><ExternalLink size={14} /></IconButton>
     </form>

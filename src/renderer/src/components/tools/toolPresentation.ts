@@ -57,3 +57,18 @@ export function mcpIdentity(name: string): { server: string; method: string } | 
   const match = /^mcp__(.+?)__(.+)$/.exec(name)
   return match ? { server: match[1], method: match[2] } : null
 }
+const verbs: Record<string, [active: string, done: string]> = {
+  Read: ['Reading', 'Read'], Write: ['Writing', 'Wrote'], Edit: ['Editing', 'Edited'], Glob: ['Finding files', 'Found files'], Grep: ['Searching', 'Searched'],
+  Bash: ['Running command', 'Ran command'], BashOutput: ['Reading output', 'Read output'], KillShell: ['Stopping shell', 'Stopped shell'],
+  WebSearch: ['Searching the web', 'Searched the web'], WebFetch: ['Fetching page', 'Fetched page'], ShowPage: ['Showing page', 'Showed page'],
+  SpawnAgent: ['Starting agent', 'Started agent'], SendMessage: ['Messaging agent', 'Messaged agent'], Skill: ['Loading skill', 'Loaded skill'],
+  TaskCreate: ['Planning tasks', 'Planned tasks'], TaskUpdate: ['Updating tasks', 'Updated tasks'], TaskList: ['Checking tasks', 'Checked tasks'], TaskGet: ['Checking tasks', 'Checked tasks'],
+  AskUserQuestion: ['Asking you', 'Asked you']
+}
+/** English source phrases for live/finished activity; callers translate. Unknown tools keep their own name. */
+export function toolVerb(name: string, active: boolean): { key: string; vars?: Record<string, string> } {
+  const pair = Object.hasOwn(verbs, name) ? verbs[name] : undefined
+  if (pair) return { key: pair[active ? 0 : 1] }
+  const mcp = mcpIdentity(name)
+  return { key: active ? 'Using {name}' : 'Used {name}', vars: { name: mcp ? `${mcp.server} · ${mcp.method}` : name } }
+}

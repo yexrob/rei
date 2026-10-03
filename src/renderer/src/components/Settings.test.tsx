@@ -39,7 +39,7 @@ it('keeps navigation and theme previews accessible without decorative names', ()
   expect(within(appearance).queryAllByRole('img')).toHaveLength(0)
   expect(within(appearance).getByRole('button', { name: 'System' }).getAttribute('aria-pressed')).toBe('true')
   fireEvent.click(within(nav).getByRole('button', { name: 'Keyboard shortcuts' }))
-  expect(screen.getByRole('heading', { name: 'Keyboard shortcuts', level: 1 })).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'Keyboard shortcuts', level: 3 })).toBeTruthy()
   expect(within(nav).getByRole('button', { name: 'Keyboard shortcuts' }).getAttribute('aria-current')).toBe('page')
 })
 it('clears an optional runtime override before reconnecting through default discovery', async () => {
@@ -93,4 +93,12 @@ it('keeps model changes on canonical actions and credentials out of conversation
   fireEvent.click(screen.getByRole('button', { name: 'Add API provider' }))
   expect(screen.getByLabelText('API key')).toHaveProperty('type', 'password')
   expect(w.runAction).toHaveBeenCalledTimes(1)
+})
+it('persists desktop notifications through native preferences, on by default', async () => {
+  const w = workspace()
+  render(<Settings workspace={w} onClose={vi.fn()} openLink={vi.fn()} clearDrafts={vi.fn()} />)
+  const toggle = screen.getByRole('switch', { name: /Desktop notifications/ }) as HTMLInputElement
+  expect(toggle.checked).toBe(true)
+  fireEvent.click(toggle)
+  await waitFor(() => expect(w.savePreferences).toHaveBeenCalledWith({ notifications: false }))
 })

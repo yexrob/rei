@@ -1,5 +1,6 @@
 import { Plus, TerminalSquare, X } from './icons'
 import { useI18n } from '../i18n'
+import { useDisplayPath } from '../paths'
 import { IconButton } from './primitives'
 import { TerminalTabs } from './terminal/TerminalTabs'
 import { useTerminalController } from './terminal/useTerminalController'
@@ -7,8 +8,9 @@ import '@xterm/xterm/css/xterm.css'
 import './panels.css'
 import './terminal/terminal.css'
 
-export function TerminalPanel({ visible, onClose }: { visible: boolean; onClose(): void }): React.JSX.Element {
+export function TerminalPanel({ visible, onClose, height }: { visible: boolean; onClose(): void; height?: number | null }): React.JSX.Element {
   const { t } = useI18n()
+  const formatPath = useDisplayPath()
   const { host, controller, state } = useTerminalController(visible, onClose)
   const active = state.tabs.find((tab) => tab.id === state.activeId)
   const error = state.error || active?.error
@@ -16,10 +18,10 @@ export function TerminalPanel({ visible, onClose }: { visible: boolean; onClose(
     if (active?.error && active.status === 'running' && active.id) void controller.current?.close(active.id)
     else void controller.current?.start()
   }
-  return <section className="native-panel terminal-panel" aria-label={t('Terminal')} hidden={!visible}>
+  return <section className="native-panel terminal-panel" aria-label={t('Terminal')} hidden={!visible} style={height ? { '--terminal-height': `${height}px` } as React.CSSProperties : undefined}>
     <header className="panel-heading terminal-heading">
       <span><TerminalSquare size={14} />{t('Terminal')}</span>
-      <span className="terminal-cwd" title={active?.cwd || ''}>{active?.cwd || t('Local shell · not sent to the agent')}</span>
+      <span className="terminal-cwd" title={active?.cwd || ''}>{active?.cwd ? formatPath(active.cwd, 64) : t('Local shell · not sent to the agent')}</span>
       <IconButton label={t('New terminal')} disabled={state.starting || !state.ready || state.tabs.length >= 8 || !window.bingoPanels} onClick={() => { void controller.current?.start() }}><Plus size={15} /></IconButton>
       <IconButton label={t('Hide terminal area')} onClick={onClose}><X size={15} /></IconButton>
     </header>

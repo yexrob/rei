@@ -1,8 +1,10 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { ExternalLink, ShieldCheck } from './icons'
 import type { Activation, Answer, Interaction, Question } from '../../../shared/rpc'
 import { CodeBlock, type OpenLink } from './Content'
 import { useI18n } from '../i18n'
+import { useDisplayPath } from '../paths'
+import { DiffView } from './DiffView'
 
 function QuestionFields({ question, value, onChange, index }: { question: Question; value: Answer; onChange: (answer: Answer) => void; index: number }): React.JSX.Element {
   const { t } = useI18n()
@@ -25,7 +27,18 @@ export function InteractionPanel({ interaction, respond, openLink, disabled = fa
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [text, setText] = useState('')
+  const headingId = useId()
+  const panel = useRef<HTMLElement>(null)
+  const formatPath = useDisplayPath()
   const kind = interaction.kind
+  // Bring the decision to the keyboard, but never steal focus from active typing:
+  // an Enter meant for the composer must not approve a tool.
+  useEffect(() => {
+    const active = document.activeElement as HTMLElement | null
+    if (active && active !== document.body && (active.matches('input, textarea, select, [contenteditable="true"]') || active.closest('dialog[open]'))) return
+    const target = panel.current?.querySelector<HTMLElement>('.interaction-actions button.primary:not(:disabled), .question-fields input, .interaction-panel .field-label input, .interaction-actions button:not(:disabled)')
+    target?.focus({ preventScroll: true })
+  }, [])
   const questions: Question[] = kind.kind === 'question' ? [kind] : kind.kind === 'form' ? kind.questions : []
   const [answers, setAnswers] = useState<Answer[]>(() => questions.map(() => ({ kind: 'cancel' })))
   const send = async (answer: Answer, activation: Activation): Promise<void> => {
@@ -35,9 +48,9 @@ export function InteractionPanel({ interaction, respond, openLink, disabled = fa
   }
   const action = (label: string, answer: Answer, style = '') => <button type="button" className={style} disabled={busy || disabled} onClick={(event) => void send(answer, event.detail === 0 ? 'keyboard' : 'pointer')}>{t(label)}</button>
   const title = kind.kind === 'permission' ? t('Permission required') : kind.kind === 'confirm' ? kind.title : kind.kind === 'login' ? t('Sign in to {provider}', { provider: kind.provider }) : kind.kind === 'form' ? kind.title || t('A few questions') : t('Your input is needed')
-  return <section className="interaction-panel" aria-label={title}>
-    <div className="interaction-heading"><ShieldCheck size={17} /><h2>{title}</h2><span className="badge attention">{t('Waiting for you')}</span></div>
-    {kind.kind === 'permission' && <><p><strong>{kind.tool}</strong> · {kind.summary}</p>{kind.preview?.kind === 'diff' && <CodeBlock text={kind.preview.unified} language={t('Diff')} />}{kind.preview?.kind === 'command' && <><p className="path-label">{kind.preview.cwd}</p><CodeBlock text={kind.preview.command} language={t('Command')} /></>}{kind.preview?.kind === 'url' && <p className="preserve-lines">{kind.preview.url}</p>}{kind.sessionScope && interaction.answers.includes('allowSession') && <p className="secondary">{t('Allowing for this session grants:')} <code>{kind.sessionScope}</code></p>}</>}
+  return <section ref={panel} className="interaction-panel" role="alertdialog" aria-labelledby={headingId}>
+    <div className="interaction-heading"><ShieldCheck size={17} /><h2 id={headingId}>{title}</h2><span className="badge attention">{t('Waiting for you')}</span></div>
+    {kind.kind === 'permission' && <><p><strong>{kind.tool}</strong> · {kind.summary}</p>{kind.preview?.kind === 'diff' && <div className="interaction-diff"><DiffView text={kind.preview.unified} label={t('Diff')} /></div>}{kind.preview?.kind === 'command' && <><p className="path-label" title={kind.preview.cwd}>{formatPath(kind.preview.cwd, 72)}</p><CodeBlock text={kind.preview.command} language={t('Command')} /></>}{kind.preview?.kind === 'url' && <p className="preserve-lines">{kind.preview.url}</p>}{kind.sessionScope && interaction.answers.includes('allowSession') && <p className="secondary">{t('Allowing for this session grants:')} <code>{kind.sessionScope}</code></p>}</>}
     {kind.kind === 'confirm' && <p>{kind.detail}</p>}
     {questions.map((question, index) => <QuestionFields key={index} index={index} question={question} value={answers[index] ?? { kind: 'cancel' }} onChange={(answer) => setAnswers((current) => current.map((value, key) => key === index ? answer : value))} />)}
     {kind.kind === 'login' && kind.flow.kind !== 'paste' && <><p>{t('Continue in your browser. Return here when sign-in is complete.')}</p>{kind.flow.kind === 'device' && <CodeBlock text={kind.flow.code} language={t('Device code')} />}<button onClick={() => { if (kind.flow.kind !== 'paste') openLink(kind.flow.url) }}>{t('Open sign-in page')} <ExternalLink size={14} /></button></>}

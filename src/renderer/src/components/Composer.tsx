@@ -3,6 +3,7 @@ import { ArrowUp, Brain, ChevronDown, Folder, LoaderCircle, Monitor, Plus, Shiel
 import type { CatalogEntry, Image, QueueEntry } from '../../../shared/rpc'
 import { DESKTOP_IMAGE_LIMITS } from '../../../shared/desktop'
 import { IconButton, object } from './primitives'
+import { imageFiles } from '../images'
 import { ModelPicker, Picker, type PickerOption } from './Picker'
 import { useI18n } from '../i18n'
 
@@ -27,8 +28,8 @@ const permissionOptions: PickerOption[] = [
 
 export type Draft = { text: string; images: Image[] }
 export const emptyDraft: Draft = { text: '', images: [] }
-export function Composer({ draft, setDraft, send, stop, attach, ready, submitReady = ready, busy, sending, model, thinking, permission, models, command, commands, inputRef, queue = [], workspaceName, chooseProject, recipient }: {
-  draft: Draft; setDraft: (draft: Draft) => void; send: () => void; stop: () => void; attach: () => void;
+export function Composer({ draft, setDraft, send, stop, attach, attachFiles, ready, submitReady = ready, busy, sending, model, thinking, permission, models, command, commands, inputRef, queue = [], workspaceName, chooseProject, recipient }: {
+  draft: Draft; setDraft: (draft: Draft) => void; send: () => void; stop: () => void; attach: () => void; attachFiles?: (files: File[]) => void;
   ready: boolean; submitReady?: boolean; busy: boolean; sending: boolean; model: string; thinking: string; permission: string;
   models: CatalogEntry[]; command: (name: string, value: string) => void; commands: CatalogEntry[];
   inputRef: React.RefObject<HTMLTextAreaElement | null>; queue?: QueueEntry[];
@@ -38,17 +39,34 @@ export function Composer({ draft, setDraft, send, stop, attach, ready, submitRea
   const localizeOption = (option: PickerOption): PickerOption => ({ ...option, label: t(option.label), detail: option.detail ? t(option.detail) : undefined })
   const composing = useRef(false)
   const [suggestion, setSuggestion] = useState(0)
-  const candidates = /^\/[^\s]*$/.test(draft.text) ? commands.filter((entry) => entry.id.toLowerCase().includes(draft.text.slice(1).toLowerCase())).slice(0, 7) : []
+  const [dismissed, setDismissed] = useState(false)
+  const candidates = !dismissed && /^\/[^\s]*$/.test(draft.text) ? commands.filter((entry) => entry.id.toLowerCase().includes(draft.text.slice(1).toLowerCase())).slice(0, 7) : []
   useLayoutEffect(() => { const node = inputRef.current; if (node) { node.style.height = 'auto'; node.style.height = `${Math.min(node.scrollHeight, 220)}px` } }, [draft.text, inputRef])
+  const [dropping, setDropping] = useState(false)
+  const canAttach = Boolean(attachFiles) && submitReady && !sending
+  const carriesFiles = (event: React.DragEvent) => [...event.dataTransfer.types].includes('Files')
   const chooseCommand = (id: string) => { setDraft({ ...draft, text: `/${id} ` }); inputRef.current?.focus(); setSuggestion(0) }
-  return <div className="composer-region">
+  return <div className={`composer-region ${dropping ? 'dropping' : ''}`} onDragEnter={(event) => { if (carriesFiles(event)) { event.preventDefault(); setDropping(canAttach) } }} onDragOver={(event) => { if (!carriesFiles(event)) return; event.preventDefault(); event.dataTransfer.dropEffect = canAttach ? 'copy' : 'none' }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false) }} onDrop={(event) => {
+    if (!carriesFiles(event)) return
+    event.preventDefault(); setDropping(false)
+    const files = imageFiles(event.dataTransfer.files)
+    if (canAttach && files.length) attachFiles?.(files)
+  }}>
     {recipient && <div className="composer-recipient"><strong>{t('To {name}', { name: recipient.name })}</strong><span>{t(recipient.role === 'main' ? 'Main agent' : 'Sub-agent · direct message')}</span>{recipient.role === 'agent' && <small>{t('Only {name} receives this message', { name: recipient.name })}</small>}</div>}
     {queue.length > 0 && <details className="queue"><summary>{t(queue.length === 1 ? '{count} message queued' : '{count} messages queued', { count: queue.length })}</summary><ol>{queue.map((item) => <li key={item.intent}>{item.preview}</li>)}</ol></details>}
     <div className={`composer ${ready ? '' : 'unavailable'}`} data-state={sending ? 'sending' : busy ? 'working' : draft.text.trim() || draft.images.length ? 'composing' : 'idle'}>
+      {dropping && <div className="composer-drop-overlay" aria-hidden="true"><span>{t('Drop images to attach')}</span></div>}
       {candidates.length > 0 && <div className="command-suggestions" role="listbox" id="composer-commands" aria-label={t('Commands')}>{candidates.map((entry, index) => <button key={entry.id} id={`command-${index}`} role="option" aria-selected={suggestion === index} tabIndex={-1} className={suggestion === index ? 'selected' : ''} onMouseEnter={() => setSuggestion(index)} onClick={() => chooseCommand(entry.id)}><strong>/{entry.id}</strong><span>{String(object(entry.meta).hint ?? entry.label)}</span></button>)}</div>}
       {draft.images.length > 0 && <div className="attachment-list">{draft.images.map((image, index) => <div className="attachment" key={index}><img src={`data:${image.mediaType};base64,${image.data}`} alt={t('Attachment {count}', { count: index + 1 })} /><IconButton label={t('Remove attachment {count}', { count: index + 1 })} onClick={() => setDraft({ ...draft, images: draft.images.filter((_, key) => key !== index) })}><X size={13} /></IconButton></div>)}</div>}
-      <textarea ref={inputRef} id="message-input" aria-label={recipient?.role === 'agent' ? t('Message {name}', { name: recipient.name }) : t('Message bingo')} aria-describedby="composer-hint" aria-controls={candidates.length ? 'composer-commands' : undefined} aria-activedescendant={candidates.length ? `command-${suggestion}` : undefined} placeholder={recipient?.role === 'agent' ? t('Send directions to {name}…', { name: recipient.name }) : t(busy ? 'Send a follow-up or steer Bingo…' : 'Ask Bingo anything, / for skills and commands')} value={draft.text} readOnly={sending} rows={2} onChange={(event) => { setDraft({ ...draft, text: event.target.value }); setSuggestion(0) }} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={(event) => {
+      <textarea ref={inputRef} id="message-input" aria-label={recipient?.role === 'agent' ? t('Message {name}', { name: recipient.name }) : t('Message bingo')} aria-describedby="composer-hint" aria-controls={candidates.length ? 'composer-commands' : undefined} aria-activedescendant={candidates.length ? `command-${suggestion}` : undefined} placeholder={recipient?.role === 'agent' ? t('Send directions to {name}…', { name: recipient.name }) : t(busy ? 'Send a follow-up or steer Bingo…' : 'Ask Bingo anything, / for skills and commands')} value={draft.text} readOnly={sending} rows={2} onChange={(event) => { setDraft({ ...draft, text: event.target.value }); setSuggestion(0); setDismissed(false) }} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onPaste={(event) => {
+        // A screenshot paste attaches; mixed text+image (e.g. spreadsheet cells) stays text.
+        const files = imageFiles(event.clipboardData.files)
+        if (!files.length || !canAttach || event.clipboardData.types.includes('text/plain')) return
+        event.preventDefault(); attachFiles?.(files)
+      }} onKeyDown={(event) => {
         if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229) return
+        // Closing suggestions consumes Escape so it never also stops the running turn.
+        if (event.key === 'Escape' && candidates.length) { event.preventDefault(); setDismissed(true); return }
         if (candidates.length && ['ArrowDown', 'ArrowUp', 'Tab', 'Enter'].includes(event.key) && !event.shiftKey) {
           event.preventDefault()
           if (event.key === 'ArrowDown') setSuggestion((suggestion + 1) % candidates.length)

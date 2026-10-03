@@ -1,36 +1,56 @@
-.tool-card { --tool-accent: var(--quiet); margin: 3px 0; min-width: 0; border: 0; background: transparent; font-size: 12px; }
+.tool-card { --tool-accent: var(--quiet); margin: 1px 0; min-width: 0; border: 0; background: transparent; font-size: 12.5px; }
 .tool-card--running, .tool-card--pending { --tool-accent: var(--brand); }
 .tool-card--failed { --tool-accent: var(--danger); }
 .tool-card--interrupted { --tool-accent: var(--warning); }
 .tool-card-header { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.tool-card-toggle { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; width: 100%; text-align: left; padding: 7px 4px; border: 0; border-radius: 5px; background: transparent; color: inherit; font: inherit; cursor: pointer; transition: background-color 140ms ease; }
+.tool-card-toggle { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; width: 100%; min-height: 32px; text-align: left; padding: 5px 8px 5px 4px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; transition: background-color var(--motion-fast) ease; }
 .tool-card-toggle:hover, .tool-activity-toggle:hover { background: var(--hover); }
 .tool-card-toggle:focus-visible, .tool-activity-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.tool-error-preview { margin: 0 0 5px 33px; color: var(--danger); overflow-wrap: anywhere; font-size: 11px; }
-.tool-activity { min-width: 0; margin: 9px 0; }
-.tool-activity-toggle { display: flex; justify-content: flex-start; align-items: baseline; gap: 12px; max-width: 100%; width: 100%; padding: 6px 4px; border: 0; border-radius: 5px; background: transparent; text-align: left; color: var(--secondary); font: inherit; font-size: 11px; cursor: pointer; transition: background-color 140ms ease; }
-.tool-activity-toggle > span:first-child { flex-shrink: 0; }
-.tool-activity-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--secondary); }
-.tool-activity-rows { min-width: 0; }
-.tool-activity-rows > [hidden] { display: none; }
+.tool-card-chevron { flex-shrink: 0; color: var(--secondary); opacity: 0; transform: rotate(0deg); transition: transform var(--motion-normal) var(--ease-out), opacity var(--motion-fast) ease; }
+.tool-card-toggle:is(:hover, :focus-visible) > .tool-card-chevron, .tool-card-toggle[aria-expanded="true"] > .tool-card-chevron { opacity: 1; }
+.tool-card-toggle[aria-expanded="true"] > .tool-card-chevron { transform: rotate(90deg); }
+.tool-error-preview { margin: 0 0 6px 33px; padding: 6px 10px; border-radius: 6px; background: var(--danger-bg); color: var(--danger); overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; }
+.tool-activity { position: relative; min-width: 0; margin: 10px 0 14px; }
+.tool-activity-toggle { display: flex; justify-content: flex-start; align-items: center; gap: 6px; width: calc(100% + 4px); max-width: calc(100% + 4px); margin-inline-start: -4px; min-height: 30px; padding: 4px 8px 4px 4px; border: 0; border-radius: 8px; background: transparent; text-align: left; color: var(--secondary); font: inherit; font-size: 12.5px; cursor: pointer; transition: background-color var(--motion-fast) ease; }
+.tool-activity-toggle > span { flex-shrink: 0; }
+.tool-activity-chevron { flex-shrink: 0; transition: transform var(--motion-normal) var(--ease-out); }
+.tool-activity-toggle[aria-expanded="true"] > .tool-activity-chevron { transform: rotate(90deg); }
+.tool-activity-failed { color: var(--danger); }
+.tool-activity-failed::before { content: "·"; margin-inline-end: 8px; color: var(--quiet); }
+.tool-activity-toggle > .tool-activity-summary { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--quiet); }
+.tool-activity-rows { position: relative; min-width: 0; }
+/* A quiet rail ties a multi-tool run together without boxing it in. */
+.tool-activity[data-multi] .tool-activity-rows { margin-inline-start: 13px; padding-inline-start: 8px; border-inline-start: 1px solid var(--line); }
+.tool-activity-row, .tool-card-reveal { min-width: 0; }
+/* Layout snaps (no height animation: rows below never drift under the pointer); content fades and settles in. */
+.tool-activity[data-ready] .tool-activity-row, .tool-card-reveal { transition: opacity var(--motion-normal) var(--ease-out), translate var(--motion-normal) var(--ease-out), display var(--motion-normal) allow-discrete; }
+.tool-activity-row[hidden], .tool-card-reveal[hidden] { display: none; opacity: 0; }
+@starting-style { .tool-activity[data-ready] .tool-activity-row:not([hidden]), .tool-card-reveal:not([hidden]) { opacity: 0; translate: 0 -3px; } }
 .tool-activity .tool-card { margin: 0; }
+/* Live work: the active name carries a slow light sweep; finished work settles with a check. */
+.tool-card[data-live] .tool-card-name, .tool-activity-live { color: var(--text); background: linear-gradient(100deg, var(--text) 0%, var(--text) 40%, color-mix(in srgb, var(--text) 35%, transparent) 50%, var(--text) 60%, var(--text) 100%); background-size: 250% 100%; background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: text-shimmer 2.2s linear infinite; }
+.tool-activity-live { font-weight: 500; }
+.tool-state-done { animation: check-pop 360ms var(--ease-out) both; }
+.tool-elapsed { color: var(--brand); }
+@keyframes text-shimmer { from { background-position: 125% 0; } to { background-position: -125% 0; } }
+@keyframes check-pop { 0% { opacity: 0; transform: scale(.4); } 60% { opacity: 1; transform: scale(1.18); } 100% { transform: scale(1); } }
 .tool-result-table { border-collapse: collapse; width: 100%; font-size: 11px; }
 .tool-result-table th, .tool-result-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 .tool-result-table th { color: var(--secondary); font-weight: 500; }
 .tool-value-link { border: 0; padding: 0; color: var(--brand); background: transparent; font: inherit; text-decoration: underline; cursor: pointer; overflow-wrap: anywhere; text-align: left; }
 .tool-value-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.tool-family-icon { color: var(--tool-accent); display: flex; align-items: center; justify-content: center; width: 20px; height: 24px; flex: 0 0 20px; }
+.tool-family-icon { color: var(--tool-accent); display: flex; align-items: center; justify-content: center; width: 20px; height: 22px; flex: 0 0 20px; transition: color var(--motion-normal) ease; }
 .tool-family-icon svg { width: 15px; height: 15px; stroke-width: 1.6; }
 .tool-card-identity { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; }
 .tool-card-name { font-weight: 550; white-space: nowrap; }
 .tool-card-summary { min-width: 0; color: var(--secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tool-card-summary code { font: inherit; font-family: var(--font-mono, ui-monospace, monospace); }
-.tool-card-state { display: flex; gap: 4px; align-items: center; color: var(--tool-accent); flex-shrink: 0; font-size: 11px; }
+.tool-card-state { display: flex; gap: 5px; align-items: center; color: var(--tool-accent); flex-shrink: 0; font-size: 11.5px; }
 .tool-duration { color: var(--secondary); font-variant-numeric: tabular-nums; margin-left: 4px; }
 .tool-link-action { min-height: 28px; width: 28px; padding: 3px; display: flex; align-items: center; justify-content: center; color: var(--secondary); border: 0; background: transparent; border-radius: 4px; flex-shrink: 0; cursor: pointer; }
 .tool-link-action:hover { background: var(--hover); color: var(--text); }
 .tool-link-action:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.tool-card-body { margin: 2px 0 10px 9px; border-left: 1px solid color-mix(in srgb, var(--line) 70%, transparent); padding: 4px 0 4px 19px; display: grid; gap: 10px; min-width: 0; animation: tool-reveal var(--motion-normal) var(--ease-out); }
+.tool-card-body { margin: 2px 0 10px 13px; border-left: 1px solid var(--line); padding: 6px 0 6px 19px; display: grid; gap: 10px; min-width: 0; }
 .tool-card-actions { display: flex; align-items: center; gap: 4px; }
 .tool-input-fields, .tool-result-fields { margin: 0; display: grid; gap: 6px; }
 .tool-input-fields { display: flex; flex-wrap: wrap; gap: 7px 16px; }
@@ -75,10 +95,12 @@
 .tool-request-block { min-width: 0; }
 .tool-request-block h4 { color: var(--secondary); font-size: 11px; font-weight: 500; margin: 0 0 5px; }
 .tool-session-link { border: 1px solid var(--line); border-radius: 5px; padding: 4px 7px; background: transparent; font-size: 11px; cursor: pointer; }
-.tool-progress-tail { border-left: 2px solid var(--tool-accent); padding-left: 10px; }
+.tool-progress-tail { position: relative; border-radius: 7px; background: var(--code); padding: 8px 10px; }
+.tool-progress-tail pre { max-height: 132px; display: flex; flex-direction: column-reverse; mask-image: linear-gradient(to bottom, transparent 0, #000 28px); }
+.tool-card[data-live] .tool-progress-tail::after { content: ""; position: absolute; inset-inline-end: 10px; inset-block-end: 10px; width: 6px; height: 12px; background: var(--brand); animation: caret-blink 1s steps(2, start) infinite; }
 .tool-state-spin { animation: tool-spin 1.1s linear infinite; }
 @keyframes tool-spin { to { transform: rotate(360deg); } }
-@keyframes tool-reveal { from { opacity: .45; transform: translateY(-3px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes caret-blink { to { visibility: hidden; } }
 @media (max-width: 680px) { .tool-card-identity { display: block; } .tool-card-summary { margin-top: 2px; } .tool-duration { display: none; } .tool-card-header { gap: 6px; } }
-@media (prefers-reduced-motion: reduce) { .tool-state-spin, .tool-card-body { animation: none; } .tool-card-toggle, .tool-activity-toggle { transition: none; } }
-@media (forced-colors: active) { .tool-card-toggle:focus-visible, .tool-activity-toggle:focus-visible, .tool-value-link:focus-visible { outline-color: Highlight; } .tool-card--failed, .tool-error-preview { color: CanvasText; } .tool-card-body { border-color: CanvasText; } }
+@media (prefers-reduced-motion: reduce) { .tool-state-spin, .tool-state-done, .tool-progress-tail::after { animation: none; } .tool-card[data-live] .tool-card-name, .tool-activity-live { animation: none; background: none; -webkit-text-fill-color: currentColor; } .tool-card-toggle, .tool-activity-toggle, .tool-activity-row, .tool-card-reveal, .tool-card-chevron, .tool-activity-chevron { transition: none; } }
+@media (forced-colors: active) { .tool-card-toggle:focus-visible, .tool-activity-toggle:focus-visible, .tool-value-link:focus-visible { outline-color: Highlight; } .tool-card--failed, .tool-error-preview { color: CanvasText; } .tool-card-body { border-color: CanvasText; } .tool-card[data-live] .tool-card-name, .tool-activity-live { background: none; -webkit-text-fill-color: CanvasText; animation: none; } }
