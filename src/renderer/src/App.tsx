@@ -21,6 +21,7 @@ import { BrowserPanel } from './components/BrowserPanel'
 import { I18nProvider, useI18n } from './i18n'
 import { configurePaths, useDisplayPath } from './paths'
 import { useAttentionNotifications } from './attention'
+import { ImageAttachmentError, readImageFiles } from './images'
 import { InteractionPanel } from './components/InteractionPanel'
 import { Settings, Onboarding } from './components/Settings'
 import { StructuredView, type RunAction } from './components/Content'
@@ -245,6 +246,16 @@ function WorkspaceApp(): React.JSX.Element {
       setDrafts(current => ({ ...current, [draftKey]: { ...(current[draftKey] ?? emptyDraft), images: [...previous.images, ...images] } }))
     }).catch(w.report).finally(finish)
   }
+  // Pasted/dropped files are read here with the picker's formats and limits.
+  const attachFiles = (files: File[]) => {
+    const draftKey = key, owner = w.preview
+    const finish = beginOperation(operationKey, 'commands')
+    void readImageFiles(files, (draftRef.current[draftKey] ?? emptyDraft).images.length).then(images => {
+      if (!owner || !w.isCurrentEpoch(owner)) return
+      if ((draftRef.current[draftKey] ?? emptyDraft).images.length + images.length > DESKTOP_IMAGE_LIMITS.count) throw new ImageAttachmentError('count')
+      setDrafts(current => { const previous = current[draftKey] ?? emptyDraft; return { ...current, [draftKey]: { ...previous, images: [...previous.images, ...images] } } })
+    }).catch(error => w.report(error instanceof ImageAttachmentError ? new Error(t(error.message)) : error)).finally(finish)
+  }
   const retry = () => { void w.reconnect().catch(w.report) }
   const exportSession = () => {
     if (!state) return
@@ -296,7 +307,7 @@ function WorkspaceApp(): React.JSX.Element {
         {w.commandView && !settings && <div className="command-result"><IconButton label="Dismiss command result" onClick={() => w.setCommandView(null)}><X size={15} /></IconButton><StructuredView view={w.commandView} runAction={runAction} openLink={openLink} /></div>}
         {state?.interactions?.map((interaction) => <InteractionPanel key={`${operationKey}:${interaction.id}`} interaction={interaction} disabled={!ready || identityOmitted || uncertainRuntime} openLink={interaction.kind.kind === 'login' ? openSignIn : openLink} respond={(answer, activation) => w.respond(interaction.session, interaction.id, answer, activation)} />)}
         {ready && currentError && <div className="composer-error"><ErrorBanner message={currentError} onDismiss={() => { w.setError(''); setDraftError('') }} onRetry={w.active?.resync && w.activeId ? () => { void w.openSession(w.activeId!, true).catch(w.report) } : undefined} /></div>}
-        <Composer draft={draft} setDraft={setDraft} send={() => void send()} stop={stopCurrent} attach={attach} ready={ready && !w.active?.resync} submitReady={ready && !w.active?.resync && !identityOmitted && !uncertainRuntime} busy={ready && Boolean(state?.turn)} sending={sending || commandBusy || w.loading} model={model} thinking={thinking} permission={permission} models={w.catalogs.models?.entries ?? []} commands={w.catalogs.commands?.entries ?? []} command={command} inputRef={input} queue={state?.queue} workspaceName={workspaceLabel} chooseProject={chooseProject} recipient={hasCollaboration || childAgent ? { name: agentName, role: childAgent ? 'agent' : 'main' } : undefined} />
+        <Composer draft={draft} setDraft={setDraft} send={() => void send()} stop={stopCurrent} attach={attach} attachFiles={attachFiles} ready={ready && !w.active?.resync} submitReady={ready && !w.active?.resync && !identityOmitted && !uncertainRuntime} busy={ready && Boolean(state?.turn)} sending={sending || commandBusy || w.loading} model={model} thinking={thinking} permission={permission} models={w.catalogs.models?.entries ?? []} commands={w.catalogs.commands?.entries ?? []} command={command} inputRef={input} queue={state?.queue} workspaceName={workspaceLabel} chooseProject={chooseProject} recipient={hasCollaboration || childAgent ? { name: agentName, role: childAgent ? 'agent' : 'main' } : undefined} />
       </div>}
       </div><ReviewPanel visible={reviewOpen && page === 'thread'} workspace={w.connection.workspace} onClose={() => setReviewOpen(false)} onCompose={compose} /><BrowserPanel visible={browserOpen && page === 'thread'} occluded={browserOccluded} onClose={() => setBrowserOpen(false)} /></div>{terminalMounted && <Suspense fallback={<section className="terminal-panel"><p className="terminal-status">{t('Starting terminal…')}</p></section>}><TerminalPanel visible={terminalOpen && page === 'thread'} onClose={() => setTerminalOpen(false)} /></Suspense>}</div>
     </main>

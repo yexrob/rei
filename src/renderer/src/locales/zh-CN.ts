@@ -637,5 +637,8 @@ export const zhCN = {
   'Notify me when Bingo needs input or finishes a task while Rei is in the background.': 'Rei 在后台时，如果 Bingo 需要你确认或完成了任务，就发送通知提醒你。',
   'Bingo needs your input': 'Bingo 需要你的确认',
   'Task finished': '任务已完成',
-  'Task failed': '任务失败'
+  'Task failed': '任务失败',
+  'Drop images to attach': '松开即可附加图片',
+  'Only PNG, JPEG, GIF and WebP images can be attached.': '只能附加 PNG、JPEG、GIF 和 WebP 图片。',
+  'Images must be no larger than 5 MB.': '每张图片不能超过 5 MB。'
 } as const

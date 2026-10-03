@@ -296,6 +296,9 @@ th { font-weight: 600; background: var(--code); }
 .composer-error { width: min(100% - 64px, 760px); margin: 0 auto 12px; }
 .composer-error .error-banner { margin: 0; }
 .composer-region { width: min(100% - 80px, 720px); margin-inline: auto; padding-block: 12px 26px; flex-shrink: 0; }
+.composer-region { position: relative; }
+.composer-region.dropping .composer { border: 1px dashed var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 12%, transparent); }
+.composer-drop-overlay { position: absolute; z-index: 9; inset: 0; display: grid; place-items: center; pointer-events: none; border-radius: 16px; background: color-mix(in srgb, var(--surface) 82%, transparent); color: var(--text); font-size: 13px; font-weight: 500; animation: fade-enter var(--motion-fast) var(--ease-out); }
 .composer { position: relative; border: 1px solid var(--control-line); background: var(--surface); border-radius: 16px; padding: 12px 14px; box-shadow: var(--shadow-soft); transition: border-color var(--motion-fast), box-shadow var(--motion-normal); }
 .composer:focus-within { border-color: var(--focus); box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus) 14%, transparent), var(--shadow-soft); }
 .composer[data-state="sending"] { border-color: var(--brand); }
