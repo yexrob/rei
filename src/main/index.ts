@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, shell, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, dialog, Menu, nativeTheme, powerMonitor, screen, shell, type MenuItemConstructorOptions } from 'electron'
 import { isAbsolute, join } from 'node:path'
 import { mkdirSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
@@ -188,7 +188,10 @@ else {
     await preferences.load().catch((error: Error) => dialog.showErrorBox('Desktop preferences unavailable', error.message))
     nativeTheme.themeSource = preferences.preferences.theme
     runtime = new RuntimePool(emit, () => delivery?.recover())
-    delivery = new EventDelivery(() => window, documentUrl, (error) => runtime?.abort(error))
+    // Renderer backpressure fuses delivery and later forces snapshot resync; native runtimes keep running.
+    delivery = new EventDelivery(() => window, documentUrl, (error) => console.warn(error.message), () => runtime?.connections ?? [])
+    powerMonitor.on('suspend', () => delivery?.suspend())
+    powerMonitor.on('resume', () => delivery?.resume())
     desktopIpc = new DesktopIpc({ window: () => window, documentUrl, preferences, runtime, delivery, emit, agentPages: () => agentBrowser.snapshot(), openAgentPage: input => agentBrowser.open(input), onDialogChange: (open) => panels?.setBrowserOccluded(open) })
     await desktopIpc.initialize()
     panels = new Panels({ window: () => window, documentUrl, workspace: () => desktopIpc?.currentWorkspace ?? null })
