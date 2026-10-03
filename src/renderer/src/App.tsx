@@ -23,6 +23,7 @@ import { configurePaths, useDisplayPath } from './paths'
 import { useAttentionNotifications } from './attention'
 import { ImageAttachmentError, readImageFiles } from './images'
 import { localizeNotice, Toast } from './components/Toast'
+import { ActionMenu, type MenuAction } from './components/ActionMenu'
 import { InteractionPanel } from './components/InteractionPanel'
 import { Settings, Onboarding } from './components/Settings'
 import { StructuredView, type RunAction } from './components/Content'
@@ -200,13 +201,6 @@ function WorkspaceApp(): React.JSX.Element {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [newSession])
-  useEffect(() => {
-    if (!menu) return
-    const dismiss = (event: PointerEvent) => { if (!(event.target as Element).closest('.session-options')) setMenu(false) }
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setMenu(false) }
-    document.addEventListener('pointerdown', dismiss); document.addEventListener('keydown', escape)
-    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape) }
-  }, [menu])
   w.menuHandler.current = (action) => { if (action === 'new-session') newSession(); if (action === 'preferences') setSettings(true); if (action === 'choose-workspace') void w.chooseWorkspace().catch(w.report) }
 
   const send = async () => {
@@ -276,6 +270,12 @@ function WorkspaceApp(): React.JSX.Element {
     window.addEventListener('keydown', stop)
     return () => window.removeEventListener('keydown', stop)
   }, [settings, palette, environmentOpen, rename, bypass, menu, ready, state?.turn, stopCurrent])
+  const editable = !room && !childAgent
+  const sessionMenuItems: MenuAction[] = [
+    ...(editable ? [{ key: 'rename', label: 'Rename session', onSelect: () => setRename({ name: title, apply: (name: string) => w.runAction('rename', name), report: w.report }) }] : []),
+    { key: 'export', label: 'Export Markdown', icon: <Download size={14} />, onSelect: exportSession },
+    ...(editable ? [{ key: 'delete', label: 'Delete session…', icon: <Trash2 size={14} />, danger: true, onSelect: () => { void w.removeSession().catch(w.report) } }] : [])
+  ]
   const currentError = w.error || w.connection.error?.message || draftError
   const browserOccluded = settings || palette || environmentOpen || rename !== null || Boolean(bypass) || Boolean(state?.interactions?.length)
 
@@ -283,7 +283,7 @@ function WorkspaceApp(): React.JSX.Element {
     <a className="skip-link" href={page === 'thread' ? '#message-input' : '#workspace-main'}>{t(page === 'thread' ? 'Skip to message' : 'Skip to content')}</a>
     <ProjectSidebar projects={sidebarProjects} activeHostId={w.preview?.hostId} onHostSession={(hostId, id) => openSession(id, hostId)} onHostProject={hostId => { ++presentationGeneration.current; setPage('thread'); void w.viewHost(hostId).catch(() => {}) }} onCloseHost={hostId => { void w.closeHost(hostId).catch(() => {}) }} agentPages={pageLinks} visible={sidebar} platform={w.bootstrap?.platform ?? 'unknown'} page={page} workspace={w.connection.workspace} scratchWorkspace={w.bootstrap?.scratchWorkspace} recentWorkspaces={w.preferences?.recentWorkspaces ?? []} sessions={visibleSessions} activeId={w.collaboration.rootId ?? w.activeId} ready={ready} connecting={w.connection.status === 'connecting'} loading={w.loading} onHide={() => setSidebar(false)} onSearch={() => { setPalette(true); setQuery('') }} onNewThread={newSession} onPage={navigate} onChooseProject={chooseProject} onProject={changeProject} onSession={openSession} onSettings={() => setSettings(true)} />
     {sidebar && <button className="sidebar-scrim" aria-label={t('Close navigation')} onClick={() => setSidebar(false)} />}
-    <main className="workspace-main" id="workspace-main" tabIndex={-1}><header className="workspace-header"><div className="header-location">{!sidebar && <IconButton label="Show sidebar" onClick={() => setSidebar(true)}><PanelLeft size={18} /></IconButton>}<h1>{page === 'thread' ? title : t(page === 'skills' ? 'Skills' : 'Automations')}</h1>{page === 'thread' && (room || childAgent) && <span className="conversation-kind">{t(room ? 'Room' : 'Sub-agent')}</span>}{page === 'thread' && state && <span className="breadcrumb">{workspaceLabel}</span>}</div><div className="header-actions">{page === 'thread' && state && <><SessionStatus status={status} /><IconButton label="Session details" aria-pressed={details} onClick={() => setDetails(!details)}><Info size={17} /></IconButton><div className="session-options"><IconButton label="Session actions" aria-expanded={menu} onClick={() => setMenu(!menu)}><MoreHorizontal size={19} /></IconButton>{menu && <div className="options-popover">{!room && !childAgent && <button onClick={() => { setRename({ name: title, apply: (name) => w.runAction('rename', name), report: w.report }); setMenu(false) }}>{t('Rename session')}</button>}<button onClick={exportSession}><Download size={14} />{t('Export Markdown')}</button>{!room && !childAgent && <button className="danger-text" onClick={() => { setMenu(false); void w.removeSession().catch(w.report) }}><Trash2 size={14} />{t('Delete session…')}</button>}</div>}</div></>}{page === 'thread' && <div className="header-panel-toggles"><EnvironmentPanel open={environmentOpen} onOpenChange={setEnvironmentOpen} entries={w.collaboration.entries} activeId={w.activeId} onSelect={selectCollaborator} onReview={() => { setBrowserOpen(false); setReviewOpen(true) }} workspaceName={workspaceLabel} workspacePath={scratch ? null : w.connection.workspace} ready={ready} canReview={ready && !scratch && !room} disabled={w.loading} /><IconButton label="Browser" aria-pressed={browserOpen} className={`icon-button tool-toggle ${browserOpen ? 'active' : ''}`} onClick={() => browserOpen ? setBrowserOpen(false) : showBrowser()}><Globe2 size={17} /></IconButton><IconButton label="Terminal" aria-pressed={terminalOpen} className={`icon-button tool-toggle ${terminalOpen ? 'active' : ''}`} onClick={() => { setTerminalMounted(true); setTerminalOpen(!terminalOpen) }}><SquareTerminal size={18} /></IconButton></div>}</div></header>
+    <main className="workspace-main" id="workspace-main" tabIndex={-1}><header className="workspace-header"><div className="header-location">{!sidebar && <IconButton label="Show sidebar" onClick={() => setSidebar(true)}><PanelLeft size={18} /></IconButton>}<h1>{page === 'thread' ? title : t(page === 'skills' ? 'Skills' : 'Automations')}</h1>{page === 'thread' && (room || childAgent) && <span className="conversation-kind">{t(room ? 'Room' : 'Sub-agent')}</span>}{page === 'thread' && state && <span className="breadcrumb">{workspaceLabel}</span>}</div><div className="header-actions">{page === 'thread' && state && <><SessionStatus status={status} /><IconButton label="Session details" aria-pressed={details} onClick={() => setDetails(!details)}><Info size={17} /></IconButton><ActionMenu label="Session actions" icon={<MoreHorizontal size={19} />} open={menu} onOpenChange={setMenu} items={sessionMenuItems} /></>}{page === 'thread' && <div className="header-panel-toggles"><EnvironmentPanel open={environmentOpen} onOpenChange={setEnvironmentOpen} entries={w.collaboration.entries} activeId={w.activeId} onSelect={selectCollaborator} onReview={() => { setBrowserOpen(false); setReviewOpen(true) }} workspaceName={workspaceLabel} workspacePath={scratch ? null : w.connection.workspace} ready={ready} canReview={ready && !scratch && !room} disabled={w.loading} /><IconButton label="Browser" aria-pressed={browserOpen} className={`icon-button tool-toggle ${browserOpen ? 'active' : ''}`} onClick={() => browserOpen ? setBrowserOpen(false) : showBrowser()}><Globe2 size={17} /></IconButton><IconButton label="Terminal" aria-pressed={terminalOpen} className={`icon-button tool-toggle ${terminalOpen ? 'active' : ''}`} onClick={() => { setTerminalMounted(true); setTerminalOpen(!terminalOpen) }}><SquareTerminal size={18} /></IconButton></div>}</div></header>
       {page === 'skills' && <SkillsPage key={`${w.connection.hostId}:${w.connection.connectionId}`} workspace={w} openLink={openLink} onCompose={compose} />}
       {page === 'automations' && <AutomationsPage key={`${w.connection.hostId}:${w.connection.connectionId}`} workspace={w} openLink={openLink} onCompose={compose} />}
       <div className="workspace-body" hidden={page !== 'thread'}><div className={`workspace-content ${browserOpen ? 'with-browser' : ''} ${reviewOpen ? 'with-review' : ''}`}><div className="conversation-column">

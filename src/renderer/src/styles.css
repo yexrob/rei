@@ -201,9 +201,13 @@ kbd { font-size: 11px; color: var(--secondary); font-weight: 400; }
 .session-status.waiting { color: var(--warning); }
 .session-status.failed, .session-status.disconnected { color: var(--danger); }
 .session-status.ready, .session-status.completed { color: var(--brand); }
-.session-options { position: relative; }
-.options-popover { position: absolute; z-index: 10; inset-block-start: 38px; inset-inline-end: 0; padding: 5px; min-width: 180px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); box-shadow: var(--shadow); }
-.options-popover button { width: 100%; justify-content: flex-start; border: 0; background: transparent; }
+.action-menu { z-index: 70; min-width: 188px; padding: 5px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.action-menu-item { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 7px 10px; border-radius: 6px; font-size: 13px; cursor: default; outline: none; user-select: none; }
+.action-menu-item[data-highlighted] { background: var(--selected); }
+.action-menu-item[data-disabled] { opacity: .5; }
+.action-menu-item > svg { color: var(--secondary); flex-shrink: 0; }
+.action-menu-item.danger-text > svg { color: inherit; }
+@media (forced-colors: active) { .action-menu { border: 1px solid CanvasText; } .action-menu-item[data-highlighted] { outline: 2px solid Highlight; } }
 .session-details { display: flex; flex-wrap: wrap; padding: 14px 28px; gap: 20px 36px; border-block: 1px solid var(--line); }
 .session-details > div:not(.session-metrics) { display: grid; gap: 5px; min-width: 0; }
 .session-details span { font-size: 12px; color: var(--secondary); }
@@ -276,7 +280,7 @@ th { font-weight: 600; background: var(--code); }
 @keyframes symbol-enter { from { opacity: .4; transform: scale(.8); } to { opacity: 1; transform: scale(1); } }
 @keyframes toast-enter { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @keyframes fade-enter { from { opacity: 0; } to { opacity: 1; } }
-.session-list, .options-popover, .session-details, .command-result, .interaction-panel, .command-suggestions { animation: surface-enter var(--motion-normal) var(--ease-out); }
+.session-list, .action-menu, .session-details, .command-result, .interaction-panel, .command-suggestions { animation: surface-enter var(--motion-normal) var(--ease-out); }
 .timeline-wrap { animation: fade-enter var(--motion-normal) var(--ease-out); }
 .modal[open] { animation: surface-enter var(--motion-normal) var(--ease-out); }
 .modal[open]::backdrop, .sidebar-scrim { animation: fade-enter var(--motion-normal); }
