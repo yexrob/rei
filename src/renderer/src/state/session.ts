@@ -8,7 +8,8 @@ export type { Frame, HistoryChunk, Interaction, Item, SessionState, SessionSumma
 export interface SessionProjection {
   snapshot: SessionState
   history: { before?: string; complete: boolean }
-  resync: { reason: 'gap' | 'lagged' | 'history-generation'; since: number } | null
+  /** `failed` is set once automatic recovery gave up; reopening retries. */
+  resync: { reason: 'gap' | 'lagged' | 'history-generation'; since: number; failed?: boolean } | null
   /** Last accepted activity event; row text/status are derived from the snapshot. */
   activityFrame?: Frame
   /** Transport continuity can advance past a deferred event without applying its body. */
@@ -328,7 +329,7 @@ export function selectUsage(state: SessionProjection): Usage {
 }
 
 export function selectStatus(state: SessionProjection): SessionStatus {
-  if (state.resync) return 'resyncing'
+  if (state.resync) return state.resync.failed ? 'failed' : 'resyncing'
   if (state.snapshot.closed) return 'closed'
   if (selectPendingInteractions(state).length > 0) return 'waiting'
   if (state.snapshot.turn?.retrying) return 'retrying'

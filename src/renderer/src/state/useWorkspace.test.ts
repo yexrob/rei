@@ -9,7 +9,8 @@ import type {
 } from '../../../shared/desktop'
 import type { Event, Frame, RpcMethods, SessionState } from '../../../shared/rpc'
 import { rustInitial } from './fixtures'
-import { bufferLimits, frameScheduler, useWorkspace } from './useWorkspace'
+import { bufferLimits, frameScheduler, recoveryPolicy, useWorkspace } from './useWorkspace'
+import { selectStatus } from './session'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -945,7 +946,7 @@ describe('journal-driven collaboration subscriptions', () => {
   })
 })
 
-describe('streamed frame rendering', () => {
+describe('streamed frame rendering and recovery bounds', () => {
   it('folds a burst of frames into one render and keeps the session list identity while the summary is unchanged', async () => {
     const bridge = desktop()
     let renders = 0
@@ -1005,6 +1006,28 @@ describe('streamed frame rendering', () => {
       expect(result.current.active?.resync).toBeNull()
       expect(assistantText(result.current.active)).toBe('Before111213')
     } finally { Object.assign(bufferLimits, limits) }
+  })
+
+  it('retries a failed gap recovery with backoff, then surfaces a failed state that a manual reopen clears', async () => {
+    const { bridge, result } = await opened()
+    const policy = { ...recoveryPolicy }
+    Object.assign(recoveryPolicy, { backoff: 1 })
+    try {
+      bridge.handlers.set('session/open', async () => ({ ok: false as const, error: { code: 'UNAVAILABLE', message: 'Runtime busy.' } }))
+      bridge.request.mockClear()
+      await act(async () => { bridge.emitFrame(delta(12, 'gap')) })
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
+      expect(bridge.request.mock.calls.filter(([input]) => input.method === 'session/open')).toHaveLength(3)
+      expect(result.current.active?.resync).toMatchObject({ reason: 'gap', since: 10, failed: true })
+      expect(selectStatus(result.current.active!)).toBe('failed')
+      expect(result.current.error).toMatch(/recovery failed after 3 attempts: Runtime busy/)
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
+      expect(bridge.request.mock.calls.filter(([input]) => input.method === 'session/open')).toHaveLength(3)
+      bridge.handlers.set('session/open', async () => openReply(snapshot('ses_1', 12, 'Repaired')))
+      await act(async () => { await result.current.openSession('ses_1') })
+      expect(result.current.active?.resync).toBeNull()
+      expect(assistantText(result.current.active)).toBe('Repaired')
+    } finally { Object.assign(recoveryPolicy, policy) }
   })
 
   it('renders on the next animation frame outside tests, with a timer fallback for hidden windows', () => {

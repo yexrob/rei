@@ -28,6 +28,7 @@ export type WorkspaceHost = { connection: ConnectionState; sessions: SessionSumm
 type Pending = { target: ConversationSelection; presentResult: boolean; resolve: (value: IntentOutcome) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 type EpochCache = { buffered: Map<string, Frame[]>; deferred: Map<string, EventRefParams[]>; bufferedCount: number; overflowed: Set<string>; opening: Set<string>; flights: Map<string, Promise<string>>; attachments: Map<string, { children: boolean; generation: number }>; ancestors: Set<string>; recovery: Set<string>; removed: Set<string>; discovering: Set<string>; scanned: Set<string>; gatewayRevision: number; initialThinking: Map<string, string>; preparing: Map<string, Promise<void>>; commandSession?: Promise<string>; initialized?: Promise<void> }
 function cache(): EpochCache { return { buffered: new Map(), deferred: new Map(), bufferedCount: 0, overflowed: new Set(), opening: new Set(), flights: new Map(), attachments: new Map(), ancestors: new Set(), recovery: new Set(), removed: new Set(), discovering: new Set(), scanned: new Set(), gatewayRevision: 0, initialThinking: new Map(), preparing: new Map() } }
+export const recoveryPolicy = { attempts: 3, backoff: 500 }
 export const bufferLimits = { total: 20000, session: 10000 }
 function takeBuffered<T>(store: EpochCache, queues: Map<string, T[]>, id: string): T[] {
   const queue = queues.get(id) ?? []
@@ -590,13 +591,30 @@ export function useWorkspace() {
       const scope = host.connection, store = epochCache(scope)
       for (const [id, projection] of Object.entries(host.projections)) {
         if (host.projectionEpochs[id] !== scope.connectionId || !projection.resync || !store.attachments.has(id)) continue
-        const key = `${id}:${projection.resync.since}`
+        const since = projection.resync.since, key = `${id}:${since}`
         if (store.recovery.has(key)) continue
         store.recovery.add(key)
-        void openFor(scope, id, true, 'model', false).catch(error => reportFor({ ...scope, sessionId: id }, error))
+        // A failed reopen frees its key and retries with backoff; the last failure
+        // keeps the key (no hot loop) and marks the resync failed for the UI.
+        void (async () => {
+          for (let attempt = 1; ; attempt += 1) {
+            try { await openFor(scope, id, true, 'model', false); store.recovery.delete(key); return }
+            catch (error) {
+              const current = live(scope) ? hostsRef.current[scope.hostId]?.projections[id] : undefined
+              if (!current?.resync || current.resync.since !== since) { store.recovery.delete(key); return }
+              if (attempt >= recoveryPolicy.attempts) {
+                updateProjection(scope, id, { ...current, resync: { ...current.resync, failed: true } })
+                reportFor({ ...scope, sessionId: id }, new Error(`Session recovery failed after ${attempt} attempts: ${errorMessage(error)} Reopen the session to retry.`))
+                return
+              }
+              await new Promise(resolve => setTimeout(resolve, recoveryPolicy.backoff * 2 ** (attempt - 1)))
+              if (!live(scope)) return
+            }
+          }
+        })()
       }
     }
-  }, [hosts, epochCache, openFor, reportFor])
+  }, [hosts, epochCache, openFor, reportFor, live, updateProjection])
   useEffect(() => {
     if (!target?.sessionId || !live(target)) return
     const host = hostsRef.current[target.hostId]
