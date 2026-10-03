@@ -18,7 +18,7 @@ test('offline runtime burst preserves deltas, permission and intent/lifecycle ev
     const page = await app.firstWindow()
     await expect(page.locator('.startup-stage')).toHaveAttribute('data-phase', 'settled')
     await expect(page.getByText('Connected locally')).toBeVisible()
-    await page.getByRole('navigation', { name: 'Sessions', exact: true }).getByRole('button', { name: /Burst regression/ }).click()
+    await page.getByRole('navigation', { name: 'Sessions', exact: true }).getByRole('button', { name: /^Burst regression/ }).click()
     await expect(page.locator('h1')).toHaveText('Burst regression')
     await page.evaluate(() => {
       const state = window as typeof window & { burstEvents: DesktopEvent[] }
