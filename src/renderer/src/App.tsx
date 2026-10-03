@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ArrowUpRight, Download, Globe2, Info, MessageSquare, MoreHorizontal, PanelLeft, SquareTerminal, Terminal, Trash2, X } from './components/icons'
+import { ArrowLeft, ArrowUpRight, Download, GitCompareArrows, Globe2, Info, MessageSquare, MoreHorizontal, PanelLeft, SquareTerminal, Terminal, Trash2, X } from './components/icons'
 import { WelcomeHeading } from './components/Welcome'
 import { SessionMetrics } from './components/SessionMetrics'
 import { SessionStatus } from './components/SessionStatus'
@@ -23,6 +23,7 @@ import { configurePaths, useDisplayPath } from './paths'
 import { useAttentionNotifications } from './attention'
 import { ImageAttachmentError, readImageFiles } from './images'
 import { localizeNotice, Toast } from './components/Toast'
+import { ariaKeys, keyLabel, matches, SHORTCUTS, type ShortcutId } from './shortcuts'
 import { ActionMenu, type MenuAction } from './components/ActionMenu'
 import { InteractionPanel } from './components/InteractionPanel'
 import { Settings, Onboarding } from './components/Settings'
@@ -67,6 +68,8 @@ function WorkspaceApp(): React.JSX.Element {
   const [pendingAction, setPendingAction] = useState<{ hostId: string; id: string; action: SessionAction } | null>(null)
   const [operations, setOperations] = useState<Record<string, { sending: number; commands: number }>>({})
   const sendLocks = useRef(new Set<string>())
+  const panelToggles = useRef({ terminal: () => {}, browser: () => {}, review: () => {} })
+  const [reviewCount, setReviewCount] = useState<number | null>(null)
   const presentationGeneration = useRef(0)
   const connectionId = useRef(w.connection.connectionId)
   connectionId.current = w.connection.connectionId
@@ -198,11 +201,15 @@ function WorkspaceApp(): React.JSX.Element {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return
-      if (event.key.toLowerCase() === 'n') { event.preventDefault(); newSession() }
-      if (event.key.toLowerCase() === 'k') { event.preventDefault(); setPalette(true); setQuery('') }
-      if (event.key === ',') { event.preventDefault(); setSettings(true) }
-      if (event.key.toLowerCase() === 'b') { event.preventDefault(); setSidebar((value) => !value) }
-      if (event.key.toLowerCase() === 'l') { event.preventDefault(); input.current?.focus() }
+      const run = (id: ShortcutId, action: () => void) => { if (matches(event, SHORTCUTS[id])) { event.preventDefault(); action() } }
+      run('newSession', newSession)
+      run('search', () => { setPalette(true); setQuery('') })
+      run('settings', () => setSettings(true))
+      run('sidebar', () => setSidebar((value) => !value))
+      run('focusMessage', () => input.current?.focus())
+      run('terminal', () => panelToggles.current.terminal())
+      run('browser', () => panelToggles.current.browser())
+      run('review', () => panelToggles.current.review())
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -277,6 +284,14 @@ function WorkspaceApp(): React.JSX.Element {
     return () => window.removeEventListener('keydown', stop)
   }, [settings, palette, environmentOpen, rename, bypass, menu, ready, state?.turn, stopCurrent])
   const editable = !room && !childAgent
+  const platform = w.bootstrap?.platform ?? 'unknown'
+  const keys = (id: ShortcutId) => ({ shortcut: keyLabel(platform, SHORTCUTS[id]), 'aria-keyshortcuts': ariaKeys(platform, SHORTCUTS[id]) })
+  const canReview = ready && !scratch && !room
+  const reviewUnavailable = room ? 'Review is unavailable in rooms.' : scratch ? 'Review needs a project folder. Personal space is not a Git workspace.' : !ready ? 'Connect to review changes.' : ''
+  const toggleTerminal = () => { setPage('thread'); setTerminalMounted(true); setTerminalOpen(value => !value) }
+  const toggleBrowser = () => { if (browserOpen && page === 'thread') setBrowserOpen(false); else showBrowser() }
+  const toggleReview = () => { if (reviewOpen && page === 'thread') { setReviewOpen(false); return } if (!canReview) return; setPage('thread'); setBrowserOpen(false); setReviewOpen(true) }
+  panelToggles.current = { terminal: toggleTerminal, browser: toggleBrowser, review: toggleReview }
   const sessionMenuItems: MenuAction[] = [
     ...(editable ? [{ key: 'rename', label: 'Rename session', onSelect: () => setRename({ name: title, apply: (name: string) => w.runAction('rename', name), report: w.report }) }] : []),
     { key: 'export', label: 'Export Markdown', icon: <Download size={14} />, onSelect: exportSession },
@@ -309,7 +324,7 @@ function WorkspaceApp(): React.JSX.Element {
     <a className="skip-link" href={page === 'thread' ? '#message-input' : '#workspace-main'}>{t(page === 'thread' ? 'Skip to message' : 'Skip to content')}</a>
     <ProjectSidebar projects={sidebarProjects} activeHostId={w.preview?.hostId} onHostSession={(hostId, id) => openSession(id, hostId)} onHostProject={hostId => { ++presentationGeneration.current; setPage('thread'); void w.viewHost(hostId).catch(() => {}) }} onCloseHost={hostId => { void w.closeHost(hostId).catch(() => {}) }} agentPages={pageLinks} pinned={pins} onSessionAction={sessionAction} visible={sidebar} platform={w.bootstrap?.platform ?? 'unknown'} page={page} workspace={w.connection.workspace} scratchWorkspace={w.bootstrap?.scratchWorkspace} recentWorkspaces={w.preferences?.recentWorkspaces ?? []} sessions={visibleSessions} activeId={w.collaboration.rootId ?? w.activeId} ready={ready} connecting={w.connection.status === 'connecting'} loading={w.loading} onHide={() => setSidebar(false)} onSearch={() => { setPalette(true); setQuery('') }} onNewThread={newSession} onPage={navigate} onChooseProject={chooseProject} onProject={changeProject} onSession={openSession} onSettings={() => setSettings(true)} />
     {sidebar && <button className="sidebar-scrim" aria-label={t('Close navigation')} onClick={() => setSidebar(false)} />}
-    <main className="workspace-main" id="workspace-main" tabIndex={-1}><header className="workspace-header"><div className="header-location">{!sidebar && <IconButton label="Show sidebar" onClick={() => setSidebar(true)}><PanelLeft size={18} /></IconButton>}<h1>{page === 'thread' ? title : t(page === 'skills' ? 'Skills' : 'Automations')}</h1>{page === 'thread' && (room || childAgent) && <span className="conversation-kind">{t(room ? 'Room' : 'Sub-agent')}</span>}{page === 'thread' && state && <span className="breadcrumb">{workspaceLabel}</span>}</div><div className="header-actions">{page === 'thread' && state && <><SessionStatus status={status} /><IconButton label="Session details" aria-pressed={details} onClick={() => setDetails(!details)}><Info size={17} /></IconButton><ActionMenu label="Session actions" icon={<MoreHorizontal size={19} />} open={menu} onOpenChange={setMenu} items={sessionMenuItems} /></>}{page === 'thread' && <div className="header-panel-toggles"><EnvironmentPanel open={environmentOpen} onOpenChange={setEnvironmentOpen} entries={w.collaboration.entries} activeId={w.activeId} onSelect={selectCollaborator} onReview={() => { setBrowserOpen(false); setReviewOpen(true) }} workspaceName={workspaceLabel} workspacePath={scratch ? null : w.connection.workspace} ready={ready} canReview={ready && !scratch && !room} disabled={w.loading} /><IconButton label="Browser" aria-pressed={browserOpen} className={`icon-button tool-toggle ${browserOpen ? 'active' : ''}`} onClick={() => browserOpen ? setBrowserOpen(false) : showBrowser()}><Globe2 size={17} /></IconButton><IconButton label="Terminal" aria-pressed={terminalOpen} className={`icon-button tool-toggle ${terminalOpen ? 'active' : ''}`} onClick={() => { setTerminalMounted(true); setTerminalOpen(!terminalOpen) }}><SquareTerminal size={18} /></IconButton></div>}</div></header>
+    <main className="workspace-main" id="workspace-main" tabIndex={-1}><header className="workspace-header"><div className="header-location">{!sidebar && <IconButton label="Show sidebar" {...keys('sidebar')} onClick={() => setSidebar(true)}><PanelLeft size={18} /></IconButton>}<h1 title={page === 'thread' ? title : undefined}>{page === 'thread' ? title : t(page === 'skills' ? 'Skills' : 'Automations')}</h1>{page === 'thread' && (room || childAgent) && <span className="conversation-kind">{t(room ? 'Room' : 'Sub-agent')}</span>}{page === 'thread' && state && <span className="breadcrumb" title={formatPath(w.connection.workspace) || workspaceLabel}>{workspaceLabel}</span>}</div><div className="header-actions">{page === 'thread' && state && <><SessionStatus status={status} /><IconButton label="Session details" aria-pressed={details} onClick={() => setDetails(!details)}><Info size={17} /></IconButton><ActionMenu label="Session actions" icon={<MoreHorizontal size={19} />} open={menu} onOpenChange={setMenu} items={sessionMenuItems} /></>}{page === 'thread' && <div className="header-panel-toggles"><EnvironmentPanel open={environmentOpen} onOpenChange={setEnvironmentOpen} entries={w.collaboration.entries} activeId={w.activeId} onSelect={selectCollaborator} onReview={() => { setBrowserOpen(false); setReviewOpen(true) }} workspaceName={workspaceLabel} workspacePath={scratch ? null : w.connection.workspace} ready={ready} canReview={canReview} disabled={w.loading} /><button type="button" className={`icon-button tool-toggle review-header-toggle ${reviewOpen ? 'active' : ''}`} aria-label={t('Review changes')} aria-pressed={reviewOpen} aria-disabled={!canReview && !reviewOpen ? true : undefined} title={reviewUnavailable && !reviewOpen ? t(reviewUnavailable) : `${t('Review changes')} (${keyLabel(platform, SHORTCUTS.review)})`} aria-keyshortcuts={ariaKeys(platform, SHORTCUTS.review)} onClick={toggleReview}><GitCompareArrows size={17} />{canReview && reviewCount !== null && reviewCount > 0 && <span className="toggle-count" aria-hidden="true">{reviewCount > 99 ? '99+' : reviewCount}</span>}</button><IconButton label="Browser" {...keys('browser')} aria-pressed={browserOpen} className={`icon-button tool-toggle ${browserOpen ? 'active' : ''}`} onClick={toggleBrowser}><Globe2 size={17} /></IconButton><IconButton label="Terminal" {...keys('terminal')} aria-pressed={terminalOpen} className={`icon-button tool-toggle ${terminalOpen ? 'active' : ''}`} onClick={toggleTerminal}><SquareTerminal size={18} /></IconButton></div>}</div></header>
       {page === 'skills' && <SkillsPage key={`${w.connection.hostId}:${w.connection.connectionId}`} workspace={w} openLink={openLink} onCompose={compose} />}
       {page === 'automations' && <AutomationsPage key={`${w.connection.hostId}:${w.connection.connectionId}`} workspace={w} openLink={openLink} onCompose={compose} />}
       <div className="workspace-body" hidden={page !== 'thread'}><div className={`workspace-content ${browserOpen ? 'with-browser' : ''} ${reviewOpen ? 'with-review' : ''}`}><div className="conversation-column">
@@ -335,7 +350,7 @@ function WorkspaceApp(): React.JSX.Element {
         {ready && currentError && <div className="composer-error"><ErrorBanner message={currentError} onDismiss={() => { w.setError(''); setDraftError('') }} onRetry={w.active?.resync && w.activeId ? () => { void w.openSession(w.activeId!, true).catch(w.report) } : undefined} /></div>}
         <Composer draft={draft} setDraft={setDraft} send={() => void send()} stop={stopCurrent} attach={attach} attachFiles={attachFiles} ready={ready && !w.active?.resync} submitReady={ready && !w.active?.resync && !identityOmitted && !uncertainRuntime} busy={ready && Boolean(state?.turn)} sending={sending || commandBusy || w.loading} model={model} thinking={thinking} permission={permission} models={w.catalogs.models?.entries ?? []} commands={w.catalogs.commands?.entries ?? []} command={command} inputRef={input} queue={state?.queue} workspaceName={workspaceLabel} chooseProject={chooseProject} recipient={hasCollaboration || childAgent ? { name: agentName, role: childAgent ? 'agent' : 'main' } : undefined} />
       </div>}
-      </div><ReviewPanel visible={reviewOpen && page === 'thread'} workspace={w.connection.workspace} onClose={() => setReviewOpen(false)} onCompose={compose} /><BrowserPanel visible={browserOpen && page === 'thread'} occluded={browserOccluded} onClose={() => setBrowserOpen(false)} /></div>{terminalMounted && <Suspense fallback={<section className="terminal-panel"><p className="terminal-status">{t('Starting terminal…')}</p></section>}><TerminalPanel visible={terminalOpen && page === 'thread'} onClose={() => setTerminalOpen(false)} /></Suspense>}</div>
+      </div><ReviewPanel visible={reviewOpen && page === 'thread'} workspace={w.connection.workspace} onClose={() => setReviewOpen(false)} onCompose={compose} onCount={setReviewCount} /><BrowserPanel visible={browserOpen && page === 'thread'} occluded={browserOccluded} onClose={() => setBrowserOpen(false)} /></div>{terminalMounted && <Suspense fallback={<section className="terminal-panel"><p className="terminal-status">{t('Starting terminal…')}</p></section>}><TerminalPanel visible={terminalOpen && page === 'thread'} onClose={() => setTerminalOpen(false)} /></Suspense>}</div>
     </main>
     {w.notice && <Toast key={w.notice} message={localizeNotice(w.notice, t)} onDismiss={() => w.setNotice('')} />}
     {settings && <Settings key={`${w.connection.hostId}:${w.connection.connectionId}`} workspace={w} initialPage={settingsPage} onClose={() => { setSettings(false); setSettingsPage('general') }} openLink={openLink} clearDrafts={() => { setDrafts({}); localStorage.removeItem('rei.drafts.v1') }} />}

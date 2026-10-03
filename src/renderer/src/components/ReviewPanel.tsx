@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, GitCompareArrows, RotateCw, X } from './icons'
 import type { ReviewFile, ReviewScope, ReviewSnapshot } from '../../../shared/review'
 import { useI18n } from '../i18n'
@@ -6,9 +6,9 @@ import { IconButton } from './primitives'
 import { DiffView } from './DiffView'
 import './review.css'
 
-type Props = { visible: boolean; workspace: string | null; onClose(): void; onCompose(text: string): void }
+type Props = { visible: boolean; workspace: string | null; onClose(): void; onCompose(text: string): void; onCount?(count: number | null): void }
 type Loaded = { workspace: string | null; scope: ReviewScope; value: ReviewSnapshot }
-export function ReviewPanel({ visible, workspace, onClose, onCompose }: Props): React.JSX.Element {
+export function ReviewPanel({ visible, workspace, onClose, onCompose, onCount }: Props): React.JSX.Element {
   const { t } = useI18n()
   const [scope, setScope] = useState<ReviewScope>('unstaged')
   const [revision, setRevision] = useState(0)
@@ -16,6 +16,11 @@ export function ReviewPanel({ visible, workspace, onClose, onCompose }: Props): 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const value = loaded?.workspace === workspace && loaded.scope === scope ? loaded.value : null
+  // The header toggle shows the last loaded unstaged count; no extra Git work is done for it.
+  const count = value?.status === 'ready' && scope === 'unstaged' ? value.totalFiles : null
+  const report = useRef(onCount); report.current = onCount
+  useEffect(() => { if (count !== null) report.current?.(count) }, [count])
+  useEffect(() => { report.current?.(null) }, [workspace])
   useEffect(() => {
     if (!visible) return
     let alive = true

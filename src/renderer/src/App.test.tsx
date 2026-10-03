@@ -352,7 +352,10 @@ describe('desktop user journeys', () => {
   it('runs sidebar row actions through the existing flows and persists pins', async () => {
     desktop(); render(<App />); await ready()
     const sessions = screen.getByRole('navigation', { name: 'Sessions' })
-    fireEvent.contextMenu(within(sessions).getByRole('button', { name: /^Review the workspace/ }))
+    const row = within(sessions).getByRole('button', { name: /^Review the workspace/ })
+    // jsdom blurs the window when focus first leaves the document; real right-clicks focus the row.
+    act(() => row.focus())
+    fireEvent.contextMenu(row)
     fireEvent.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Pin' }))
     await waitFor(() => expect(JSON.parse(localStorage.getItem('rei.pins.v1') ?? '[]')).toEqual([JSON.stringify(['host', 'session-one'])]))
     const pinned = screen.getByRole('navigation', { name: 'Pinned' })
@@ -360,6 +363,19 @@ describe('desktop user journeys', () => {
     fireEvent.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Rename' }))
     const dialog = await screen.findByRole('dialog', { name: 'Rename session' })
     expect((within(dialog).getByRole('textbox', { name: 'Session name' }) as HTMLInputElement).value).toBe('Review the workspace')
+  })
+  it('toggles panels from the header and shortcuts, explaining why review is unavailable in personal space', async () => {
+    desktop({ welcome: true }); render(<App />); await screen.findByText('Connected locally')
+    const review = screen.getByRole('button', { name: 'Review changes' })
+    expect(review.getAttribute('aria-disabled')).toBe('true')
+    expect(review.getAttribute('title')).toBe('Review needs a project folder. Personal space is not a Git workspace.')
+    fireEvent.click(review)
+    expect(review.getAttribute('aria-pressed')).toBe('false')
+    expect(screen.getByRole('button', { name: 'Browser' }).getAttribute('title')).toBe('Browser (Ctrl+Shift+B)')
+    fireEvent.keyDown(window, { key: 'B', ctrlKey: true, shiftKey: true })
+    expect(screen.getByRole('button', { name: 'Browser' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.keyDown(window, { key: '`', code: 'Backquote', ctrlKey: true })
+    expect(screen.getByRole('button', { name: 'Terminal' }).getAttribute('aria-pressed')).toBe('true')
   })
   it('exposes complete settings and persists theme through the native preferences API', async () => {
     const { api } = desktop(); render(<App />); await ready()

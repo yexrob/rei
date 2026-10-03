@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Blocks, ChevronDown, ChevronRight, Clock3, Download, Folder, MoreHorizontal, PanelLeft, Pin, Plus, ReiMark, Search, Settings2, SquarePen, Trash2, X } from './icons'
 import { ActionMenu } from './ActionMenu'
+import { ariaKeys, keyLabel, SHORTCUTS } from '../shortcuts'
 import type { SessionSummary } from '../../../shared/rpc'
 import type { ConnectionState } from '../../../shared/desktop'
 import { useI18n } from '../i18n'
@@ -45,7 +46,7 @@ export type SidebarProject = { connection: ConnectionState; sessions: { summary:
 type Props = {
   projects?: SidebarProject[]; activeHostId?: string; onHostProject?: (hostId: string) => void; onHostSession?: (hostId: string, sessionId: string) => void; onCloseHost?: (hostId: string) => void;
   agentPages?: { key: string; name: string; title: string; open: () => void }[];
-  pinned?: string[]; onSessionAction?: (hostId: string, sessionId: string, action: SessionAction) => void; shortcut?: (keys: string) => string;
+  pinned?: string[]; onSessionAction?: (hostId: string, sessionId: string, action: SessionAction) => void;
   visible: boolean; platform: string; page: WorkspacePage; workspace: string | null; scratchWorkspace?: string;
   recentWorkspaces: string[]; sessions: SessionSummary[]; activeId: string | null;
   ready: boolean; connecting: boolean; loading: boolean;
@@ -60,7 +61,6 @@ export function ProjectSidebar(p: Props): React.JSX.Element {
   const label = (path: string) => path === p.scratchWorkspace ? t('Personal space') : basename(path)
   const [menu, setMenu] = useState<string | null>(null)
   const pins = new Set(p.pinned ?? [])
-  const hint = (label: string, keys: string) => p.shortcut ? `${t(label)} (${p.shortcut(keys)})` : label
   type Row = SidebarProject['sessions'][number]
   const sessionRow = (hostId: string, current: boolean, { summary: session, status, unread, titleOmitted }: Row, projectName?: string) => {
     const key = pinKey(hostId, session.id), pinned = pins.has(key), selected = current && p.page === 'thread' && session.id === p.activeId
@@ -81,12 +81,12 @@ export function ProjectSidebar(p: Props): React.JSX.Element {
   return <aside className="sidebar" aria-label={t('Workspace navigation')} inert={!p.visible}>
     <div className="sidebar-titlebar">
       <span className="sidebar-window-space" aria-hidden="true" />
-      <IconButton label={hint('Hide sidebar', 'B')} onClick={p.onHide}><PanelLeft size={17} /></IconButton>
-      <IconButton label={hint('Search & commands', 'K')} onClick={p.onSearch}><Search size={17} /></IconButton>
+      <IconButton label="Hide sidebar" shortcut={keyLabel(p.platform, SHORTCUTS.sidebar)} aria-keyshortcuts={ariaKeys(p.platform, SHORTCUTS.sidebar)} onClick={p.onHide}><PanelLeft size={17} /></IconButton>
+      <IconButton label="Search & commands" shortcut={keyLabel(p.platform, SHORTCUTS.search)} aria-keyshortcuts={ariaKeys(p.platform, SHORTCUTS.search)} onClick={p.onSearch}><Search size={17} /></IconButton>
     </div>
     <div className="sidebar-identity"><ReiMark size={25} /><span>Rei</span><span className="sidebar-identity-caption">{t('Workspace')}</span></div>
     <div className="sidebar-actions">
-      <button className="new-thread-button" onClick={p.onNewThread}><SquarePen size={17} />{t('New thread')}<kbd aria-hidden="true">{p.platform === 'darwin' ? '⌘N' : 'Ctrl N'}</kbd></button>
+      <button className="new-thread-button" onClick={p.onNewThread}><SquarePen size={17} />{t('New thread')}<kbd aria-hidden="true">{keyLabel(p.platform, SHORTCUTS.newSession)}</kbd></button>
       <button aria-current={p.page === 'automations' ? 'page' : undefined} className={p.page === 'automations' ? 'selected' : ''} onClick={() => p.onPage('automations')}><Clock3 size={17} />{t('Automations')}</button>
       <button aria-current={p.page === 'skills' ? 'page' : undefined} className={p.page === 'skills' ? 'selected' : ''} onClick={() => p.onPage('skills')}><Blocks size={17} />{t('Skills')}</button>
     </div>

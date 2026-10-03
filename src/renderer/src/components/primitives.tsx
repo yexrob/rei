@@ -2,9 +2,10 @@ import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type Rea
 import { Check, Copy, X } from './icons'
 import { useI18n } from '../i18n'
 
-export function IconButton({ label, children, className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }): React.JSX.Element {
+/** `shortcut` is a display label (e.g. ⌘B) added to the tooltip only; pass aria-keyshortcuts for AT. */
+export function IconButton({ label, shortcut, children, className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; shortcut?: string }): React.JSX.Element {
   const { t } = useI18n()
-  return <button type="button" className={`icon-button ${className}`.trim()} title={t(label)} aria-label={t(label)} {...props}>{children}</button>
+  return <button type="button" className={`icon-button ${className}`.trim()} title={shortcut ? `${t(label)} (${shortcut})` : t(label)} aria-label={t(label)} {...props}>{children}</button>
 }
 
 export function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }): React.JSX.Element {

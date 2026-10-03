@@ -196,6 +196,10 @@ kbd { font-size: 11px; color: var(--secondary); font-weight: 400; }
 .workspace-body > .terminal-panel { height: clamp(180px, 29vh, 320px); flex-shrink: 0; border-block-start: 1px solid var(--line); }
 .header-panel-toggles { display: flex; gap: 3px; align-items: center; margin-inline-start: 8px; }
 .tool-toggle.active { background: var(--selected); color: var(--accent); }
+.review-header-toggle { position: relative; width: auto; padding-inline: 7px; gap: 4px; }
+.review-header-toggle[aria-disabled="true"] { color: var(--quiet); cursor: not-allowed; }
+.review-header-toggle[aria-disabled="true"]:hover { background: transparent; }
+.toggle-count { min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--hover); color: var(--text); font-size: 11px; line-height: 16px; font-variant-numeric: tabular-nums; }
 .with-browser .composer-region, .with-browser .empty-context, .with-browser .composer-error, .with-browser .interaction-panel { width: calc(100% - 32px); }
 .with-browser .composer-footer > span, .with-browser .empty-context > span { display: none; }
 @media (max-width: 900px) { .workspace-content.with-browser > .conversation-column { display: none; } .workspace-content > .browser-panel { width: 100%; border-inline-start: 0; } }
