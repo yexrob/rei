@@ -50,6 +50,7 @@ export function ErrorBanner({ message, onDismiss, onRetry }: { message: string; 
 }
 
 export function basename(path: string): string { return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path }
-export function errorMessage(error: unknown): string { return error instanceof Error ? error.message : 'The operation could not be completed. Try again.' }
+/** Pass `t` from a component to localize the generic fallback; remote error text is never translated. */
+export function errorMessage(error: unknown, t?: (source: string) => string): string { return error instanceof Error ? error.message : (t ?? String)('The operation could not be completed. Try again.') }
 export function number(value: number): string { return new Intl.NumberFormat(undefined, { notation: value >= 10000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value) }
 export function object(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {} }

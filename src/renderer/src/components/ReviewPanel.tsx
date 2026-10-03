@@ -68,7 +68,8 @@ function FileDiff({ file, scope, initiallyOpen, onCompose }: { file: ReviewFile;
   const validLine = !line || (/^[1-9]\d{0,6}$/.test(line))
   const draft = (): void => {
     if (!feedback.trim() || !validLine) return
-    onCompose(`Please review ${file.path} (${scope}${line ? `, new line ${line}` : ''}).\n\n${feedback.trim()}`)
+    const scopeLabel = t(scope === 'unstaged' ? 'Unstaged' : 'Staged').toLowerCase()
+    onCompose(`${line ? t('Please review {path} ({scope}, new line {line}).', { path: file.path, scope: scopeLabel, line }) : t('Please review {path} ({scope}).', { path: file.path, scope: scopeLabel })}\n\n${feedback.trim()}`)
     setFeedback(''); setLine('')
   }
   return <article className="review-file">

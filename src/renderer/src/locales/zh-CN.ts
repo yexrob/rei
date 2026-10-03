@@ -677,5 +677,13 @@ export const zhCN = {
   'Review my changes': '审查我的更改',
   'Review my uncommitted changes and point out problems before I commit.': '审查我尚未提交的更改，在提交前指出其中的问题。',
   'Suggestions': '建议',
-  'Recent conversations': '最近的对话'
+  'Recent conversations': '最近的对话',
+  'Unread': '未读',
+  'Close idle project {name}': '关闭空闲项目 {name}',
+  'Agent pages': '智能体页面',
+  'Open page from {name}': '打开来自 {name} 的页面',
+  'Rooms': '房间',
+  'e.g. {example}': '例如：{example}',
+  'Please review {path} ({scope}).': '请审查 {path}（{scope}）。',
+  'Please review {path} ({scope}, new line {line}).': '请审查 {path}（{scope}，新文件第 {line} 行）。'
 } as const

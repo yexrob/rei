@@ -133,9 +133,9 @@ function WorkspaceApp(): React.JSX.Element {
   const setDraft = (draft: Draft) => setDrafts((current) => ({ ...current, [key]: draft }))
   const showBrowser = useCallback(() => { setPage('thread'); setReviewOpen(false); setBrowserOpen(true); if (window.innerWidth < 1050) setSidebar(false) }, [])
   const openLink = useCallback((url: string) => {
-    if (!window.bingoPanels) { w.report(new Error('Browser unavailable')); return }
+    if (!window.bingoPanels) { w.report(new Error(t('Browser unavailable'))); return }
     showBrowser(); void window.bingoPanels.browserNavigate(url).then(unwrap).catch(w.report)
-  }, [w.report, showBrowser])
+  }, [w.report, showBrowser, t])
   const openSignIn = useCallback((url: string) => { void window.bingoDesktop.openExternal(url).then(unwrap).catch(w.report) }, [w.report])
   const handledPage = useRef(0)
   useEffect(() => {
