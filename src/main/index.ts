@@ -3,6 +3,7 @@ import { isAbsolute, join } from 'node:path'
 import { mkdirSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { DesktopIpc, confirmStop } from './desktop/ipc'
+import { text } from './desktop/locale'
 import { EventDelivery } from './desktop/event-delivery'
 import { PreferencesStore, restoreBounds } from './desktop/preferences'
 import { RuntimePool } from './desktop/runtime-pool'
@@ -99,7 +100,7 @@ function createWindow(): void {
     desktopIpc?.invalidateRenderer()
     void runtime?.close()
     delivery?.reset()
-    if (!quitting) void dialog.showMessageBox(created, { type: 'error', message: 'The conversation window stopped.', detail: 'The native runtime has been disconnected. Reload the window and reconnect to recover saved history.', buttons: ['Reload', 'Quit'] }).then((result) => { if (result.response === 0) created.reload(); else app.quit() })
+    if (!quitting) void dialog.showMessageBox(created, { type: 'error', message: text('The conversation window stopped.'), detail: text('The native runtime has been disconnected. Reload the window and reconnect to recover saved history.'), buttons: [text('Reload'), text('Quit')] }).then((result) => { if (result.response === 0) created.reload(); else app.quit() })
   })
   created.once('ready-to-show', () => { if (!backgroundTest) created.show() })
   created.on('close', (event) => {
@@ -153,7 +154,7 @@ async function quit(): Promise<void> {
     if (runtime?.busy || desktopIpc?.busy || panels?.busy) {
       panels?.setBrowserOccluded(true)
       try {
-        if (!(await confirmStop(window, 'Quit Rei and stop running work?', 'Active turns, tools and the local terminal will stop. An in-progress provider save will finish before quitting; an unfinished raw JSON export will be cancelled without replacing its chosen file. Saved history remains in bingo.'))) return
+        if (!(await confirmStop(window, text('Quit Rei and stop running work?'), text('Active turns, tools and the local terminal will stop. An in-progress provider save will finish before quitting; an unfinished raw JSON export will be cancelled without replacing its chosen file. Saved history remains in bingo.')))) return
       } finally { panels?.setBrowserOccluded(false) }
     }
     quitting = true

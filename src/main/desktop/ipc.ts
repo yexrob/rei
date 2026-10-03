@@ -13,6 +13,7 @@ import { ScratchWorkspace } from './scratchWorkspace'
 import { agentPageSchema, boundedRequestSchema, connectSchema, deletionSchema, exportReferenceSchema, exportSchema, externalUrl, hostEpochSchema, partRequestSchema, preferencesPatchSchema, requestSchema, selectionSchema, suggestedFilename, transferCancelSchema, trustedSender } from './security'
 import { BoundedTransfers } from './bounded-transfers'
 import { ReferenceExporter } from './reference-export'
+import { text } from './locale'
 import type { EventDelivery } from './event-delivery'
 
 type Options = { window(): BrowserWindow | null; documentUrl: string; preferences: PreferencesStore; runtime: RuntimePool; delivery?: EventDelivery; emit?(event: DesktopEvent): void; agentPages?(): AgentPageState[]; openAgentPage?(input: AgentPageTarget): void; onDialogChange?(open: boolean): void }
@@ -138,7 +139,7 @@ export class DesktopIpc {
       return true
     }))
     this.handle(DESKTOP_IPC.deleteSession, deletionSchema, (input) => this.withDialog(async () => {
-      const choice = await dialog.showMessageBox(this.window(), { type: 'warning', title: 'Delete conversation?', message: 'Delete this conversation permanently?', detail: 'Its saved history will be deleted by bingo. This cannot be undone.', buttons: ['Cancel', 'Delete conversation'], defaultId: 0, cancelId: 0, noLink: true })
+      const choice = await dialog.showMessageBox(this.window(), { type: 'warning', title: text('Delete conversation?'), message: text('Delete this conversation permanently?'), detail: text('Its saved history will be deleted by bingo. This cannot be undone.'), buttons: [text('Cancel'), text('Delete conversation')], defaultId: 0, cancelId: 0, noLink: true })
       if (choice.response !== 1) return false
       await this.options.runtime.deleteSession(input.connectionId, input.session)
       return true
@@ -153,9 +154,9 @@ export class DesktopIpc {
     if (this.options.runtime.busy) throw new DesktopFailure('RUNTIME_BUSY', 'Stop or finish running work before adding a provider.')
     const approved = await this.withDialog(async () => {
       const result = await dialog.showMessageBox(this.window(), {
-        type: 'warning', title: 'Add provider', message: `Add provider “${input.name}”?`,
-        detail: `bingo will save this ${input.protocol}-compatible endpoint to its user settings and the optional key to its credential store. The key is sent only to the native CLI over stdin, never to a session.\n\nEndpoint: ${input.baseUrl || 'Protocol default'}\n\nAll connected project runtimes will disconnect. Reconnect each project after setup.${input.baseUrl.startsWith('http:') ? '\n\nWarning: this endpoint uses unencrypted HTTP.' : ''}`,
-        buttons: ['Cancel', 'Save provider'], defaultId: 0, cancelId: 0, noLink: true
+        type: 'warning', title: text('Add provider'), message: text('Add provider “{name}”?', { name: input.name }),
+        detail: [text('bingo will save this {protocol}-compatible endpoint to its user settings and the optional key to its credential store. The key is sent only to the native CLI over stdin, never to a session.', { protocol: input.protocol }), text('Endpoint: {endpoint}', { endpoint: input.baseUrl || text('Protocol default') }), text('All connected project runtimes will disconnect. Reconnect each project after setup.'), ...(input.baseUrl.startsWith('http:') ? [text('Warning: this endpoint uses unencrypted HTTP.')] : [])].join('\n\n'),
+        buttons: [text('Cancel'), text('Save provider')], defaultId: 0, cancelId: 0, noLink: true
       })
       return result.response === 1
     })
@@ -189,7 +190,7 @@ export class DesktopIpc {
     if (!connection.binary || !connection.workspace || !this.binaries.has(connection.binary) || !this.workspaces.has(connection.workspace)) throw new DesktopFailure('WORKSPACE_NOT_APPROVED', 'Choose the project and binary again before reconnecting.')
     let allowed = false
     if (connection.busy && this.options.runtime.isLive(input)) {
-      allowed = await this.withDialog(() => confirmStop(this.window(), 'Reconnect this project?', 'Only work in this project runtime will stop. Other projects will keep running.'))
+      allowed = await this.withDialog(() => confirmStop(this.window(), text('Reconnect this project?'), text('Only work in this project runtime will stop. Other projects will keep running.')))
       if (!allowed) throw new DesktopFailure('CANCELLED', 'The existing project connection was kept.')
     }
     const binary = await executable(connection.binary)
@@ -290,7 +291,7 @@ async function readImage(path: string): Promise<Image> {
 }
 
 export async function confirmStop(window: BrowserWindow | null, message: string, detail: string): Promise<boolean> {
-  const options: Electron.MessageBoxOptions = { type: 'warning', title: 'Running work', message, detail, buttons: ['Keep working', 'Stop and continue'], defaultId: 0, cancelId: 0, noLink: true }
+  const options: Electron.MessageBoxOptions = { type: 'warning', title: text('Running work'), message, detail, buttons: [text('Keep working'), text('Stop and continue')], defaultId: 0, cancelId: 0, noLink: true }
   const result = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options)
   return result.response === 1
 }
