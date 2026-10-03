@@ -4,6 +4,7 @@ import { agentPageSchema } from './security'
 
 type Entry = { page: AgentPageState; url: string | null }
 type Options = { connection(id: string): ConnectionState | null; selection(): ConversationSelection | null; emit(event: DesktopEvent): void; open(url: string): void }
+const MAX_STREAMS = 1024
 const key = (target: AgentPageTarget): string => JSON.stringify([target.hostId, target.connectionId, target.sessionId, target.itemId])
 
 /** Approved running ShowPage items own URLs; the renderer supplies identity only. */
@@ -11,6 +12,7 @@ export class AgentBrowser {
   private readonly pages = new Map<string, Entry>()
   private readonly sequences = new Map<string, { hostId: string; connectionId: string; seq: number }>()
   constructor(private readonly options: Options) {}
+  get trackedStreams(): number { return this.sequences.size }
   snapshot(): AgentPageState[] { return [...this.pages.values()].filter(entry => entry.url).map(entry => ({ ...entry.page })) }
   route(event: DesktopEvent): void {
     if (event.type === 'runtime-invalidated') { this.pages.clear(); this.sequences.clear(); return }
@@ -31,7 +33,10 @@ export class AgentBrowser {
       return
     }
     if (frame.seq <= previous) return
-    this.sequences.set(stream, { hostId: connection.hostId, connectionId: event.connectionId, seq: frame.seq })
+    // A closed session's stream ends; otherwise keep a bounded, most-recently-used replay watermark.
+    this.sequences.delete(stream)
+    if (data.type !== 'sessionClosed') this.sequences.set(stream, { hostId: connection.hostId, connectionId: event.connectionId, seq: frame.seq })
+    if (this.sequences.size > MAX_STREAMS) this.sequences.delete(this.sequences.keys().next().value!)
     const target = (itemId: string): AgentPageTarget => ({ hostId: connection.hostId, connectionId: event.connectionId, sessionId: frame.session, itemId })
     if (data.type === 'itemStarted' || data.type === 'itemUpdated') {
       const item = data.item

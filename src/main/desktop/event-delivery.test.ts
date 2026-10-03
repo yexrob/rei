@@ -8,11 +8,12 @@ import { EventDelivery } from './event-delivery'
 import type { BoundedDelivery, DesktopEvent } from '../../shared/desktop'
 const bounded = (transferId: string, title = 'small'): BoundedDelivery => ({ kind: 'response', transferId, hostId: 'h', connectionId: 'c', session: null, method: 'session/listHeads', result: { heads: [{ id: 's', cwd: '/project', driver: 'model', createdAt: '', updatedAt: '', busy: false, title }], next: null } })
 const event: DesktopEvent = { type: 'rpc', connectionId: 'c', method: 'event', params: { session: 's', ts: '', seq: 1, event: { type: 'notice', level: 'info', code: 'test', text: 'frame' } } }
+const readyHost = { hostId: 'h', busy: true, status: 'ready' as const, connectionId: 'c', workspace: '/project', binary: '/bingo' }
 function setup() {
   const mainFrame = { url: 'file:///app/index.html' }, send = vi.fn(), failed = vi.fn()
   const webContents = { mainFrame, send, isDestroyed: () => false }
   const window = { isDestroyed: () => false, webContents }
-  const delivery = new EventDelivery(() => window as unknown as BrowserWindow, mainFrame.url, failed)
+  const delivery = new EventDelivery(() => window as unknown as BrowserWindow, mainFrame.url, failed, () => [readyHost])
   return { delivery, send, failed, window, sender: { sender: webContents, senderFrame: mainFrame } }
 }
 beforeEach(() => { mock.listeners.clear(); vi.useFakeTimers() })
@@ -138,16 +139,55 @@ describe('bounded renderer event delivery', () => {
     expect(send).toHaveBeenCalledTimes(259)
     expect(failed).toHaveBeenCalledOnce()
   })
-  it('keeps native menu actions usable in failed state without reopening old runtime traffic', () => {
+  it('keeps native menu actions usable while fused and reopens runtime traffic once the renderer catches up', () => {
     const { delivery, send, sender } = setup()
     delivery.send(event)
+    delivery.send(event)
     vi.advanceTimersByTime(30_000)
-    ack(sender, 1)
     const menu: DesktopEvent = { type: 'menu', action: 'preferences' }
     delivery.send(menu)
     delivery.send(event)
-    expect(send).toHaveBeenCalledTimes(2)
-    expect(send.mock.calls[1][1].event).toEqual(menu)
+    expect(send).toHaveBeenCalledTimes(3)
+    expect(send.mock.calls[2][1].event).toEqual(menu)
+    ack(sender, 1); ack(sender, 2)
+    expect(send).toHaveBeenCalledTimes(3)
+    ack(sender, 3)
+    delivery.send(event)
+    expect(send.mock.calls.slice(3).map(call => call[1].event.type)).toEqual(['connection', 'rpc', 'rpc'])
+  })
+  it('fuses on backlog overflow and resyncs with lagged frames instead of stopping runtimes', () => {
+    const { delivery, send, failed, sender } = setup()
+    const frame = (session: string, seq: number): DesktopEvent => ({ type: 'rpc', connectionId: 'c', method: 'event', params: { session, ts: '', seq, root: 'root', event: { type: 'itemDelta', item: 'i', kind: 'text', n: seq, data: 'x' } } })
+    for (let n = 1; n <= 4100; n += 1) delivery.send(frame('a', n))
+    delivery.send(frame('b', 7))
+    delivery.send({ type: 'rpc', connectionId: 'c', method: 'gateway/event', params: { type: 'sessionRemoved', session: 'gone' } })
+    delivery.send({ type: 'connection', connection: { ...readyHost, busy: false } })
+    expect(failed).toHaveBeenCalledOnce()
+    expect(failed.mock.calls[0][0]).toMatchObject({ code: 'RENDERER_BACKPRESSURE' })
+    expect(send).toHaveBeenCalledTimes(256)
+    for (let n = 0; n < 256; n += 1) ack(sender, send.mock.calls[n][1].id)
+    const resync = send.mock.calls.slice(256).map(call => call[1].event)
+    expect(resync).toEqual([
+      { type: 'connection', connection: readyHost },
+      { type: 'rpc', connectionId: 'c', method: 'event', params: { seq: 4100, ts: expect.any(String), session: 'a', root: 'root', event: { type: 'lagged', from: 257, to: 4100 } } },
+      { type: 'rpc', connectionId: 'c', method: 'event', params: { seq: 7, ts: expect.any(String), session: 'b', root: 'root', event: { type: 'lagged', from: 7, to: 7 } } },
+      { type: 'rpc', connectionId: 'c', method: 'gateway/sessionHead', params: { session: 'gone' } }
+    ])
+    delivery.send(frame('a', 4101))
+    expect(send.mock.calls.at(-1)![1].event).toEqual(frame('a', 4101))
+  })
+  it('does not count system sleep against the ACK deadline', () => {
+    const { delivery, failed, sender } = setup()
+    delivery.send(event)
+    vi.advanceTimersByTime(20_000)
+    delivery.suspend()
+    vi.advanceTimersByTime(60_000)
+    delivery.resume()
+    vi.advanceTimersByTime(29_000)
+    expect(failed).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1000)
+    expect(failed).toHaveBeenCalledOnce()
+    ack(sender, 1)
   })
   it('shares the 32 MiB window with opt-in bounded replies and waits for trusted consumer ACK', async () => {
     const { delivery, send, sender, failed } = setup()
