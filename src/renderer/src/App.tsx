@@ -5,6 +5,7 @@ import { SessionMetrics } from './components/SessionMetrics'
 import { SessionStatus } from './components/SessionStatus'
 import { DESKTOP_IMAGE_LIMITS } from '../../shared/desktop'
 import { conversationKey, useWorkspace, unwrap } from './state/useWorkspace'
+import { useStableCallback } from './state/useStableCallback'
 import { itemText, selectSessionTitle, selectStatus, selectUsage, selectWorkspaceThreads } from './state/session'
 import { Composer, emptyDraft, type Draft } from './components/Composer'
 import { Timeline } from './components/Timeline'
@@ -150,11 +151,12 @@ function WorkspaceApp(): React.JSX.Element {
     if (window.innerWidth < 760) setSidebar(false)
     void (hostId ? w.viewHost(hostId, id) : w.openSession(id)).then(() => { if (isCurrent()) input.current?.focus() }).catch(() => { /* Destination reports its own error. */ })
   }
-  const selectCollaborator = (id: string) => {
+  // Stable for memoized transcript rows (onSelectSession) and room agents.
+  const selectCollaborator = useStableCallback((id: string) => {
     setBrowserOpen(false); setReviewOpen(false)
     if (id === w.activeId) { input.current?.focus(); return }
     openSession(id)
-  }
+  })
   const compose = (text: string) => {
     setDrafts((current) => { const previous = current[key] ?? emptyDraft; return { ...current, [key]: { ...previous, text: previous.text ? text.startsWith('/') ? `${text}${previous.text}` : `${previous.text}\n\n${text}` : text } } })
     setPage('thread'); if (window.innerWidth < 900) setReviewOpen(false)
