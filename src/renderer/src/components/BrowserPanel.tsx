@@ -73,7 +73,7 @@ export function BrowserPanel({ visible, occluded = false, onClose }: { visible: 
       <IconButton label={t('Back')} disabled={!state.canGoBack} onClick={() => { void action('back') }}><ArrowLeft size={15} /></IconButton>
       <IconButton label={t('Forward')} disabled={!state.canGoForward} onClick={() => { void action('forward') }}><ArrowRight size={15} /></IconButton>
       <IconButton label={t(state.loading ? 'Stop loading' : 'Reload page')} disabled={!state.url} onClick={() => { void action(state.loading ? 'stop' : 'reload') }}>{state.loading ? <Square size={13} /> : <RotateCw size={15} />}</IconButton>
-      <input ref={input} value={address} onChange={(event) => setAddress(event.target.value)} aria-label={t('Website address')} placeholder="https://" spellCheck={false} autoComplete="off" maxLength={4096} onKeyDown={(event) => { if (event.key === 'Escape') { setAddress(state.url); event.currentTarget.blur() } }} />
+      <input ref={input} value={address} onChange={(event) => setAddress(event.target.value)} aria-label={t('Website address')} placeholder="https://" spellCheck={false} autoComplete="off" maxLength={4096} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); setAddress(state.url); event.currentTarget.blur() } }} />
       <button type="submit" className="panel-go" disabled={!address.trim()}>{t('Go')}</button>
       <IconButton label={t('Open in default browser')} disabled={!state.url} onClick={() => { void action('open-external') }}><ExternalLink size={14} /></IconButton>
     </form>

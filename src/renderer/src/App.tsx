@@ -254,6 +254,12 @@ function WorkspaceApp(): React.JSX.Element {
   useEffect(() => {
     const stop = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('dialog[open]') || settings || palette || environmentOpen || rename !== null || bypass || menu || !ready || !state?.turn) return
+      // Only from the composer, the page itself or the conversation's non-editable
+      // content: Escape in the review form, browser address or terminal never stops work.
+      const target = event.target instanceof HTMLElement ? event.target : null
+      const neutral = !target || target === document.body || target === document.documentElement
+      const conversational = target?.id === 'message-input' || Boolean(target?.closest('.conversation') && !target.matches('input, textarea, select, [contenteditable="true"], [contenteditable=""]'))
+      if (!neutral && !conversational) return
       event.preventDefault(); stopCurrent()
     }
     window.addEventListener('keydown', stop)

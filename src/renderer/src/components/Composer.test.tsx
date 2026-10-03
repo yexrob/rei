@@ -91,4 +91,13 @@ describe('desktop composer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send follow-up' }))
     expect(p.send).toHaveBeenCalledOnce()
   })
+
+  it('closes command suggestions with Escape and consumes the key so it cannot stop the turn', () => {
+    const p = { ...props(), draft: { text: '/st', images: [] }, commands: [{ id: 'status', label: 'Status' }], busy: true }
+    render(<Composer {...p} />)
+    expect(screen.getByRole('listbox', { name: 'Commands' })).toBeTruthy()
+    expect(fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' })).toBe(false)
+    expect(screen.queryByRole('listbox', { name: 'Commands' })).toBeNull()
+    expect(p.stop).not.toHaveBeenCalled()
+  })
 })

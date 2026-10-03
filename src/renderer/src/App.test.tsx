@@ -321,6 +321,19 @@ describe('desktop user journeys', () => {
     expect(vi.mocked(api.request).mock.calls.some(([call]) => call.method === 'session/submit')).toBe(false)
     fireEvent.click(screen.getByRole('button', { name: 'Keep asking' }))
   })
+  it('stops the running turn with Escape only from the composer or page, not other inputs', async () => {
+    const { api, emit } = desktop(); render(<App />); await ready()
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Sessions' })).getByRole('button', { name: /Review the workspace/ }))
+    await screen.findByRole('heading', { name: 'Review the workspace' })
+    await act(async () => emit({ type: 'turnStarted', turn: 'turn', inputs: [], origin: 'submit' }))
+    const interrupts = () => vi.mocked(api.request).mock.calls.filter(([call]) => call.method === 'session/interrupt').length
+    const other = document.createElement('textarea'); document.body.append(other)
+    fireEvent.keyDown(other, { key: 'Escape' })
+    expect(interrupts()).toBe(0)
+    other.remove()
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Message bingo' }), { key: 'Escape' })
+    await waitFor(() => expect(interrupts()).toBe(1))
+  })
   it('exposes complete settings and persists theme through the native preferences API', async () => {
     const { api } = desktop(); render(<App />); await ready()
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
