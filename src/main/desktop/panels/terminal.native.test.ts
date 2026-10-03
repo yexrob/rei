@@ -36,14 +36,16 @@ describe.skipIf(process.platform === 'win32')('production PanelTerminal with rea
       if (event.type !== 'terminal-data') return
       output += event.data
       terminal.ack(event.id, event.sequence)
-      if (output.includes('\r\n__REI_HUP_READY__\r\n')) ready()
+      // Under load the PTY echoes typed input before the prompt, so output can read "$ __REI_HUP_READY__".
+      // The echoed command holds a literal backslash-n, never CRLF, so this matches only printf's output.
+      if (output.includes('__REI_HUP_READY__\r\n')) ready()
     } })
     let timeout: ReturnType<typeof setTimeout> | undefined
     try {
       const state = await terminal.start()
       const pid = mocks.pty!.pid
       terminal.write(state.id!, "trap '' HUP; printf '__REI_HUP_READY__\\n'; read ignored\n")
-      await Promise.race([marker, new Promise<never>((_resolve, reject) => { timeout = setTimeout(() => reject(new Error('Native shell fixture did not become ready.')), 8000) })])
+      await Promise.race([marker, new Promise<never>((_resolve, reject) => { timeout = setTimeout(() => reject(new Error('Native shell fixture did not become ready.')), 3000) })])
       const stop = terminal.close()
       expect(terminal.snapshot().status).toBe('stopping')
       expect(() => process.kill(pid, 0)).not.toThrow()
@@ -55,5 +57,5 @@ describe.skipIf(process.platform === 'win32')('production PanelTerminal with rea
       await terminal.close().catch(() => { if (mocks.pty) { try { process.kill(mocks.pty.pid, 'SIGKILL') } catch { /* Already reaped. */ } } })
       await rm(root, { recursive: true, force: true })
     }
-  }, 15000)
+  }, 7000)
 })
