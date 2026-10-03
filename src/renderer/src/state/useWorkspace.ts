@@ -13,6 +13,7 @@ const pageKey = (page: AgentPageTarget) => JSON.stringify([page.hostId, page.con
 const disconnected: ConnectionState = { hostId: '', status: 'disconnected', connectionId: null, busy: false, workspace: null, binary: null }
 type RuntimeSelection = { model: string | null; thinking: string | null }
 const defaultRuntime: RuntimeSelection = { model: null, thinking: null }
+const noSessions: SessionSummary[] = [], noProjections: Record<string, SessionProjection> = {}, noCatalogs: Partial<Record<CatalogKind, Catalog>> = {}
 const boundedBytes = 4 * 1024 * 1024
 const boundedMethods = ['session/listHeads', 'session/children', 'session/open', 'session/history', 'session/itemPart', 'session/fieldPart', 'session/eventPart'] as const
 function requireBoundedRuntime(connection: ConnectionState): void {
@@ -773,7 +774,7 @@ export function useWorkspace() {
   }, [openFor, reportFor])
   const selectConversation = useCallback((scope: ConversationSelection | null) => selectFor(scope, ++navigation.current), [selectFor])
   const runtimeSelection: RuntimeSelection = active ? { model: active.snapshot.summary.provider && active.snapshot.summary.model ? `${active.snapshot.summary.provider}/${active.snapshot.summary.model}` : active.snapshot.summary.model ?? null, thinking: String(object(active.snapshot.config?.kernel).thinking ?? 'off') } : viewedHost?.runtimeDraft ?? defaultRuntime
-  const sessions = viewedHost?.sessions ?? [], projections = viewedHost?.projections ?? {}, catalogs = viewedHost?.catalogs ?? {}
-  const collaboration = selectCollaboration(sessions, projections, activeId)
+  const sessions = viewedHost?.sessions ?? noSessions, projections = viewedHost?.projections ?? noProjections, catalogs = viewedHost?.catalogs ?? noCatalogs
+  const collaboration = useMemo(() => selectCollaboration(sessions, projections, activeId), [sessions, projections, activeId])
   return { bootstrap, hosts, target, preview, connection, ready, preferences, sessions, projections, collaboration, active, activeId, exportProgress: exportProgress[conversationKey(connection.hostId, activeId)] ?? null, catalogs, runtimeSelection, error: applicationError || context.error || connection.error?.message || '', notice: context.notice, commandView: context.commandView, loading: context.loading > 0, menuHandler, connect, ...actions, closeHost, viewHost, chooseWorkspace, savePreferences, selectConversation, agentPages, agentPageEvent, openAgentPage, markRead, watermarks, isCurrentEpoch: live }
 }
