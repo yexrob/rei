@@ -631,5 +631,11 @@ export const zhCN = {
   'Git review could not be loaded. Refresh to try again.': '无法加载 Git 审查，请刷新重试。',
   'Git review failed. Check that Git is installed and the workspace is readable, then refresh.': 'Git 审查失败。请确认已安装 Git，且工作区可读取，然后刷新。',
   'A Git review is already loading. Try refreshing when it finishes.': 'Git 审查正在加载，请等待完成后再刷新。',
-  'The workspace changed. Refresh to review the current workspace.': '工作区已更改，请刷新以审查当前工作区。'
+  'The workspace changed. Refresh to review the current workspace.': '工作区已更改，请刷新以审查当前工作区。',
+  'Notifications': '通知',
+  'Desktop notifications': '桌面通知',
+  'Notify me when Bingo needs input or finishes a task while Rei is in the background.': 'Rei 在后台时，如果 Bingo 需要你确认或完成了任务，就发送通知提醒你。',
+  'Bingo needs your input': 'Bingo 需要你的确认',
+  'Task finished': '任务已完成',
+  'Task failed': '任务失败'
 } as const

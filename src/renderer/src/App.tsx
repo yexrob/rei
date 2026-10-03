@@ -20,6 +20,7 @@ import { StartupTransition } from './components/StartupTransition'
 import { BrowserPanel } from './components/BrowserPanel'
 import { I18nProvider, useI18n } from './i18n'
 import { configurePaths, useDisplayPath } from './paths'
+import { useAttentionNotifications } from './attention'
 import { InteractionPanel } from './components/InteractionPanel'
 import { Settings, Onboarding } from './components/Settings'
 import { StructuredView, type RunAction } from './components/Content'
@@ -105,6 +106,8 @@ function WorkspaceApp(): React.JSX.Element {
       return { summary, status: error && !['working', 'retrying', 'waiting'].includes(status) ? 'failed' : status, titleOmitted: currentEpoch && projection ? Boolean(projection.omittedFields?.some(field => field.path.join('.') === 'summary.title')) : Boolean(host.headOmissions[summary.id]?.some(field => field.field === 'title')), unread: Boolean(projection && ((projection.transportSeq ?? projection.snapshot.seq) > (w.watermarks[conversationKey(host.connection.hostId, summary.id)] ?? 0) || projection.unloaded?.length || projection.unloadedHistory?.length)) }
     })
   })), [w.hosts, w.watermarks])
+  const attentionSessions = useMemo(() => sidebarProjects.flatMap(project => project.sessions.map(({ summary, status, titleOmitted }) => ({ hostId: project.connection.hostId, sessionId: summary.id, title: (!titleOmitted && summary.title) || t('Untitled session'), status }))), [sidebarProjects, t])
+  useAttentionNotifications(attentionSessions, w.preferences?.notifications !== false, t)
   const pageLinks = w.agentPages.filter(agentPage => agentPage.status !== 'invalidated' && !(agentPage.status === 'opened' && agentPage.hostId === w.target?.hostId && agentPage.connectionId === w.target.connectionId && agentPage.sessionId === w.target.sessionId)).map(agentPage => {
     const host = w.hosts[agentPage.hostId], summary = host?.sessions.find(session => session.id === agentPage.sessionId)
     const name = `${basename(host?.connection.workspace ?? agentPage.hostId)} · ${summary?.title || agentPage.sessionId}`
@@ -153,6 +156,8 @@ function WorkspaceApp(): React.JSX.Element {
     if (window.innerWidth < 760) setSidebar(false)
     void (hostId ? w.viewHost(hostId, id) : w.openSession(id)).then(() => { if (isCurrent()) input.current?.focus() }).catch(() => { /* Destination reports its own error. */ })
   }
+  const openSessionRef = useRef(openSession); openSessionRef.current = openSession
+  useEffect(() => window.bingoDesktop.onNotificationActivated?.(({ hostId, sessionId }) => openSessionRef.current(sessionId, hostId)), [])
   const selectCollaborator = (id: string) => {
     setBrowserOpen(false); setReviewOpen(false)
     if (id === w.activeId) { input.current?.focus(); return }

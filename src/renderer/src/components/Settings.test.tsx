@@ -94,3 +94,11 @@ it('keeps model changes on canonical actions and credentials out of conversation
   expect(screen.getByLabelText('API key')).toHaveProperty('type', 'password')
   expect(w.runAction).toHaveBeenCalledTimes(1)
 })
+it('persists desktop notifications through native preferences, on by default', async () => {
+  const w = workspace()
+  render(<Settings workspace={w} onClose={vi.fn()} openLink={vi.fn()} clearDrafts={vi.fn()} />)
+  const toggle = screen.getByRole('switch', { name: /Desktop notifications/ }) as HTMLInputElement
+  expect(toggle.checked).toBe(true)
+  fireEvent.click(toggle)
+  await waitFor(() => expect(w.savePreferences).toHaveBeenCalledWith({ notifications: false }))
+})

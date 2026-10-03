@@ -112,3 +112,13 @@
   .settings-layout > .settings-nav button.selected, .settings-content .theme-options button.selected { border-color: Highlight; }
   .theme-preview { forced-color-adjust: none; }
 }
+.setting-switch { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; font-size: 13px; }
+.setting-switch input { appearance: none; flex-shrink: 0; position: relative; width: 34px; height: 20px; margin: 1px 0 0; padding: 0; border: 1px solid var(--control-line); border-radius: 999px; background: var(--hover); cursor: pointer; transition: background var(--motion-fast), border-color var(--motion-fast); }
+.setting-switch input::after { content: ""; position: absolute; inset-block-start: 2px; inset-inline-start: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px #0003; transition: transform var(--motion-fast) var(--ease-out); }
+.setting-switch input:checked { background: var(--accent); border-color: var(--accent); }
+.setting-switch input:checked::after { transform: translateX(14px); background: var(--on-accent); }
+.setting-switch input:disabled { opacity: .5; cursor: not-allowed; }
+.setting-switch > span { display: grid; gap: 4px; }
+.setting-switch strong { font-weight: 500; }
+.setting-switch small { color: var(--secondary); font-size: 12px; line-height: 1.55; }
+@media (forced-colors: active) { .setting-switch input { appearance: auto; width: auto; height: auto; } .setting-switch input::after { display: none; } }
