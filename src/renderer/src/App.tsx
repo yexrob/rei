@@ -22,6 +22,7 @@ import { I18nProvider, useI18n } from './i18n'
 import { configurePaths, useDisplayPath } from './paths'
 import { useAttentionNotifications } from './attention'
 import { ImageAttachmentError, readImageFiles } from './images'
+import { localizeNotice, Toast } from './components/Toast'
 import { InteractionPanel } from './components/InteractionPanel'
 import { Settings, Onboarding } from './components/Settings'
 import { StructuredView, type RunAction } from './components/Content'
@@ -206,7 +207,6 @@ function WorkspaceApp(): React.JSX.Element {
     document.addEventListener('pointerdown', dismiss); document.addEventListener('keydown', escape)
     return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape) }
   }, [menu])
-  useEffect(() => { if (!w.notice) return; const timer = setTimeout(() => w.setNotice(''), 7000); return () => clearTimeout(timer) }, [w.notice, w.setNotice])
   w.menuHandler.current = (action) => { if (action === 'new-session') newSession(); if (action === 'preferences') setSettings(true); if (action === 'choose-workspace') void w.chooseWorkspace().catch(w.report) }
 
   const send = async () => {
@@ -311,7 +311,7 @@ function WorkspaceApp(): React.JSX.Element {
       </div>}
       </div><ReviewPanel visible={reviewOpen && page === 'thread'} workspace={w.connection.workspace} onClose={() => setReviewOpen(false)} onCompose={compose} /><BrowserPanel visible={browserOpen && page === 'thread'} occluded={browserOccluded} onClose={() => setBrowserOpen(false)} /></div>{terminalMounted && <Suspense fallback={<section className="terminal-panel"><p className="terminal-status">{t('Starting terminal…')}</p></section>}><TerminalPanel visible={terminalOpen && page === 'thread'} onClose={() => setTerminalOpen(false)} /></Suspense>}</div>
     </main>
-    {w.notice && <div className="toast" role="status"><span>{w.notice}</span><IconButton label="Dismiss notification" onClick={() => w.setNotice('')}><X size={14} /></IconButton></div>}
+    {w.notice && <Toast key={w.notice} message={localizeNotice(w.notice, t)} onDismiss={() => w.setNotice('')} />}
     {settings && <Settings key={`${w.connection.hostId}:${w.connection.connectionId}`} workspace={w} initialPage={settingsPage} onClose={() => { setSettings(false); setSettingsPage('general') }} openLink={openLink} clearDrafts={() => { setDrafts({}); localStorage.removeItem('rei.drafts.v1') }} />}
     {palette && <Modal title={t('Search & commands')} onClose={() => setPalette(false)}><input className="palette-input" autoFocus aria-label={t('Search sessions and commands')} placeholder={t('Find a session or type a command…')} value={query} onChange={(event) => setQuery(event.target.value)} /><div className="palette-results">{visibleSessions.filter((session) => `${session.title} ${session.cwd}`.toLowerCase().includes(query.toLowerCase())).slice(0, 12).map((session) => <button key={session.id} onClick={() => openSession(session.id)}><MessageSquare size={16} /><span>{session.title || t('Untitled session')}<small title={session.cwd}>{formatPath(session.cwd, 56)}</small></span><ArrowUpRight size={14} /></button>)}{w.catalogs.commands?.entries.filter((entry) => entry.id.includes(query.replace(/^\//, '').toLowerCase())).slice(0, 8).map((entry) => <button key={entry.id} onClick={() => { setDraft({ ...draft, text: `/${entry.id} ` }); setPalette(false); requestAnimationFrame(() => input.current?.focus()) }}><Terminal size={16} /><span>/{entry.id}<small>{entry.label}</small></span></button>)}{!visibleSessions.some((session) => `${session.title} ${session.cwd}`.toLowerCase().includes(query.toLowerCase())) && !w.catalogs.commands?.entries.some((entry) => entry.id.includes(query.replace(/^\//, '').toLowerCase())) && <p className="secondary">{t('No matching sessions or commands.')}</p>}</div></Modal>}
     {rename !== null && <Modal title={t('Rename session')} onClose={() => setRename(null)}><form onSubmit={event => { event.preventDefault(); const request = rename, finish = beginOperation(operationKey, 'commands'); void request.apply(request.name.trim()).then(() => setRename(current => current === request ? null : current)).catch(request.report).finally(finish) }}><label className="field-label">{t('Session name')}<input autoFocus maxLength={80} value={rename.name} onChange={event => setRename({ ...rename, name: event.target.value })} /></label><div className="button-row"><button type="button" onClick={() => setRename(null)}>{t('Cancel')}</button><button className="primary" disabled={commandBusy || !rename.name.trim()} type="submit">{t('Save name')}</button></div></form></Modal>}

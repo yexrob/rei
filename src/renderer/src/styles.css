@@ -372,6 +372,9 @@ th { font-weight: 600; background: var(--code); }
 .turn-failure { color: var(--danger); background: var(--danger-bg); padding: 12px 16px; border-radius: 6px; font-size: 12px; }
 .toast { display: flex; align-items: center; gap: 15px; position: fixed; z-index: 60; inset-block-end: 26px; inset-inline-start: 50%; transform: translateX(-50%); max-width: min(600px, 90vw); background: var(--text); color: var(--canvas); padding: 10px 12px 10px 18px; border-radius: 10px; box-shadow: var(--shadow); font-size: 12px; white-space: pre-wrap; }
 .toast .icon-button { color: inherit; }
+.toast-action { min-height: 28px; padding: 4px 10px; border-color: color-mix(in srgb, var(--canvas) 40%, transparent); background: transparent; color: inherit; font-size: 12px; }
+.toast-action:hover:not(:disabled) { background: color-mix(in srgb, var(--canvas) 16%, transparent); }
+.toast :focus-visible { outline-color: var(--canvas); }
 .modal { border: 1px solid var(--line); background: var(--surface); color: var(--text); padding: 24px; border-radius: 14px; width: min(500px, calc(100% - 32px)); max-height: calc(100% - 48px); box-shadow: var(--shadow); overflow-y: auto; }
 .modal.wide { width: min(840px, calc(100% - 40px)); }
 .modal::backdrop { background: #141a144f; }
