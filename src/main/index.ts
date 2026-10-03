@@ -49,7 +49,7 @@ function createWindow(): void {
   window = new BrowserWindow({
     width: bounds?.width ?? Math.min(1440, area.width), height: bounds?.height ?? Math.min(960, area.height),
     ...(bounds ? { x: bounds.x, y: bounds.y } : {}),
-    minWidth: Math.min(640, area.width), minHeight: Math.min(480, area.height), show: false, title: 'Bingo',
+    minWidth: Math.min(640, area.width), minHeight: Math.min(480, area.height), show: false, title: 'Rei',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#202020' : '#FAFAF9',
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 14 } } : {}),
     ...(backgroundTest ? BACKGROUND_WINDOW_OPTIONS : {}),
