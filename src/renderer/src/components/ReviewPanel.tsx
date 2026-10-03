@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, GitCompareArrows, RotateCw, X } from './icon
 import type { ReviewFile, ReviewScope, ReviewSnapshot } from '../../../shared/review'
 import { useI18n } from '../i18n'
 import { IconButton } from './primitives'
+import { DiffView } from './DiffView'
 import './review.css'
 
 type Props = { visible: boolean; workspace: string | null; onClose(): void; onCompose(text: string): void }
@@ -71,7 +72,7 @@ function FileDiff({ file, scope, initiallyOpen, onCompose }: { file: ReviewFile;
       {file.binary ? <span className="review-file-count">{t('Binary')}</span> : <span className="review-file-count"><span className="review-added">+{file.additions}</span><span className="review-removed">−{file.deletions}</span></span>}
     </button>
     {open && <div className="review-file-content">
-      {file.binary ? <p className="review-notice">{t('Binary file — preview unavailable.')}</p> : file.truncated ? <p className="review-notice">{t('This patch exceeds the preview limit.')}</p> : file.patch ? <pre className="review-diff" tabIndex={0} aria-label={t('Diff for {path}', { path: file.path })}>{file.patch.split('\n').map((text, index) => <span key={index} className={text.startsWith('@@') ? 'review-hunk' : text.startsWith('+') && !text.startsWith('+++') ? 'review-line-add' : text.startsWith('-') && !text.startsWith('---') ? 'review-line-remove' : ''}>{text}{'\n'}</span>)}</pre> : <p className="review-notice">{t('No text patch available.')}</p>}
+      {file.binary ? <p className="review-notice">{t('Binary file — preview unavailable.')}</p> : file.truncated ? <p className="review-notice">{t('This patch exceeds the preview limit.')}</p> : file.patch ? <DiffView className="review-diff" text={file.patch} lineNumbers label={t('Diff for {path}', { path: file.path })} /> : <p className="review-notice">{t('No text patch available.')}</p>}
       <form className="review-feedback" onSubmit={(event) => { event.preventDefault(); draft() }}>
         <textarea aria-label={t('Feedback for {path}', { path: file.path })} placeholder={t('Leave feedback for Bingo…')} value={feedback} maxLength={8000} rows={2} onChange={(event) => setFeedback(event.target.value)} />
         <div><input type="number" min={1} max={9999999} step={1} aria-label={t('New line number (optional)')} placeholder={t('Line (optional)')} value={line} onChange={(event) => setLine(event.target.value)} /><button type="submit" disabled={!feedback.trim() || !validLine}>{t('Add to thread')}</button></div>

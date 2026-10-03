@@ -13,7 +13,7 @@
 .collaboration-avatar-status { position: absolute; inset-inline-end: -1px; inset-block-end: -1px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--surface); background: var(--secondary); }
 .collaboration-avatar-status[data-status="working"] { background: var(--success); }
 .collaboration-avatar-status[data-status="failed"] { background: var(--danger); }
-.collaboration-avatar-status[data-status="waiting"], .collaboration-avatar-status[data-status="retrying"] { background: var(--warning, #aa7733); }
+.collaboration-avatar-status[data-status="waiting"], .collaboration-avatar-status[data-status="retrying"] { background: var(--warning); }
 .collaboration-avatar-status[data-status="closed"], .collaboration-avatar-status[data-status="loading"], .collaboration-avatar-status[data-status="resyncing"] { background: var(--surface); border-color: var(--secondary); }
 .collaboration-panel-bridge { position: absolute; inset-block-start: 100%; inset-inline-end: 0; padding-block-start: 8px; width: min(352px, calc(100vw - 32px)); }
 .collaboration-panel { width: 100%; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised); box-shadow: var(--shadow-soft); overflow: hidden; animation: collaboration-enter var(--motion-normal) var(--ease-out); }
