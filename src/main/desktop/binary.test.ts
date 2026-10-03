@@ -33,14 +33,19 @@ describe('packaged default runtime discovery', () => {
     expect(await discoverBinary({ ...options, preference: installed })).toEqual({ path: installed, source: 'preferences' })
     expect(await discoverBinary({ ...options, preference: null })).toEqual({ path: bundled, source: 'bundled' })
   })
-  it('preserves the environment override even when the saved selection is cleared', async () => {
+  it('preserves the development environment override even when the saved selection is cleared', async () => {
     const { bundled, installed, options } = await fixture()
-    expect(await discoverBinary({ ...options, preference: bundled, env: { ...options.env, BINGO_GUI_BINARY: installed } })).toEqual({ path: installed, source: 'environment' })
-    expect(await discoverBinary({ ...options, env: { ...options.env, BINGO_GUI_BINARY: installed } })).toEqual({ path: installed, source: 'environment' })
+    expect(await discoverBinary({ ...options, packaged: false, preference: bundled, env: { ...options.env, BINGO_GUI_BINARY: installed } })).toEqual({ path: installed, source: 'environment' })
+    expect(await discoverBinary({ ...options, packaged: false, env: { ...options.env, BINGO_GUI_BINARY: installed } })).toEqual({ path: installed, source: 'environment' })
+  })
+  it('ignores the environment override in packaged builds', async () => {
+    const { bundled, installed, options } = await fixture()
+    expect(await discoverBinary({ ...options, env: { ...options.env, BINGO_GUI_BINARY: installed } })).toEqual({ path: bundled, source: 'bundled' })
+    expect(await discoverBinary({ ...options, preference: installed, env: { ...options.env, BINGO_GUI_BINARY: join(options.appPath, 'missing') } })).toEqual({ path: installed, source: 'preferences' })
   })
   it('does not silently substitute bundled code for a broken explicit selection', async () => {
     const { options } = await fixture()
     expect(await discoverBinary({ ...options, preference: join(options.appPath, 'missing') })).toEqual({ path: null, source: 'unavailable saved binary' })
-    expect(await discoverBinary({ ...options, env: { BINGO_GUI_BINARY: join(options.appPath, 'missing') } })).toEqual({ path: null, source: 'invalid environment override' })
+    expect(await discoverBinary({ ...options, packaged: false, env: { BINGO_GUI_BINARY: join(options.appPath, 'missing') } })).toEqual({ path: null, source: 'invalid environment override' })
   })
 })
