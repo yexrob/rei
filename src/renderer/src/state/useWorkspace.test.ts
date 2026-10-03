@@ -1108,6 +1108,20 @@ describe('streamed frame rendering and recovery bounds', () => {
     expect(result.current.active?.snapshot.summary.id).toBe('ses_1')
   })
 
+  it('trims read watermarks by last update rather than first insertion', async () => {
+    const own = JSON.stringify(['host:/work', 'ses_1'])
+    localStorage.setItem('rei.read.v1', JSON.stringify(Object.fromEntries([[own, 1], ...Array.from({ length: 999 }, (_, index) => [`k${index}`, 1])])))
+    try {
+      const { result } = await opened()
+      await act(async () => { result.current.markRead({ ...result.current.target!, sessionId: 'ses_1' }, 10) })
+      await act(async () => { result.current.markRead({ ...result.current.target!, sessionId: 'other' }, 10) })
+      const saved = Object.keys(JSON.parse(localStorage.getItem('rei.read.v1')!))
+      expect(saved).toHaveLength(1000)
+      expect(saved.slice(-2)).toEqual([own, JSON.stringify(['host:/work', 'other'])])
+      expect(saved).not.toContain('k0')
+    } finally { localStorage.removeItem('rei.read.v1') }
+  })
+
   it('renders on the next animation frame outside tests, with a timer fallback for hidden windows', () => {
     vi.useFakeTimers()
     vi.stubEnv('MODE', 'production')

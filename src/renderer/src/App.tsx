@@ -6,6 +6,7 @@ import { SessionStatus } from './components/SessionStatus'
 import { DESKTOP_IMAGE_LIMITS } from '../../shared/desktop'
 import { conversationKey, useWorkspace, unwrap } from './state/useWorkspace'
 import { useStableCallback } from './state/useStableCallback'
+import { useDraftPersistence, withDraft } from './state/drafts'
 import { itemText, selectSessionTitle, selectStatus, selectUsage, selectWorkspaceThreads } from './state/session'
 import { Composer, emptyDraft, type Draft } from './components/Composer'
 import { Timeline } from './components/Timeline'
@@ -108,7 +109,7 @@ function WorkspaceApp(): React.JSX.Element {
     const name = `${basename(host?.connection.workspace ?? agentPage.hostId)} · ${summary?.title || agentPage.sessionId}`
     return { key: JSON.stringify([agentPage.hostId, agentPage.connectionId, agentPage.sessionId, agentPage.itemId]), name, title: agentPage.title, open: () => { ++presentationGeneration.current; setPage('thread'); void w.openAgentPage(agentPage).catch(() => {}) } }
   })
-  const setDraft = (draft: Draft) => setDrafts((current) => ({ ...current, [key]: draft }))
+  const setDraft = (draft: Draft) => setDrafts((current) => withDraft(current, key, draft))
   const showBrowser = useCallback(() => { setPage('thread'); setReviewOpen(false); setBrowserOpen(true); if (window.innerWidth < 1050) setSidebar(false) }, [])
   const openLink = useCallback((url: string) => {
     if (!window.bingoPanels) { w.report(new Error('Browser unavailable')); return }
@@ -158,7 +159,7 @@ function WorkspaceApp(): React.JSX.Element {
     openSession(id)
   })
   const compose = (text: string) => {
-    setDrafts((current) => { const previous = current[key] ?? emptyDraft; return { ...current, [key]: { ...previous, text: previous.text ? text.startsWith('/') ? `${text}${previous.text}` : `${previous.text}\n\n${text}` : text } } })
+    setDrafts((current) => { const previous = current[key] ?? emptyDraft; return withDraft(current, key, { ...previous, text: previous.text ? text.startsWith('/') ? `${text}${previous.text}` : `${previous.text}\n\n${text}` : text }) })
     setPage('thread'); if (window.innerWidth < 900) setReviewOpen(false)
     requestAnimationFrame(() => input.current?.focus())
   }
@@ -173,13 +174,7 @@ function WorkspaceApp(): React.JSX.Element {
     apply(); media.addEventListener('change', apply)
     return () => media.removeEventListener('change', apply)
   }, [w.preferences?.theme])
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      try { localStorage.setItem('rei.drafts.v1', JSON.stringify(Object.fromEntries(Object.entries(drafts).filter(([, draft]) => draft.text).slice(-100).map(([key, draft]) => [key, draft.text])))); setDraftError('') }
-      catch { setDraftError(t('Drafts cannot be saved on this device. Keep the window open to preserve unsent text.')) }
-    }, 350)
-    return () => clearTimeout(timer)
-  }, [drafts, t])
+  useDraftPersistence(drafts, saved => setDraftError(saved ? '' : t('Drafts cannot be saved on this device. Keep the window open to preserve unsent text.')))
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return

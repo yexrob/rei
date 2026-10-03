@@ -738,7 +738,9 @@ export function useWorkspace() {
     const key = conversationKey(scope.hostId, scope.sessionId)
     setWatermarks(previous => {
       if ((previous[key] ?? -1) >= seq) return previous
-      const next = Object.fromEntries(Object.entries({ ...previous, [key]: seq }).slice(-1000))
+      // Re-insert so the trim evicts the least recently read conversation.
+      const { [key]: _, ...rest } = previous
+      const next = Object.fromEntries(Object.entries({ ...rest, [key]: seq }).slice(-1000))
       try { localStorage.setItem('rei.read.v1', JSON.stringify(next)) } catch { /* In-memory marks remain accurate. */ }
       return next
     })
