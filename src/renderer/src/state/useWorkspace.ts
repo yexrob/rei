@@ -26,9 +26,11 @@ type SessionContext = { error: string; notice: string; commandView: View | null;
 const emptyContext: SessionContext = { error: '', notice: '', commandView: null, loading: 0 }
 export type WorkspaceHost = { connection: ConnectionState; sessions: SessionSummary[]; headOmissions: Record<string, HeadOmission[]>; listComplete: boolean; childIds: Record<string, string[]>; childScanComplete: Record<string, boolean>; projections: Record<string, SessionProjection>; projectionEpochs: Record<string, string>; catalogs: Partial<Record<CatalogKind, Catalog>>; contexts: Record<string, SessionContext>; runtimeDraft: RuntimeSelection }
 type Pending = { target: ConversationSelection; presentResult: boolean; resolve: (value: IntentOutcome) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
-type EpochCache = { buffered: Map<string, Frame[]>; deferred: Map<string, EventRefParams[]>; bufferedCount: number; overflowed: Set<string>; opening: Set<string>; flights: Map<string, Promise<string>>; attachments: Map<string, { children: boolean; generation: number }>; ancestors: Set<string>; recovery: Set<string>; removed: Set<string>; discovering: Set<string>; scanned: Set<string>; gatewayRevision: number; initialThinking: Map<string, string>; preparing: Map<string, Promise<void>>; commandSession?: Promise<string>; initialized?: Promise<void> }
-function cache(): EpochCache { return { buffered: new Map(), deferred: new Map(), bufferedCount: 0, overflowed: new Set(), opening: new Set(), flights: new Map(), attachments: new Map(), ancestors: new Set(), recovery: new Set(), removed: new Set(), discovering: new Set(), scanned: new Set(), gatewayRevision: 0, initialThinking: new Map(), preparing: new Map() } }
+type EpochCache = { buffered: Map<string, Frame[]>; deferred: Map<string, EventRefParams[]>; bufferedCount: number; overflowed: Set<string>; refresh?: Promise<void>; refreshDirty: boolean; refreshTimer?: ReturnType<typeof setTimeout>; opening: Set<string>; flights: Map<string, Promise<string>>; attachments: Map<string, { children: boolean; generation: number }>; ancestors: Set<string>; recovery: Set<string>; removed: Set<string>; discovering: Set<string>; scanned: Set<string>; gatewayRevision: number; initialThinking: Map<string, string>; preparing: Map<string, Promise<void>>; commandSession?: Promise<string>; initialized?: Promise<void> }
+function cache(): EpochCache { return { buffered: new Map(), deferred: new Map(), bufferedCount: 0, overflowed: new Set(), refreshDirty: false, opening: new Set(), flights: new Map(), attachments: new Map(), ancestors: new Set(), recovery: new Set(), removed: new Set(), discovering: new Set(), scanned: new Set(), gatewayRevision: 0, initialThinking: new Map(), preparing: new Map() } }
 export const recoveryPolicy = { attempts: 3, backoff: 500 }
+/** Trailing window that coalesces gateway/sessionHead bursts into one re-pagination. */
+export const refreshPolicy = { debounce: 500 }
 export const bufferLimits = { total: 20000, session: 10000 }
 function takeBuffered<T>(store: EpochCache, queues: Map<string, T[]>, id: string): T[] {
   const queue = queues.get(id) ?? []
@@ -116,7 +118,10 @@ export function useWorkspace() {
     if (defer) { pendingRender.current ??= frameScheduler.schedule(() => { pendingRender.current = null; setHosts(hostsRef.current) }); return }
     pendingRender.current?.(); pendingRender.current = null; setHosts(hostsRef.current)
   }, [])
-  useEffect(() => () => { pendingRender.current?.(); pendingRender.current = null }, [])
+  useEffect(() => () => {
+    pendingRender.current?.(); pendingRender.current = null
+    for (const store of epochs.current.values()) { clearTimeout(store.refreshTimer); store.refreshTimer = undefined }
+  }, [])
   const updateHost = useCallback((id: string, update: (host: WorkspaceHost) => WorkspaceHost, defer = false) => {
     const host = hostsRef.current[id]
     if (!host) return
@@ -164,7 +169,7 @@ export function useWorkspace() {
       void window.bingoDesktop.cancelExport({ transferId: id, connectionId: connectionId!, session: owner.sessionId }).catch(() => {})
       setExportProgress(current => { const key = conversationKey(owner.hostId, owner.sessionId), progress = current[key]; return progress?.transferId === id ? { ...current, [key]: { ...progress, status: 'failed' } } : current })
     }
-    if (connectionId) epochs.current.delete(connectionId)
+    if (connectionId) { clearTimeout(epochs.current.get(connectionId)?.refreshTimer); epochs.current.delete(connectionId) }
   }, [reportFor])
   const adoptConnection = useCallback((incoming: ConnectionState) => {
     const previous = hostsRef.current[incoming.hostId]
@@ -281,6 +286,24 @@ export function useWorkspace() {
     }
     updateHost(scope.hostId, current => ({ ...current, listComplete: true }))
   }, [requireHost, epochCache, updateHost, requestBoundedFor])
+  // Single flight per epoch: a request during a scan marks it dirty for one more pass.
+  const refreshSessions = useCallback((scope: HostEpoch): Promise<void> => {
+    const store = epochCache(scope)
+    if (store.refresh) { store.refreshDirty = true; return store.refresh }
+    store.refresh = (async () => {
+      try { do { store.refreshDirty = false; await refreshSessionsFor(scope) } while (store.refreshDirty && live(scope)) }
+      finally { store.refresh = undefined }
+    })()
+    return store.refresh
+  }, [epochCache, refreshSessionsFor, live])
+  const scheduleRefresh = useCallback((scope: HostEpoch) => {
+    const store = epochCache(scope)
+    if (store.refreshTimer) return
+    store.refreshTimer = setTimeout(() => {
+      store.refreshTimer = undefined
+      if (live(scope)) void refreshSessions(scope).catch(error => reportFor({ ...scope, sessionId: null }, error))
+    }, refreshPolicy.debounce)
+  }, [epochCache, live, refreshSessions, reportFor])
   const readCatalogFor = useCallback(async (scope: HostEpoch, kind: CatalogKind) => {
     const catalog = await requestFor(scope, 'catalog/read', { kind })
     updateHost(scope.hostId, host => ({ ...host, catalogs: { ...host.catalogs, [kind]: catalog } }))
@@ -406,11 +429,11 @@ export function useWorkspace() {
     if (!store.initialized) store.initialized = (async () => {
       requireBoundedRuntime(requireHost(scope).connection)
       await requestFor(scope, 'gateway/subscribe', { maxBytes: boundedBytes })
-      await refreshSessionsFor(scope)
+      await refreshSessions(scope)
       await Promise.all((['models', 'commands', 'providers'] as const).map(kind => readCatalogFor(scope, kind).catch(error => reportFor({ ...scope, sessionId: null }, error))))
     })().catch(error => { store.initialized = undefined; throw error })
     await store.initialized
-  }, [epochCache, requestFor, refreshSessionsFor, readCatalogFor, reportFor])
+  }, [epochCache, requestFor, refreshSessions, readCatalogFor, reportFor])
   const connect = useCallback(async (workspace?: string, binary?: string): Promise<void> => {
     const token = ++navigation.current
     try {
@@ -515,7 +538,7 @@ export function useWorkspace() {
     }
     if (event.method === 'gateway/sessionHead') {
       store.gatewayRevision += 1
-      void refreshSessionsFor(scope).catch(error => reportFor({ ...scope, sessionId: null }, error))
+      scheduleRefresh(scope)
       return
     }
     if (event.method === 'gateway/event') {

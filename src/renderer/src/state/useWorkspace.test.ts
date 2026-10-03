@@ -9,7 +9,7 @@ import type {
 } from '../../../shared/desktop'
 import type { Event, Frame, RpcMethods, SessionState } from '../../../shared/rpc'
 import { rustInitial } from './fixtures'
-import { bufferLimits, frameScheduler, recoveryPolicy, useWorkspace } from './useWorkspace'
+import { bufferLimits, frameScheduler, recoveryPolicy, refreshPolicy, useWorkspace } from './useWorkspace'
 import { selectStatus } from './session'
 
 function deferred<T>() {
@@ -1028,6 +1028,27 @@ describe('streamed frame rendering and recovery bounds', () => {
       expect(result.current.active?.resync).toBeNull()
       expect(assistantText(result.current.active)).toBe('Repaired')
     } finally { Object.assign(recoveryPolicy, policy) }
+  })
+
+  it('coalesces sessionHead bursts into one trailing scan and reruns once for heads seen mid-scan', async () => {
+    const { bridge, result } = await connected()
+    const policy = { ...refreshPolicy }
+    Object.assign(refreshPolicy, { debounce: 5 })
+    try {
+      const gate = deferred<void>()
+      let scans = 0
+      bridge.handlers.set('session/list', async () => { scans += 1; if (scans === 1) await gate.promise; return ok({ sessions: [] }) })
+      const head = () => bridge.emit({ type: 'rpc', connectionId: result.current.connection.connectionId!, method: 'gateway/sessionHead', params: { session: 'ses_1' } })
+      await act(async () => { for (let index = 0; index < 20; index += 1) head() })
+      expect(scans).toBe(0)
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+      expect(scans).toBe(1)
+      await act(async () => { head(); head(); head(); await new Promise(resolve => setTimeout(resolve, 20)) })
+      expect(scans).toBe(1)
+      await act(async () => { gate.resolve(); await new Promise(resolve => setTimeout(resolve, 20)) })
+      expect(scans).toBe(2)
+      expect(result.current.hosts[result.current.connection.hostId].listComplete).toBe(true)
+    } finally { Object.assign(refreshPolicy, policy) }
   })
 
   it('renders on the next animation frame outside tests, with a timer fallback for hidden windows', () => {
