@@ -9,7 +9,7 @@ import type {
 } from '../../../shared/desktop'
 import type { Event, Frame, RpcMethods, SessionState } from '../../../shared/rpc'
 import { rustInitial } from './fixtures'
-import { useWorkspace } from './useWorkspace'
+import { frameScheduler, useWorkspace } from './useWorkspace'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -942,5 +942,56 @@ describe('journal-driven collaboration subscriptions', () => {
     expect(result.current.error).toBe('')
     await act(async () => { bridge.emit({ type: 'connection', connection: { ...result.current.connection, status: 'failed', error: { code: 'CONNECTION', message: 'Transport lost' } } }); result.current.newSession() })
     expect(result.current.error).toBe('Transport lost')
+  })
+})
+
+describe('streamed frame rendering', () => {
+  it('folds a burst of frames into one render and keeps the session list identity while the summary is unchanged', async () => {
+    const bridge = desktop()
+    let renders = 0
+    const { result } = renderHook(() => { renders += 1; return useWorkspace() })
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await result.current.connect('/work') })
+    await act(async () => { await result.current.openSession('ses_1') })
+    const sessions = result.current.sessions, hosts = result.current.hosts, started = renders
+    const spy = vi.spyOn(frameScheduler, 'schedule')
+    await act(async () => { for (let seq = 11; seq <= 40; seq += 1) bridge.emitFrame(delta(seq, '.')) })
+    expect(spy).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
+    expect(renders - started).toBe(1)
+    expect(assistantText(result.current.active)).toBe(`Before${'.'.repeat(30)}`)
+    expect(result.current.sessions).toBe(sessions)
+    expect(result.current.hosts).not.toBe(hosts)
+    await act(async () => { bridge.emitFrame(frame(41, { type: 'sessionUpdated', summary: { ...snapshot().summary, title: 'Renamed' } })) })
+    expect(result.current.sessions).not.toBe(sessions)
+    expect(result.current.sessions[0].title).toBe('Renamed')
+    const renamed = result.current.sessions
+    await act(async () => { bridge.emitFrame(frame(42, { type: 'sessionUpdated', summary: { ...snapshot().summary, title: 'Renamed' } })) })
+    expect(result.current.sessions).toBe(renamed)
+  })
+
+  it('renders on the next animation frame outside tests, with a timer fallback for hidden windows', () => {
+    vi.useFakeTimers()
+    vi.stubEnv('MODE', 'production')
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback))
+    vi.stubGlobal('cancelAnimationFrame', () => {})
+    try {
+      const flush = vi.fn()
+      frameScheduler.schedule(flush)
+      expect(flush).not.toHaveBeenCalled()
+      frames[0](0); vi.runAllTimers()
+      expect(flush).toHaveBeenCalledTimes(1)
+      const hidden = vi.fn()
+      frameScheduler.schedule(hidden)
+      vi.advanceTimersByTime(100)
+      expect(hidden).toHaveBeenCalledTimes(1)
+      frames[1](0)
+      expect(hidden).toHaveBeenCalledTimes(1)
+      const cancelled = vi.fn()
+      frameScheduler.schedule(cancelled)()
+      frames[2](0); vi.runAllTimers()
+      expect(cancelled).not.toHaveBeenCalled()
+    } finally { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.useRealTimers() }
   })
 })

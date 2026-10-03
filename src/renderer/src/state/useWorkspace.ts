@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentPageState, AgentPageTarget, BoundedDelivery, BoundedMethod, ConnectionState, ConversationSelection, DesktopBootstrap, DesktopEvent, DesktopMethod, DesktopPreferences, ExportProgress, ExportReferenceRequest, HostEpoch, Result } from '../../../shared/desktop'
 import type { Activation, Answer, Catalog, CatalogKind, EventRefParams, Frame, HeadOmission, Image, Input, IntentOutcome, RpcMethods, SessionSpec, SessionSummary, View } from '../../../shared/rpc'
-import { createSessionProjection, projectEventReference, projectFrame, projectHistory, type SessionProjection } from './session'
+import { createSessionProjection, foldDraft, projectEventReference, projectFrame, projectHistory, type SessionProjection } from './session'
 import { errorMessage, object } from '../components/primitives'
 import { selectCollaboration } from './collaboration'
 import { isDescendantFrame, projectTreeFrames, treeAttachmentTarget } from './sessionTree'
@@ -37,6 +37,28 @@ function selectedModel(id: string | null, catalogs: Partial<Record<CatalogKind, 
   if (entry) throw new Error('This model catalog entry has no valid provider identity. Refresh the models and try again.')
   return { model: id }
 }
+/** Streamed frames fold into the ref at once but render at most once per animation frame.
+ * Hidden windows suspend animation frames, so a timer keeps passive effects progressing.
+ * Tests (and hosts without rAF) flush on a microtask: deterministic within one act(). */
+export const frameScheduler = {
+  schedule(flush: () => void): () => void {
+    let done = false
+    if (import.meta.env.MODE === 'test' || typeof requestAnimationFrame !== 'function') { queueMicrotask(() => { if (!done) { done = true; flush() } }); return () => { done = true } }
+    const run = () => { if (done) return; done = true; cancelAnimationFrame(frame); clearTimeout(timer); flush() }
+    const frame = requestAnimationFrame(run), timer = setTimeout(run, 100)
+    return () => { done = true; cancelAnimationFrame(frame); clearTimeout(timer) }
+  }
+}
+const sameSummary = (left: SessionSummary, right: SessionSummary) => {
+  if (left === right) return true
+  const keys = Object.keys(left) as (keyof SessionSummary)[]
+  return keys.length === Object.keys(right).length && keys.every(key => left[key] === right[key])
+}
+/** Moves a changed summary to the front; an unchanged one keeps the list identity. */
+function withSummary(sessions: SessionSummary[], id: string, summary: SessionSummary): SessionSummary[] {
+  const index = sessions.findIndex(item => item.id === id)
+  return index >= 0 && sameSummary(sessions[index], summary) ? sessions : [summary, ...sessions.filter(item => item.id !== id)]
+}
 function savedWatermarks(): Record<string, number> {
   try { return Object.fromEntries(Object.entries(object(JSON.parse(localStorage.getItem('rei.read.v1') ?? '{}'))).filter((pair): pair is [string, number] => typeof pair[1] === 'number' && Number.isSafeInteger(pair[1]) && pair[1] >= 0)) } catch { return {} }
 }
@@ -67,11 +89,19 @@ export function useWorkspace() {
   const initialized = useRef(false)
   const menuHandler = useRef<(action: string) => void>(() => {})
 
-  const updateHost = useCallback((id: string, update: (host: WorkspaceHost) => WorkspaceHost) => {
+  const pendingRender = useRef<(() => void) | null>(null)
+  const commitHosts = useCallback((defer = false) => {
+    if (defer) { pendingRender.current ??= frameScheduler.schedule(() => { pendingRender.current = null; setHosts(hostsRef.current) }); return }
+    pendingRender.current?.(); pendingRender.current = null; setHosts(hostsRef.current)
+  }, [])
+  useEffect(() => () => { pendingRender.current?.(); pendingRender.current = null }, [])
+  const updateHost = useCallback((id: string, update: (host: WorkspaceHost) => WorkspaceHost, defer = false) => {
     const host = hostsRef.current[id]
     if (!host) return
-    hostsRef.current = { ...hostsRef.current, [id]: update(host) }; setHosts(hostsRef.current)
-  }, [])
+    const next = update(host)
+    if (next === host) return
+    hostsRef.current = { ...hostsRef.current, [id]: next }; commitHosts(defer)
+  }, [commitHosts])
   const setSelection = useCallback((next: ConversationSelection | null, show = true) => {
     targetRef.current = next; setTarget(next)
     if (show) { previewRef.current = next; setPreview(next) }
@@ -134,8 +164,8 @@ export function useWorkspace() {
     }
     const retained = hostsRef.current[connection.hostId]
     hostsRef.current = { ...hostsRef.current, [connection.hostId]: retained ? { ...retained, connection, ...(changedEpoch ? { catalogs: {}, listComplete: false, childIds: {}, childScanComplete: {}, sessions: retained.sessions.map(summary => ({ ...summary, busy: false })) } : {}) } : workspaceHost(connection) }
-    setHosts(hostsRef.current)
-  }, [rejectEpoch, setSelection])
+    commitHosts()
+  }, [rejectEpoch, setSelection, commitHosts])
   const requestFor = useCallback(async <M extends DesktopMethod>(scope: HostEpoch, method: M, params: RpcMethods[M]['params']): Promise<RpcMethods[M]['result']> => {
     requireHost(scope)
     const result = unwrap(await window.bingoDesktop.request({ connectionId: scope.connectionId!, method, params }))
@@ -181,9 +211,10 @@ export function useWorkspace() {
       throw error
     } finally { clearTimeout(timer); boundedSlots.current.delete(transferId) }
   }, [requireHost])
-  const updateProjection = useCallback((scope: HostEpoch, id: string, next: SessionProjection) => {
+  // Streamed callers defer the render; unchanged summaries and epochs keep their identities.
+  const updateProjection = useCallback((scope: HostEpoch, id: string, next: SessionProjection, defer = false) => {
     if (!live(scope)) return
-    updateHost(scope.hostId, host => ({ ...host, projections: { ...host.projections, [id]: next }, projectionEpochs: { ...host.projectionEpochs, [id]: scope.connectionId! }, sessions: [next.snapshot.summary, ...host.sessions.filter(item => item.id !== id)] }))
+    updateHost(scope.hostId, host => host.projections[id] === next && host.projectionEpochs[id] === scope.connectionId ? host : ({ ...host, projections: { ...host.projections, [id]: next }, projectionEpochs: host.projectionEpochs[id] === scope.connectionId ? host.projectionEpochs : { ...host.projectionEpochs, [id]: scope.connectionId! }, sessions: withSummary(host.sessions, id, next.snapshot.summary) }), defer)
   }, [live, updateHost])
   const readPreviewPart = useCallback(async (owner: ConversationSelection, ref: { id: string; kind: PartSlot['kind']; token: string; item?: string; generation?: number; totalBytes: number }) => {
     if (!owner.sessionId) throw new Error('Select a session before reading its content.')
@@ -293,12 +324,13 @@ export function useWorkspace() {
           ...(store.buffered.get(session) ?? []).map(frame => ({ seq: frame.seq, frame })),
           ...(store.deferred.get(session) ?? []).map(ref => ({ seq: ref.seq, ref }))
         ].sort((left, right) => left.seq - right.seq)
+        const fold = foldDraft()
         for (const entry of buffered) {
           if ('ref' in entry) { projection = projectEventReference(projection, entry.ref); continue }
           const frame = entry.frame
           if (isDescendantFrame(frame)) continue
           if (frame.event.type === 'lagged' ? frame.event.to <= projection.snapshot.seq : frame.seq <= projection.snapshot.seq) continue
-          projection = projectFrame(projection, frame)
+          projection = projectFrame(projection, frame, 'live', fold)
         }
         store.buffered.delete(session); store.deferred.delete(session)
         updateProjection(scope, session, { ...projection, provisional: false })
@@ -455,7 +487,7 @@ export function useWorkspace() {
       const existing = host.projectionEpochs[ref.session] === scope.connectionId ? host.projections[ref.session] : undefined
       if (!existing || store.opening.has(ref.session)) { store.deferred.set(ref.session, [...store.deferred.get(ref.session) ?? [], ref]); return }
       const next = projectEventReference(existing, ref)
-      if (next !== existing) updateProjection(scope, ref.session, next)
+      if (next !== existing) updateProjection(scope, ref.session, next, true)
       return
     }
     if (event.method === 'gateway/sessionHead') {
@@ -500,11 +532,11 @@ export function useWorkspace() {
     const existing = host.projectionEpochs[frame.session] === scope.connectionId ? host.projections[frame.session] : undefined
     if (descendant && !existing) {
       const summary = data.type === 'sessionUpdated' ? data.summary : host.sessions.find(item => item.id === frame.session)
-      if (summary) { const frames = [...store.buffered.get(frame.session) ?? [], frame]; store.buffered.delete(frame.session); updateProjection(scope, frame.session, projectTreeFrames(summary, frames)); return }
+      if (summary) { const frames = [...store.buffered.get(frame.session) ?? [], frame]; store.buffered.delete(frame.session); updateProjection(scope, frame.session, projectTreeFrames(summary, frames), true); return }
     }
     if (!existing || store.opening.has(frame.session)) { const queue = store.buffered.get(frame.session) ?? []; if (queue.length < 10000) store.buffered.set(frame.session, [...queue, frame]); return }
     const next = projectFrame(existing, frame, descendant ? 'replay' : 'live')
-    if (next !== existing) updateProjection(scope, frame.session, next)
+    if (next !== existing) updateProjection(scope, frame.session, next, true)
   }
   useEffect(() => {
     if (!window.bingoDesktop) { setApplicationError('Open Rei in the desktop app to connect to bingo.'); return }
